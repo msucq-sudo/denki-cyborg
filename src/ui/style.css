@@ -190,6 +190,7 @@ html, body { margin: 0; height: 100%; overflow: hidden; background: #0d1420; }
 .keys { list-style: none; margin: 8px 0 0; padding: 0; display: grid; gap: 4px; }
 .key-row { display: flex; align-items: center; gap: 8px; white-space: nowrap; transition: opacity 0.2s; }
 .key-row .kbd { min-width: 84px; }
+.key-row .kbd.pad { min-width: 76px; opacity: 0.85; }
 .key-row .key-label { opacity: 0.95; }
 .key-row.hl .kbd { background: var(--hud-cyan); box-shadow: 0 0 14px var(--hud-cyan); animation: blink 1s ease-in-out infinite; }
 .key-row.dim { opacity: 0.35; }

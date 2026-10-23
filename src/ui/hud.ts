@@ -73,23 +73,24 @@ function flash(e: HTMLElement, cls: string): void {
 
 // ---------- 表示部品 ----------
 
-interface KeyRow { id: string; keys: string; label: string }
+/** keys=キーボード/マウス、pad=Xboxパッド */
+interface KeyRow { id: string; keys: string; pad: string; label: string }
 
 const KEY_ROWS: KeyRow[] = [
-  { id: 'move', keys: 'WASD', label: '移動' },
-  { id: 'look', keys: 'マウス', label: '視点' },
-  { id: 'lmb', keys: '左クリック', label: '射撃（長押しで溜め）' },
-  { id: 'rmb', keys: 'E', label: '吸収アーム（発射 / 解除）' },
-  { id: 'aim', keys: '右クリック', label: '照準（長押しでズーム）' },
-  { id: 'f', keys: 'F', label: '吸収中 長押しで逆流' },
-  { id: 'shift', keys: 'C', label: '回避' },
-  { id: 'dash', keys: 'Shift', label: 'ダッシュ（移動中のみ低消費）' },
-  { id: 'space', keys: 'Space', label: 'ジャンプ（飛行ONで長押し）' },
-  { id: 'k1', keys: '1', label: 'スカウター' },
-  { id: 'k2', keys: '2', label: 'オートエイム' },
-  { id: 'k3', keys: '3', label: '飛行' },
-  { id: 'p', keys: 'P', label: '一時停止' },
-  { id: 'h', keys: 'H', label: '操作表示の切替' },
+  { id: 'move', keys: 'WASD', pad: 'Lスティック', label: '移動' },
+  { id: 'look', keys: 'マウス', pad: 'Rスティック', label: '視点' },
+  { id: 'lmb', keys: '左クリック', pad: 'RT', label: '射撃（長押しで溜め）' },
+  { id: 'rmb', keys: 'E', pad: 'LB', label: '吸収アーム（発射 / 解除）' },
+  { id: 'aim', keys: '右クリック', pad: 'LT', label: '照準（長押しでズーム）' },
+  { id: 'f', keys: 'F', pad: 'X', label: '吸収中 長押しで逆流' },
+  { id: 'shift', keys: 'C', pad: 'B / RB', label: '回避' },
+  { id: 'dash', keys: 'Shift', pad: 'L押込', label: 'ダッシュ（移動中のみ低消費）' },
+  { id: 'space', keys: 'Space', pad: 'A', label: 'ジャンプ（飛行ONで長押し）' },
+  { id: 'k1', keys: '1', pad: '十字左', label: 'スカウター' },
+  { id: 'k2', keys: '2', pad: '十字上', label: 'オートエイム' },
+  { id: 'k3', keys: '3', pad: 'Y', label: '飛行' },
+  { id: 'p', keys: 'P', pad: 'Start', label: '一時停止' },
+  { id: 'h', keys: 'H', pad: '—', label: '操作表示の切替' },
 ];
 
 /** 操作一覧。register に渡すと行要素を id 付きで登録する（状況に応じたハイライト用） */
@@ -97,7 +98,7 @@ function buildKeyList(register?: Record<string, HTMLElement>): HTMLElement {
   const ul = el('ul', 'keys');
   for (const row of KEY_ROWS) {
     const li = el('li', 'key-row');
-    li.append(el('kbd', 'kbd', row.keys), el('span', 'key-label', row.label));
+    li.append(el('kbd', 'kbd', row.keys), el('kbd', 'kbd pad', row.pad), el('span', 'key-label', row.label));
     ul.append(li);
     if (register) register[row.id] = li;
   }
