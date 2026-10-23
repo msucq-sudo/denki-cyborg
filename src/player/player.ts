@@ -13,6 +13,8 @@ import {
 
 const AIM_RANGE = 100;
 const JUMP_HOLD_TO_FLY = 0.18;
+/** 射撃クリックの先行入力受付（秒） */
+const TAP_BUFFER = 0.25;
 const TERMINAL_VEL = -45;
 
 interface PState {
@@ -30,6 +32,8 @@ interface PState {
   spaceHold: number;
   groundJumped: boolean;
   holding: boolean;
+  /** 押した直後の先行入力（秒）。クールダウン明けに単発を撃つ */
+  tapQueue: number;
   suppressFire: boolean;
   fullEmitted: boolean;
   sparkT: number;
@@ -46,7 +50,7 @@ function st(world: World): PState {
     s = {
       vis: buildPlayerVisual(world.player.root), facing: world.player.yaw, walkPhase: 0,
       prevOnGround: false, prevHp: world.player.hp, flash: 0, fallSpeed: 0, camS: 1, aimK: 0, afterT: 0,
-      spaceHold: 0, groundJumped: false, holding: false, suppressFire: false, fullEmitted: false, sparkT: 0, hitCeilingPrev: false, muzzleFlash: 0,
+      spaceHold: 0, groundJumped: false, holding: false, tapQueue: 0, suppressFire: false, fullEmitted: false, sparkT: 0, hitCeilingPrev: false, muzzleFlash: 0,
     };
     states.set(world, s);
   }
@@ -382,7 +386,18 @@ export function updateGun(world: World, dt: number): void {
   const pressed = input.mousePressed(0);
   const released = input.mouseReleased(0);
   const down = input.mouse(0);
-  if (pressed) { s.holding = true; p.fireHold = 0; }
+  if (pressed) { s.holding = true; p.fireHold = 0; s.tapQueue = TAP_BUFFER; }
+
+  // 単発はクリックした瞬間に撃つ（離すのを待たない）。クールダウン中は先行入力で受ける
+  if (s.tapQueue > 0) {
+    s.tapQueue -= dt;
+    if (p.charging) s.tapQueue = 0;
+    else if (p.fireCooldown <= 0 && spendEnergy(world, GUN.tapCost)) {
+      fire(world, false, 0);
+      p.fireCooldown = GUN.tapInterval;
+      s.tapQueue = 0;
+    }
+  }
 
   if (s.holding && (down || pressed)) {
     p.fireHold += dt;
@@ -413,9 +428,6 @@ export function updateGun(world: World, dt: number): void {
       if (c > 0 || p.chargeSpent > 0) fire(world, true, c);
       else world.events.emit('chargeCancel', {});
       p.chargeSpent = 0;
-      p.fireCooldown = GUN.tapInterval;
-    } else if (p.fireCooldown <= 0 && spendEnergy(world, GUN.tapCost)) {
-      fire(world, false, 0);
       p.fireCooldown = GUN.tapInterval;
     }
     p.fireHold = 0;
