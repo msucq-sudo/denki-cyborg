@@ -280,7 +280,7 @@ export function createHUD(root: HTMLElement, cb: HudCallbacks): Hud {
     '左クリック 射撃（長押しで溜め撃ち）',
     'E 吸収アーム（敵から電力を吸う） ・ 右クリック 照準',
     '1〜3 機能 ・ C 回避 ・ Shift ダッシュ ・ H 操作表示',
-    'Xboxパッド: Lスティック移動 ・ Rスティック視点 ・ RT射撃 ・ LT照準 ・ LB吸収 ・ A ジャンプ ・ B 回避 ・ Lスティック押込 ダッシュ ・ X 逆流 ・ Y 飛行 ・ 十字キー左/上 機能 ・ Start ポーズ',
+    'Xboxパッド: Lスティック移動 ・ Rスティック視点 ・ RT射撃 ・ LT照準 ・ LB吸収 ・ A ジャンプ ・ B/RB 回避 ・ Lスティック押込 ダッシュ ・ X 逆流 ・ Y 飛行 ・ 十字キー左/上 機能 ・ Start ポーズ',
   ]) tTips.append(el('li', '', t));
   const tRow = el('div', 'btn-row');
   tPanel.append(tTitle, tSub, tTips, tRow);

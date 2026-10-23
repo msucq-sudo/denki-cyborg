@@ -56,7 +56,7 @@ export class Input {
 
   /**
    * ゲームパッド（Xbox 配置）をキーボード/マウス入力に変換する。毎フレーム1回呼ぶ。
-   * 左スティック=WASD、右スティック=視点、RT=射撃、LT=照準、LB=吸収(E)、A=ジャンプ/飛行、B=回避(C)、Lスティック押込=ダッシュ(Shift)、
+   * 左スティック=WASD、右スティック=視点、RT=射撃、LT=照準、LB=吸収(E)、A=ジャンプ/飛行、B/RB=回避(C)、Lスティック押込=ダッシュ(Shift)、
    * X=逆流(F)、Y=飛行(3)、十字キー左/上=スカウター/オートエイム(1/2)、Start=ポーズ(P)、A=決定(PadA)
    */
   pollGamepad(dt: number): void {
@@ -72,7 +72,7 @@ export class Input {
       if (ax(0) < -T) keys.add('KeyA');
       if (ax(0) > T) keys.add('KeyD');
       if (b(0)) { keys.add('Space'); keys.add('PadA'); }
-      if (b(1)) keys.add('KeyC');
+      if (b(1) || b(5)) keys.add('KeyC');
       if (b(2)) keys.add('KeyF');
       if (b(3)) keys.add('Digit3');
       if (b(4)) keys.add('KeyE');
