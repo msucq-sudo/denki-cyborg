@@ -90,6 +90,11 @@ function attach(world: World, ex: Extra, enemy: Enemy, point: THREE.Vector3): vo
   world.events.emit('absorbAttach', { pos: point.clone() });
 }
 
+/** 吸収ダメージ数字は細かく出さず、この間隔でまとめて出す */
+const DRAIN_POP_INTERVAL = 0.35;
+let drainAcc = 0;
+let drainT = 0;
+
 export function updateAbsorb(world: World, dt: number): void {
   const ex = extras.get(world);
   if (!ex) return;
@@ -248,6 +253,12 @@ function updateAttached(world: World, ex: Extra, dt: number): void {
 
   // ---- 吸収 ----
   const got = drainEnemy(world, enemy, ABSORB.drainPerSec * dt);
+  drainAcc += got;
+  drainT += dt;
+  if (drainAcc > 0 && (drainT >= DRAIN_POP_INTERVAL || enemy.hp <= 0)) {
+    world.events.emit('enemyDrained', { pos: enemy.pos.clone().setY(enemy.pos.y + enemy.radius), amount: drainAcc });
+    drainAcc = 0; drainT = 0;
+  }
   if (got > 0) {
     const added = addEnergy(world, got * ABSORB.conversion);
     a.totalAbsorbed += added;

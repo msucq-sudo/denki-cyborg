@@ -80,7 +80,7 @@ describe('layout', () => {
     for (const s of [...steps, plat.top]) { expect(s - prev).toBeLessThanOrEqual(1.5); prev = s; }
   });
   it('boss room pads have half capacity', () => {
-    expect(ROOM_DEFS[7].pads.length).toBe(3);
+    expect(ROOM_DEFS[7].pads.length).toBe(2);
     expect(ROOM_DEFS[7].pads[0].capacity).toBeLessThan(80);
   });
 });

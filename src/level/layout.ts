@@ -47,13 +47,13 @@ export const ROOM_DEFS: RoomDef[] = [
     name: '第1区画：搬入ホール', title: '第1区画  搬入ホール', w: 26, d: 30, h: 9,
     waves: [[{ kind: 'drone', count: 3 }]],
     blocks: [cover(-7, 2), cover(7, 2), cover(0, 8, 4, 1.6, 2), cover(-9, -6, 2, 2.4, 2)],
-    pads: [{ lx: 10, lz: -12 }], kits: [{ lx: -11, lz: -13 }], lightColor: 0xd9d0ff,
+    pads: [], kits: [{ lx: -11, lz: -13 }], lightColor: 0xd9d0ff,
   },
   {
     name: '第2区画：配電室', title: '第2区画  配電室', w: 30, d: 34, h: 10,
     waves: [[{ kind: 'crawler', count: 4 }], [{ kind: 'drone', count: 2 }]],
     blocks: [cover(-9, 4), cover(9, 4), cover(0, -2, 5, 1.6, 2), cover(-11, -9), cover(11, -9)],
-    pads: [{ lx: 12, lz: -13 }], kits: [{ lx: -11, lz: -13 }, { lx: 12, lz: 14 }], lightColor: 0xffe0d0,
+    pads: [], kits: [{ lx: -11, lz: -13 }, { lx: 12, lz: 14 }], lightColor: 0xffe0d0,
   },
   {
     name: '第3区画：昇降プラットフォーム', title: '第3区画  昇降プラットフォーム', w: 32, d: 38, h: 12,
@@ -72,7 +72,7 @@ export const ROOM_DEFS: RoomDef[] = [
     name: '第4区画：重機ハンガー', title: '第4区画  重機ハンガー', w: 30, d: 34, h: 10,
     waves: [[{ kind: 'heavy', count: 1 }, { kind: 'drone', count: 2 }], [{ kind: 'gunner', count: 2 }]],
     blocks: [cover(-9, 3, 2.4, 2.6, 2.4), cover(9, 3, 2.4, 2.6, 2.4), cover(-9, -8, 2.4, 2.6, 2.4), cover(9, -8, 2.4, 2.6, 2.4)],
-    pads: [{ lx: 0, lz: -14 }], kits: [{ lx: -12, lz: 14 }, { lx: 12, lz: 14 }], lightColor: 0xffd8e8,
+    pads: [], kits: [{ lx: -12, lz: 14 }, { lx: 12, lz: 14 }], lightColor: 0xffd8e8,
   },
   {
     name: '第5区画：中央制御室', title: '第5区画  中央制御室', w: 40, d: 40, h: 12,
@@ -81,7 +81,7 @@ export const ROOM_DEFS: RoomDef[] = [
       [{ kind: 'heavy', count: 2 }, { kind: 'gunner', count: 1 }],
     ],
     blocks: [cover(-12, 6), cover(12, 6), cover(0, 0, 4, 1.8, 4), cover(-14, -6), cover(14, -6), cover(-6, -12, 3, 1.6, 2), cover(6, -12, 3, 1.6, 2)],
-    pads: [{ lx: 0, lz: 13 }, { lx: -17, lz: -14 }, { lx: 17, lz: -14 }], kits: [{ lx: -16, lz: 14 }, { lx: 16, lz: 14 }], lightColor: 0xe8e0ff,
+    pads: [{ lx: 0, lz: 13 }], kits: [{ lx: -16, lz: 14 }, { lx: 16, lz: 14 }], lightColor: 0xe8e0ff,
   },
   {
     name: '前室：最終隔壁', title: '前室  最終隔壁', w: 20, d: 22, h: 8, waves: [],
@@ -103,7 +103,6 @@ export const ROOM_DEFS: RoomDef[] = [
     pads: [
       { lx: -16, lz: 6, capacity: LEVEL.chargePadCapacity * 0.5 },
       { lx: 16, lz: 6, capacity: LEVEL.chargePadCapacity * 0.5 },
-      { lx: 0, lz: -16, capacity: LEVEL.chargePadCapacity * 0.5 },
     ],
     kits: [{ lx: -17, lz: 17 }, { lx: 17, lz: 17 }, { lx: 0, lz: 18 }], lightColor: 0xa8f0ff, boss: true,
   },

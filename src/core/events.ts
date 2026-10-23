@@ -14,6 +14,8 @@ export interface GameEvents {
   flightEnd: {};
   impact: { pos: THREE.Vector3; owner: 'player' | 'enemy' };
   enemyHit: { pos: THREE.Vector3; weak: boolean; damage: number };
+  /** 吸収で敵HPを吸った量（一定間隔でまとめて通知） */
+  enemyDrained: { pos: THREE.Vector3; amount: number };
   enemyKilled: { kind: EnemyKind; pos: THREE.Vector3; how: 'shot' | 'absorb' | 'explosion' };
   enemyAttack: { kind: EnemyKind; pos: THREE.Vector3 };
   playerHit: { amount: number };

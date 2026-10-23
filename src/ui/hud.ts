@@ -1,3 +1,4 @@
+import type * as THREE from 'three';
 import type { Enemy, Toast, World } from '../core/types';
 import type { EventBus } from '../core/events';
 import { ABSORB, DODGE, ENEMIES, FUNCTIONS, GUN } from '../config/balance';
@@ -127,6 +128,9 @@ function buildStats(): { node: HTMLElement; set(w: World): void } {
 
 // ---------- 本体 ----------
 
+/** ダメージ数字の表示時間（秒） */
+const DMG_NUM_LIFE = 0.8;
+
 export function createHUD(root: HTMLElement, cb: HudCallbacks): Hud {
   // この HUD インスタンス内の UI 状態（World 側には置かない）
   const subscribed = new WeakSet<EventBus>();
@@ -143,6 +147,8 @@ export function createHUD(root: HTMLElement, cb: HudCallbacks): Hud {
   const rate: RateState = { prev: 0, rate: 0 };
   const toastEls = new Map<Toast, HTMLElement>();
   const keyEls: Record<string, HTMLElement> = {};
+  const dmgBox = el('div', 'dmg-layer');
+  const dmgNums: { el: HTMLElement; pos: THREE.Vector3; age: number; dx: number }[] = [];
 
   // ----- プレイ中 HUD -----
   const playRoot = el('div', 'play');
@@ -265,7 +271,7 @@ export function createHUD(root: HTMLElement, cb: HudCallbacks): Hud {
   }
 
   playRoot.append(
-    vignette, scouterFx, crosshair, lockon, hitmark, bossBox, objBox,
+    vignette, scouterFx, crosshair, lockon, hitmark, dmgBox, bossBox, objBox,
     controls, toastBox, absBox, energyHint, bleft, bright,
   );
 
@@ -362,6 +368,8 @@ export function createHUD(root: HTMLElement, cb: HudCallbacks): Hud {
       hitWeak = p.weak;
       flash(hitmark, 'pop');
     });
+    bus.on('enemyHit', (p) => popNumber(p.pos, p.damage, p.weak ? 'weak' : p.damage >= 20 ? 'big' : ''));
+    bus.on('enemyDrained', (p) => popNumber(p.pos, p.amount, 'drain'));
     bus.on('noEnergy', () => flash(gauge, 'shake'));
     bus.on('bossPhase', (p) => {
       bossPhase = p.phase;
@@ -416,6 +424,27 @@ export function createHUD(root: HTMLElement, cb: HudCallbacks): Hud {
     }
   }
 
+  /** ダメージ数字：ワールド座標に追従して上へ浮かび、消える */
+  function popNumber(pos: THREE.Vector3, value: number, kind: string): void {
+    if (dmgNums.length >= 40) return;
+    const text = kind === 'drain' ? `-${Math.round(value)}` : String(Math.round(value));
+    const e = el('div', `dmg-num ${kind}`.trim(), text);
+    dmgBox.append(e);
+    dmgNums.push({ el: e, pos: pos.clone(), age: 0, dx: (Math.random() - 0.5) * 36 });
+  }
+
+  function updateDmgNums(world: World, dt: number): void {
+    for (let i = dmgNums.length - 1; i >= 0; i--) {
+      const n = dmgNums[i];
+      n.age += dt;
+      if (n.age >= DMG_NUM_LIFE) { n.el.remove(); dmgNums.splice(i, 1); continue; }
+      const s = projectToScreen(n.pos, world.camera, window.innerWidth, window.innerHeight);
+      const k = n.age / DMG_NUM_LIFE;
+      n.el.style.opacity = s.visible ? String(1 - k * k) : '0';
+      n.el.style.transform = `translate(${(s.x + n.dx * k).toFixed(1)}px, ${(s.y - 70 * k).toFixed(1)}px) translate(-50%, -50%)`;
+    }
+  }
+
   function updateLockOn(world: World): void {
     const tgt = world.aimTarget;
     const tp = world.aimTargetPoint;
@@ -441,6 +470,7 @@ export function createHUD(root: HTMLElement, cb: HudCallbacks): Hud {
     const st = world.state;
     if (st !== 'playing' && st !== 'paused') return;
 
+    updateDmgNums(world, dt);
     const p = world.player;
     const fn = world.functions;
     const ab = world.absorb;

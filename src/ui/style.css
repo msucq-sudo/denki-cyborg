@@ -350,3 +350,14 @@ html, body { margin: 0; height: 100%; overflow: hidden; background: #0d1420; }
   .slot { width: 92px; padding: 7px 8px; }
   .absorb { bottom: 150px; }
 }
+
+/* ダメージ数字 */
+.dmg-layer { position: fixed; inset: 0; pointer-events: none; overflow: hidden; }
+.dmg-num {
+  position: absolute; left: 0; top: 0; will-change: transform, opacity;
+  font-size: 20px; font-weight: 800; color: #fff; letter-spacing: 0.02em;
+  text-shadow: 0 0 6px rgba(0, 0, 0, 0.9), 0 1px 2px rgba(0, 0, 0, 0.9);
+}
+.dmg-num.big { font-size: 26px; color: #9ff4ff; }
+.dmg-num.weak { font-size: 30px; color: #ffe27a; }
+.dmg-num.drain { font-size: 18px; color: #6dffb0; }
