@@ -1,8 +1,11 @@
 /**
- * キーボード/マウス入力。キーは KeyboardEvent.code（'KeyW', 'Space', 'ShiftLeft', 'Digit1' など）。
+ * キーボード/マウス/ゲームパッド入力。キーは KeyboardEvent.code（'KeyW', 'Space', 'ShiftLeft', 'Digit1' など）。
  * マウスボタン: 0=左, 2=右。
  * pressed/released は「このフレームで押された/離された」。endFrame() でリセット。
  */
+/** 右スティック全倒し時の視点移動量（マウスのピクセル換算/秒） */
+const PAD_LOOK_PX_PER_SEC = 1300;
+
 export class Input {
   private down = new Set<string>();
   private pressedSet = new Set<string>();
@@ -45,6 +48,54 @@ export class Input {
     document.addEventListener('pointerlockchange', () => {
       this.pointerLocked = document.pointerLockElement === this.target;
     });
+  }
+
+  /** パッドが押している仮想キー/ボタン（キーボード入力と混ざらないよう別管理） */
+  private padKeys = new Set<string>();
+  private padMouse = new Set<number>();
+
+  /**
+   * ゲームパッド（Xbox 配置）をキーボード/マウス入力に変換する。毎フレーム1回呼ぶ。
+   * 左スティック=WASD、右スティック=視点、RT=射撃、LT=吸収、A=ジャンプ/飛行、B=回避(C)、
+   * X=逆流(F)、Y=飛行(3)、LB/RB=スカウター/オートエイム(1/2)、Start=ポーズ(P)、A=決定(PadA)
+   */
+  pollGamepad(dt: number): void {
+    const pad = navigator.getGamepads?.().find((g) => g && g.connected && g.mapping === 'standard');
+    const keys = new Set<string>();
+    const mouse = new Set<number>();
+    if (pad) {
+      const b = (i: number) => !!pad.buttons[i]?.pressed;
+      const ax = (i: number) => pad.axes[i] ?? 0;
+      const T = 0.4;
+      if (ax(1) < -T) keys.add('KeyW');
+      if (ax(1) > T) keys.add('KeyS');
+      if (ax(0) < -T) keys.add('KeyA');
+      if (ax(0) > T) keys.add('KeyD');
+      if (b(0)) { keys.add('Space'); keys.add('PadA'); }
+      if (b(1)) keys.add('KeyC');
+      if (b(2)) keys.add('KeyF');
+      if (b(3)) keys.add('Digit3');
+      if (b(4)) keys.add('Digit1');
+      if (b(5)) keys.add('Digit2');
+      if (b(9)) keys.add('KeyP');
+      if (b(7) || (pad.buttons[7]?.value ?? 0) > 0.3) mouse.add(0);
+      if (b(6) || (pad.buttons[6]?.value ?? 0) > 0.3) mouse.add(2);
+      // 右スティック→視点（デッドゾーン後に2乗カーブ）
+      const look = (v: number) => {
+        const m = Math.abs(v);
+        if (m < 0.15) return 0;
+        const n = (m - 0.15) / 0.85;
+        return Math.sign(v) * n * n;
+      };
+      this.mouseDX += look(ax(2)) * PAD_LOOK_PX_PER_SEC * dt;
+      this.mouseDY += look(ax(3)) * PAD_LOOK_PX_PER_SEC * dt;
+    }
+    for (const k of this.padKeys) if (!keys.has(k)) this.simulateKey(k, false);
+    for (const k of keys) if (!this.padKeys.has(k)) this.simulateKey(k, true);
+    for (const m of this.padMouse) if (!mouse.has(m)) this.simulateMouse(m, false);
+    for (const m of mouse) if (!this.padMouse.has(m)) this.simulateMouse(m, true);
+    this.padKeys = keys;
+    this.padMouse = mouse;
   }
 
   requestLock(): void {

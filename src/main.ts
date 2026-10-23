@@ -112,6 +112,7 @@ function frame(): void {
 
 /** 1ステップ進める（テストからも呼べる） */
 function step(dt: number): void {
+  input.pollGamepad(dt);
   world.time += dt;
   if (world.state === 'playing') {
     if (input.pressed('KeyP')) { pause(); input.endFrame(); return; }
@@ -143,6 +144,9 @@ function step(dt: number): void {
   } else if (world.state === 'title') {
     // タイトル背景：カメラをゆっくり回す
     updatePlayer(world, 0);
+    if (input.pressed('PadA') || input.pressed('KeyP')) startGame();
+  } else if (world.state === 'gameover' || world.state === 'clear') {
+    if (input.pressed('PadA')) { world = newWorld(); startGame(); }
   }
   updateEffects(world, dt);
   hud.update(world, dt);

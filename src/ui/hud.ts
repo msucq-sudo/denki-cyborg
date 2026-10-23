@@ -278,6 +278,7 @@ export function createHUD(root: HTMLElement, cb: HudCallbacks): Hud {
     '左クリック 射撃（長押しで溜め撃ち）',
     '右クリック 吸収アーム（敵から電力を吸う）',
     '1〜3 機能 ・ C 回避 ・ H 操作表示',
+    'Xboxパッド: Lスティック移動 ・ Rスティック視点 ・ RT射撃 ・ LT吸収 ・ A ジャンプ ・ B 回避 ・ X 逆流 ・ Y 飛行 ・ LB/RB 機能 ・ Start ポーズ',
   ]) tTips.append(el('li', '', t));
   const tRow = el('div', 'btn-row');
   tPanel.append(tTitle, tSub, tTips, tRow);
