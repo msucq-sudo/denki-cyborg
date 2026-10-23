@@ -99,7 +99,7 @@ export function updateAbsorb(world: World, dt: number): void {
   computeRoot(world, ex.root);
 
   // ---- 入力 ----
-  if (input.mousePressed(2)) {
+  if (input.pressed('KeyE')) {
     if (a.phase === 'idle') {
       a.phase = 'extending';
       a.dir.copy(world.aimDir).normalize();

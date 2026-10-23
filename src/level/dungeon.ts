@@ -422,7 +422,7 @@ function enterRoom(world: World, rt: Runtime, j: number): void {
       schedule(rt, j, 10, '電力は自然には回復しない。無駄撃ちに注意');
       schedule(rt, j, 13.4, '床の光るパッドは充電ポイント。上に乗ると電力が回復する');
       break;
-    case 1: schedule(rt, j, 3.2, 'ドローンは下のコアが弱点。右クリックで電力を吸い取れる'); break;
+    case 1: schedule(rt, j, 3.2, 'ドローンは下のコアが弱点。Eキーで電力を吸い取れる'); break;
     case 2: schedule(rt, j, 3.2, 'クローラーは背中の電池が弱点。回避はC'); break;
     case 3: schedule(rt, j, 3.2, '高台は飛行（3キー）で。階段状の足場からも登れる'); break;
     case 4: schedule(rt, j, 3.2, 'ヘビーの弱点は背中。スカウター（1キー）で弱点が見える'); break;

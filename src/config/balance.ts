@@ -25,6 +25,8 @@ export const CAMERA = {
   mouseSensitivity: 0.0022,
   minPitch: -1.2,
   maxPitch: 1.1,
+  /** 照準（右クリック長押し / LT）：視点を寄せてズーム */
+  aim: { fov: 42, distanceMul: 0.55, shoulderMul: 0.6, sensMul: 0.5, moveMul: 0.7, blendRate: 14 },
 };
 
 export const GUN = {

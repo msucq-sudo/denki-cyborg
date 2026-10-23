@@ -34,7 +34,7 @@ try {
     g.input.simulateKey('Digit1', true); g.step(1/30, 1); g.input.simulateKey('Digit1', false); g.step(1/30, 10);
   });
   await shot('1_scouter');
-  await page.evaluate(() => { const g = window.__game; g.input.simulateMouse(2, true); g.step(1/30, 1); g.input.simulateMouse(2, false); g.step(1/30, 12); });
+  await page.evaluate(() => { const g = window.__game; g.input.simulateKey('KeyE', true); g.step(1/30, 1); g.input.simulateKey('KeyE', false); g.step(1/30, 12); });
   console.log('ABSORB', await page.evaluate(() => window.__game.current.absorb.phase));
   await shot('2_absorb');
   await page.evaluate(() => { const g = window.__game; g.current.player.energy = 90; g.input.simulateKey('KeyF', true); g.step(1/30, 8); });

@@ -24,6 +24,8 @@ interface PState {
   flash: number;
   fallSpeed: number;
   camS: number;
+  /** 照準ズームの進行度 0..1 */
+  aimK: number;
   afterT: number;
   spaceHold: number;
   groundJumped: boolean;
@@ -43,7 +45,7 @@ function st(world: World): PState {
   if (!s) {
     s = {
       vis: buildPlayerVisual(world.player.root), facing: world.player.yaw, walkPhase: 0,
-      prevOnGround: false, prevHp: world.player.hp, flash: 0, fallSpeed: 0, camS: 1, afterT: 0,
+      prevOnGround: false, prevHp: world.player.hp, flash: 0, fallSpeed: 0, camS: 1, aimK: 0, afterT: 0,
       spaceHold: 0, groundJumped: false, holding: false, suppressFire: false, fullEmitted: false, sparkT: 0, hitCeilingPrev: false, muzzleFlash: 0,
     };
     states.set(world, s);
@@ -92,7 +94,7 @@ export function updatePlayer(world: World, dt: number): void {
   s.flash = Math.max(0, s.flash - dt);
 
   // 視点
-  const look = applyLook(p.yaw, p.pitch, input.mouseDX, input.mouseDY);
+  const look = applyLook(p.yaw, p.pitch, input.mouseDX, input.mouseDY, CAMERA.mouseSensitivity * (1 - (1 - CAMERA.aim.sensMul) * s.aimK));
   p.yaw = look.yaw; p.pitch = look.pitch;
 
   // 入力
@@ -122,6 +124,7 @@ export function updatePlayer(world: World, dt: number): void {
   let speed = PLAYER.moveSpeed;
   if (p.charging) speed *= PLAYER.chargeMoveMul;
   if (p.absorbing) speed *= PLAYER.absorbMoveMul;
+  if (input.mouse(2)) speed *= CAMERA.aim.moveMul;
   // ダッシュ：Shift長押しで移動中のみ低消費。溜め/吸収中・回避中は不可
   const wantDash = (input.isDown('ShiftLeft') || input.isDown('ShiftRight')) && hasInput
     && !p.charging && !p.absorbing && !dodging && p.energy > 0;
@@ -184,7 +187,7 @@ export function updatePlayer(world: World, dt: number): void {
   s.prevOnGround = p.onGround;
 
   // 向き：移動中/射撃中/吸収中はカメラ yaw に合わせる
-  const firing = input.mouse(0) || p.charging || p.absorbing || input.mouse(2);
+  const firing = input.mouse(0) || p.charging || p.absorbing || input.mouse(2) || input.isDown('KeyE');
   if (firing) s.facing = p.yaw;
   else if (hasInput || dodging) s.facing = smoothAngle(s.facing, p.yaw, 16, dt);
   p.root.rotation.y = s.facing;
@@ -225,7 +228,7 @@ function animate(world: World, s: PState, dt: number, moving: boolean): void {
 
   // 腕：右＝銃（pitch に追従）、左＝吸収アーム根元
   v.gunPivot.rotation.x = p.pitch * 0.9;
-  const absorbPose = p.absorbing || world.input.mouse(2);
+  const absorbPose = p.absorbing || world.input.isDown('KeyE');
   const targetL = absorbPose ? -Math.PI / 2 + p.pitch * 0.9 : -0.35 + Math.sin(s.walkPhase) * 0.25 * sw;
   v.leftArm.rotation.x += (targetL - v.leftArm.rotation.x) * Math.min(1, dt * 18 + (dt === 0 ? 1 : 0));
 
@@ -284,10 +287,18 @@ function updateCamera(world: World, s: PState, dt: number): void {
   const fwd = cameraForward(p.yaw, p.pitch);
   const right = cameraRight(p.yaw);
   _head.set(p.pos.x, p.pos.y + CAMERA.heightOffset, p.pos.z);
+  // 照準：右クリック長押しで肩越しに寄ってズーム
+  const aimTarget = world.input.mouse(2) && world.state === 'playing' ? 1 : 0;
+  s.aimK += (aimTarget - s.aimK) * (dt === 0 ? 1 : 1 - Math.exp(-CAMERA.aim.blendRate * dt));
+  const A = CAMERA.aim;
+  const dist = CAMERA.distance * (1 - (1 - A.distanceMul) * s.aimK);
+  const shoulder = CAMERA.shoulderOffsetX * (1 - (1 - A.shoulderMul) * s.aimK);
+  const wantFov = CAMERA.fov + (A.fov - CAMERA.fov) * s.aimK;
+  if (Math.abs(cam.fov - wantFov) > 0.01) { cam.fov = wantFov; cam.updateProjectionMatrix(); }
   _off.set(
-    right.x * CAMERA.shoulderOffsetX - fwd.x * CAMERA.distance,
-    -fwd.y * CAMERA.distance,
-    right.z * CAMERA.shoulderOffsetX - fwd.z * CAMERA.distance,
+    right.x * shoulder - fwd.x * dist,
+    -fwd.y * dist,
+    right.z * shoulder - fwd.z * dist,
   );
   const len = _off.length();
   _end.copy(_head).add(_off);
@@ -351,8 +362,8 @@ export function updateGun(world: World, dt: number): void {
 
   p.fireCooldown = Math.max(0, p.fireCooldown - dt);
 
-  // 吸収中は撃てない。溜め中に右クリック/吸収開始でキャンセル
-  if (p.absorbing || input.mousePressed(2)) {
+  // 吸収中は撃てない。溜め中に吸収開始(E)でキャンセル
+  if (p.absorbing || input.pressed('KeyE')) {
     if (p.charging) cancelCharge(world, s);
     s.suppressFire = input.mouse(0);
     s.holding = false;

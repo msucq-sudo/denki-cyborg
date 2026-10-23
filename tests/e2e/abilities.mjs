@@ -91,9 +91,9 @@ try {
   await page.evaluate(() => window.__game.input.simulateKey('Digit1', false));
 
   // 右クリックで刺す
-  await page.evaluate(() => window.__game.input.simulateMouse(2, true));
+  await page.evaluate(() => window.__game.input.simulateKey('KeyE', true));
   await run(2);
-  await page.evaluate(() => window.__game.input.simulateMouse(2, false));
+  await page.evaluate(() => window.__game.input.simulateKey('KeyE', false));
   await run(4);
   await run(20);
   result.attached = await info();
@@ -110,9 +110,9 @@ try {
   await run(2);
 
   // 任意解除
-  await page.evaluate(() => window.__game.input.simulateMouse(2, true));
+  await page.evaluate(() => window.__game.input.simulateKey('KeyE', true));
   await run(1);
-  await page.evaluate(() => window.__game.input.simulateMouse(2, false));
+  await page.evaluate(() => window.__game.input.simulateKey('KeyE', false));
   await run(3);
   result.released = await info();
   await run(90);

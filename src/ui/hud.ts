@@ -78,9 +78,11 @@ const KEY_ROWS: KeyRow[] = [
   { id: 'move', keys: 'WASD', label: '移動' },
   { id: 'look', keys: 'マウス', label: '視点' },
   { id: 'lmb', keys: '左クリック', label: '射撃（長押しで溜め）' },
-  { id: 'rmb', keys: '右クリック', label: '吸収アーム' },
+  { id: 'rmb', keys: 'E', label: '吸収アーム（発射 / 解除）' },
+  { id: 'aim', keys: '右クリック', label: '照準（長押しでズーム）' },
   { id: 'f', keys: 'F', label: '吸収中 長押しで逆流' },
   { id: 'shift', keys: 'C', label: '回避' },
+  { id: 'dash', keys: 'Shift', label: 'ダッシュ（移動中のみ低消費）' },
   { id: 'space', keys: 'Space', label: 'ジャンプ（飛行ONで長押し）' },
   { id: 'k1', keys: '1', label: 'スカウター' },
   { id: 'k2', keys: '2', label: 'オートエイム' },
@@ -212,7 +214,7 @@ export function createHUD(root: HTMLElement, cb: HudCallbacks): Hud {
   const absHint = el('div', 'ab-hint');
   absBox.append(absHead, absBar, absOvRow, absHint);
 
-  const energyHint = el('div', 'energy-hint off', '右クリックで敵から吸収！');
+  const energyHint = el('div', 'energy-hint off', 'Eで敵から吸収！');
 
   const bleft = el('div', 'bleft');
   const gauge = el('div', 'panel-s gauge');
@@ -276,9 +278,9 @@ export function createHUD(root: HTMLElement, cb: HudCallbacks): Hud {
   for (const t of [
     '移動 WASD ・ 視点 マウス',
     '左クリック 射撃（長押しで溜め撃ち）',
-    '右クリック 吸収アーム（敵から電力を吸う）',
+    'E 吸収アーム（敵から電力を吸う） ・ 右クリック 照準',
     '1〜3 機能 ・ C 回避 ・ Shift ダッシュ ・ H 操作表示',
-    'Xboxパッド: Lスティック移動 ・ Rスティック視点 ・ RT射撃 ・ LT吸収 ・ A ジャンプ ・ B 回避 ・ Lスティック押込 ダッシュ ・ X 逆流 ・ Y 飛行 ・ LB/RB 機能 ・ Start ポーズ',
+    'Xboxパッド: Lスティック移動 ・ Rスティック視点 ・ RT射撃 ・ LT照準 ・ LB吸収 ・ A ジャンプ ・ B 回避 ・ Lスティック押込 ダッシュ ・ X 逆流 ・ Y 飛行 ・ 十字キー左/上 機能 ・ Start ポーズ',
   ]) tTips.append(el('li', '', t));
   const tRow = el('div', 'btn-row');
   tPanel.append(tTitle, tSub, tTips, tRow);

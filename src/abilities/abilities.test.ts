@@ -69,7 +69,7 @@ beforeEach(() => {
   initFunctions(world);
 });
 
-function fire() { input.mouseP.add(2); step(); }
+function fire() { input.pressedK.add('KeyE'); step(); }
 
 describe('absorb arm', () => {
   it('extends, misses, retracts, cools down, then idles', () => {
@@ -155,7 +155,7 @@ describe('absorb arm', () => {
     expect(e.tethered).toBe(false);
   });
 
-  it('right click again releases', () => {
+  it('E again releases', () => {
     const e = mkEnemy(world, new THREE.Vector3(0, 1.5, -6));
     api.drainEnemy.mockReturnValue(0);
     fire(); step(1 / 60, 20);

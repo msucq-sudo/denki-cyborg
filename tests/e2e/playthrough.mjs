@@ -92,7 +92,7 @@ try {
             setKey('KeyF', false);
             if (p.energy < 20 && best < 13 && a.phase === 'idle') {
               inp.mouse(0) && inp.simulateMouse(0, false);
-              inp.simulateMouse(2, true); inp.simulateMouse(2, false); // 吸収アーム発射
+              inp.simulateKey('KeyE', true); inp.simulateKey('KeyE', false); // 吸収アーム発射
             } else if (p.energy >= 12 && a.phase === 'idle') {
               // 溜め撃ち：1.25秒押して離す
               if (!inp.mouse(0)) { inp.simulateMouse(0, true); b.holdT = 0; }
