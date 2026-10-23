@@ -30,10 +30,10 @@ export const CAMERA = {
 };
 
 export const GUN = {
-  /** タップ単発 */
-  tapCost: 3,
-  tapDamage: 6,
-  tapInterval: 0.16,
+  /** タップ単発（ピストル：1発が重くて遅い） */
+  tapCost: 8,
+  tapDamage: 20,
+  tapInterval: 0.5,
   /** これ以上押し続けたら溜め開始（秒） */
   chargeThreshold: 0.18,
   /** 最大まで溜めるのにかかる時間 */

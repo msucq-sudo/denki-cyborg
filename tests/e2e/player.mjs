@@ -91,9 +91,9 @@ try {
   s = await st(); const e1 = s.en;
   await mouse(0, true); await S(1 / 60, 1); await mouse(0, false); await S(1 / 60, 2);
   s = await st();
-  check('単発 電力-3 / 弾1 / shots=1', Math.abs((e1 - s.en) - 3) < 0.01 && s.proj >= 1 && s.shots === 1, { e1, en: s.en, proj: s.proj, shots: s.shots });
+  check('単発 電力-8 / 弾1 / shots=1', Math.abs((e1 - s.en) - 8) < 0.01 && s.proj >= 1 && s.shots === 1, { e1, en: s.en, proj: s.proj, shots: s.shots });
   const dmg = await page.evaluate(() => window.__game.world.projectiles[0] && { d: window.__game.world.projectiles[0].damage, v: window.__game.world.projectiles[0].vel.length(), ch: window.__game.world.projectiles[0].charged });
-  check('単発弾 damage 6 speed 70', dmg && dmg.d === 6 && Math.abs(dmg.v - 70) < 0.1, dmg);
+  check('単発弾 damage 20 speed 70', dmg && dmg.d === 20 && Math.abs(dmg.v - 70) < 0.1, dmg);
   await S(1 / 60, 120);
 
   // 溜め撃ち
