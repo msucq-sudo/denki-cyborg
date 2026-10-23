@@ -56,6 +56,12 @@ export const DODGE = {
   cooldown: 0.5,
 };
 
+/** ダッシュ（Shift長押し）。移動している間だけ電力を消費。回避よりずっと低コスト */
+export const DASH = {
+  speedMul: 1.55,
+  drainPerSec: 1.2,
+};
+
 export const ABSORB = {
   /** 吸収アーム自体は電力消費なし */
   cost: 0,

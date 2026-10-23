@@ -1,5 +1,5 @@
 import * as THREE from 'three';
-import { CAMERA, DODGE, FUNCTIONS, GUN, PLAYER } from '../config/balance';
+import { CAMERA, DASH, DODGE, FUNCTIONS, GUN, PLAYER } from '../config/balance';
 import type { World } from '../core/types';
 import { moveCharacter, raycastLevel } from '../core/collision';
 import { raycastEnemies } from '../core/enemyUtil';
@@ -122,6 +122,13 @@ export function updatePlayer(world: World, dt: number): void {
   let speed = PLAYER.moveSpeed;
   if (p.charging) speed *= PLAYER.chargeMoveMul;
   if (p.absorbing) speed *= PLAYER.absorbMoveMul;
+  // ダッシュ：Shift長押しで移動中のみ低消費。溜め/吸収中・回避中は不可
+  const wantDash = (input.isDown('ShiftLeft') || input.isDown('ShiftRight')) && hasInput
+    && !p.charging && !p.absorbing && !dodging && p.energy > 0;
+  if (wantDash) {
+    drainEnergy(world, DASH.drainPerSec * dt);
+    speed *= DASH.speedMul;
+  }
   if (dodging) {
     p.vel.x = p.dodgeDir.x * DODGE.speed;
     p.vel.z = p.dodgeDir.z * DODGE.speed;
