@@ -30,6 +30,7 @@ export function createArmVisual(): ArmVisual {
   const nodes = new THREE.InstancedMesh(new THREE.SphereGeometry(0.1, 8, 6), nodeMat, MAX_NODES);
   nodes.frustumCulled = false;
   nodes.count = 0;
+  nodes.visible = false; // 節のチューブは本体のバネ腕に置き換え（電流・光の粒・稲妻だけ残す）
   group.add(nodes);
 
   // 稲妻ライン
@@ -50,6 +51,7 @@ export function createArmVisual(): ArmVisual {
     new THREE.SphereGeometry(0.17, 12, 10),
     new THREE.MeshStandardMaterial({ color: 0xffffff, emissive: CYAN, emissiveIntensity: 1.2, roughness: 0.35 }),
   );
+  head.visible = false;
   plug.add(head);
   const clawGeo = new THREE.ConeGeometry(0.06, 0.32, 6);
   clawGeo.rotateX(Math.PI / 2); // 先が +Z を向く
@@ -61,6 +63,7 @@ export function createArmVisual(): ArmVisual {
     pivot.rotation.z = (i / 3) * Math.PI * 2;
     const c = new THREE.Mesh(clawGeo, clawMat);
     c.position.x = 0.1;
+    c.visible = false;
     pivot.add(c);
     plug.add(pivot);
     claws.push(c);

@@ -1,0 +1,235 @@
+<!doctype html>
+<html lang="ja"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Recharge ゲーム企画書</title>
+<link href="https://fonts.googleapis.com/css2?family=Noto+Sans+JP:wght@400;700;900&display=swap" rel="stylesheet">
+<style>
+:root{--bg:#0a1330;--bg2:#12214d;--cy:#2ee6ff;--ye:#ffd83a;--tx:#e8f3ff;--mu:#8fa6cf}
+*{box-sizing:border-box;margin:0}
+html,body{height:100%;background:#050a1c;overflow:hidden;font-family:'Noto Sans JP',sans-serif;color:var(--tx)}
+#stage{position:absolute;left:50%;top:50%;width:1280px;height:720px;transform-origin:center;}
+.slide{position:absolute;inset:0;padding:44px 64px;background:radial-gradient(900px 500px at 85% 0%,#1a3a7a55,transparent),linear-gradient(160deg,var(--bg2),var(--bg));display:none;overflow:hidden}
+.slide.on{display:block}
+.slide::before{content:"";position:absolute;left:0;top:0;width:10px;height:100%;background:linear-gradient(var(--cy),var(--ye));z-index:5}
+h1{font-size:46px;font-weight:900}
+h2{font-size:36px;font-weight:900;margin-bottom:6px}
+h2 span{color:var(--cy);margin-right:12px;font-size:18px;letter-spacing:.1em}
+.bar{width:90px;height:4px;background:var(--ye);margin:8px 0 18px}
+p,li{font-size:22px;line-height:1.7}
+ul{padding-left:1.2em}
+.mu{color:var(--mu)}.cy{color:var(--cy)}.ye{color:var(--ye)}
+.row{display:flex;gap:28px;align-items:flex-start}
+.card{background:#ffffff0d;border:1px solid #2ee6ff55;border-radius:14px;padding:16px 18px}
+img.shot{width:100%;border-radius:10px;border:2px solid var(--cy);display:block}
+.cap{font-size:14px;color:var(--mu);margin-top:4px;line-height:1.4}
+.ph{position:relative;border:2px dashed var(--cy);border-radius:12px;background:#ffffff08;overflow:hidden}
+.ph img{width:100%;height:100%;object-fit:cover;display:block}
+.ph .lab{position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;color:var(--mu);font-size:16px;text-align:center;gap:4px;line-height:1.4}
+.ph .lab b{color:var(--cy);font-size:18px}
+.ph.ok{border-style:solid}.ph.ok .lab{display:none}
+.pn{position:absolute;left:1160px;top:686px;font-size:16px;color:var(--mu);z-index:9}
+.tag{display:inline-block;background:var(--ye);color:#0a1330;font-weight:900;border-radius:6px;padding:0 10px;font-size:18px;line-height:1.5}
+table{border-collapse:collapse;font-size:20px;width:100%}
+td{padding:9px 14px;border-bottom:1px solid #2ee6ff33}td:first-child{color:var(--cy);font-weight:700;width:190px}
+.btab td{font-size:16px;padding:6px 10px}.btab td:first-child{width:auto;color:var(--ye)}
+.shotbox{position:relative}
+.callout{position:absolute;background:var(--ye);color:#0a1330;font-weight:900;font-size:17px;padding:3px 12px;border-radius:8px}
+</style></head><body>
+<div id="stage">
+
+<!-- 1 表紙 -->
+<section class="slide" style="padding:0">
+ <div class="ph" style="position:absolute;inset:0;border-radius:0;border-width:0">
+  <img src="img/keyvisual.png" alt="" onerror="this.remove()"><div class="lab" style="left:auto;width:520px;right:40px"><b>keyvisual.png</b>Codexで生成予定（16:9）</div>
+ </div>
+ <svg style="position:absolute;inset:0" width="1280" height="720" viewBox="0 0 1280 720"><defs><linearGradient id="fade" x1="0" x2="1"><stop offset="0" stop-color="#0a1330" stop-opacity=".92"/><stop offset=".7" stop-color="#0a1330" stop-opacity=".4"/><stop offset="1" stop-color="#0a1330" stop-opacity="0"/></linearGradient></defs><rect width="1280" height="720" fill="url(#fade)"/><path d="M96 540 L400 540 L370 580 L600 580" stroke="#2ee6ff" stroke-width="3" fill="none"/></svg>
+ <div style="position:absolute;left:96px;top:170px">
+  <div class="mu" style="font-size:22px;letter-spacing:.3em">ゲーム企画書 / ALPHA → BETA</div>
+  <h1 style="font-size:150px;line-height:1.1;color:#fff;text-shadow:0 0 30px #2ee6ff">Recharge</h1>
+  <p class="ye" style="font-size:36px;font-weight:900">奪え、充電しろ、撃ち抜け。</p>
+ </div>
+</section>
+
+<!-- 基本情報 -->
+<section class="slide">
+ <h2><span>BASIC INFO</span>基本情報</h2><div class="bar"></div>
+ <div class="row"><div style="flex:1.3"><table>
+  <tr><td>タイトル</td><td>Recharge（仮）</td></tr>
+  <tr><td>ジャンル</td><td>3D 三人称アクションシューター</td></tr>
+  <tr><td>プラットフォーム</td><td>Web ブラウザ</td></tr>
+  <tr><td>プレイ人数</td><td>1人（コントローラー推奨）</td></tr>
+  <tr><td>ターゲット</td><td>日本の15〜30歳男性<br><span class="mu" style="font-size:17px">難しいアクションが苦手な人向け</span></td></tr>
+  <tr><td>テーマ</td><td class="ye">電気の大切さ</td></tr></table></div>
+  <div style="flex:.7"><svg viewBox="0 0 360 400" width="100%"><rect width="360" height="400" rx="16" fill="#0a1330" stroke="#2ee6ff55"/>
+  <g stroke="#2ee6ff" stroke-width="3" fill="none"><rect x="60" y="90" width="240" height="150" rx="14"/><path d="M110 260 h140 M180 240 v20"/></g>
+  <path d="M190 110 l-40 70 h36 l-16 50 60-80 h-38 l18-40z" fill="#ffd83a"/>
+  <text x="180" y="320" fill="#e8f3ff" font-size="22" text-anchor="middle" font-weight="700">ブラウザですぐ遊べる</text><text x="180" y="350" fill="#8fa6cf" font-size="16" text-anchor="middle">インストール不要</text></svg></div></div>
+</section>
+
+<!-- 3 コンセプト -->
+<section class="slide">
+ <h2><span>CONCEPT</span>コンセプト</h2><div class="bar"></div>
+ <p style="font-size:28px;font-weight:700;margin-bottom:6px">敵から電気を<span class="cy">「吸収」</span>し、その電気で<span class="ye">「攻撃」</span>して倒す。</p>
+ <p class="mu">主人公は、電気で動くサイボーグ。電気がなければ何もできない。</p>
+ <svg viewBox="0 0 1100 330" width="1100" style="margin-top:14px" font-family="Noto Sans JP">
+  <rect x="20" y="90" width="230" height="150" rx="16" fill="#0a1330" stroke="#ff6b8a" stroke-width="3"/><text x="135" y="150" fill="#ff6b8a" font-size="30" font-weight="900" text-anchor="middle">敵ロボット</text><text x="135" y="190" fill="#8fa6cf" font-size="18" text-anchor="middle">電気を持っている</text>
+  <rect x="440" y="60" width="230" height="210" rx="16" fill="#0a1330" stroke="#2ee6ff" stroke-width="3"/><text x="555" y="115" fill="#2ee6ff" font-size="30" font-weight="900" text-anchor="middle">サイボーグ</text><rect x="470" y="140" width="170" height="30" rx="6" fill="none" stroke="#2ee6ff" stroke-width="2"/><rect x="474" y="144" width="110" height="22" fill="#ffd83a"/><text x="555" y="215" fill="#8fa6cf" font-size="18" text-anchor="middle">電力ゲージ</text>
+  <path d="M440 150 H265" stroke="#ffd83a" stroke-width="6" stroke-dasharray="14 8"/><path d="M250 150 l25 -15 v30z" fill="#ffd83a"/>
+  <text x="345" y="125" fill="#ffd83a" font-size="26" font-weight="900" text-anchor="middle">吸収</text>
+  <path d="M670 150 H850" stroke="#2ee6ff" stroke-width="6"/><path d="M850 133 l30 17 -30 17z" fill="#2ee6ff"/><text x="760" y="125" fill="#2ee6ff" font-size="26" font-weight="900" text-anchor="middle">攻撃</text>
+  <rect x="880" y="90" width="200" height="150" rx="16" fill="#0a1330" stroke="#ff6b8a" stroke-width="3" stroke-dasharray="8 6"/><text x="980" y="175" fill="#ff6b8a" font-size="28" font-weight="900" text-anchor="middle">撃破</text>
+  <path d="M555 270 C555 320 135 320 135 245" stroke="#8fa6cf" stroke-width="3" fill="none" stroke-dasharray="6 6"/><text x="345" y="312" fill="#8fa6cf" font-size="18" text-anchor="middle">また吸収へ</text></svg>
+</section>
+
+<!-- 7 フロー -->
+<section class="slide">
+ <h2><span>GAME OVERVIEW</span>ゲーム概要（ゲームフロー）</h2><div class="bar"></div>
+ <svg viewBox="0 0 1150 440" width="1150" font-family="Noto Sans JP"><g font-weight="900" text-anchor="middle">
+  <rect x="40" y="40" width="240" height="110" rx="16" fill="#12214d" stroke="#2ee6ff" stroke-width="3"/><text x="160" y="88" fill="#2ee6ff" font-size="30">探索</text><text x="160" y="122" fill="#8fa6cf" font-size="16" font-weight="400">進んで充電ポイントを探す</text>
+  <rect x="450" y="40" width="240" height="110" rx="16" fill="#12214d" stroke="#ffd83a" stroke-width="3"/><text x="570" y="88" fill="#ffd83a" font-size="30">戦闘</text><text x="570" y="122" fill="#8fa6cf" font-size="16" font-weight="400">吸収 ⇄ 攻撃</text>
+  <rect x="860" y="40" width="240" height="110" rx="16" fill="#12214d" stroke="#2ee6ff" stroke-width="3"/><text x="980" y="88" fill="#2ee6ff" font-size="30">強化</text><text x="980" y="122" fill="#8fa6cf" font-size="16" font-weight="400">武器・吸収・体を強くする</text>
+  <rect x="860" y="290" width="240" height="110" rx="16" fill="#12214d" stroke="#2ee6ff" stroke-width="3"/><text x="980" y="338" fill="#2ee6ff" font-size="30">次のエリア</text><text x="980" y="372" fill="#8fa6cf" font-size="16" font-weight="400">扉が開く</text>
+  <rect x="450" y="290" width="240" height="110" rx="16" fill="#ff6b8a33" stroke="#ff6b8a" stroke-width="3"/><text x="570" y="338" fill="#ff6b8a" font-size="30">ボス</text><text x="570" y="372" fill="#e8f3ff" font-size="16" font-weight="400">エリアの最後に待つ</text></g>
+  <g stroke="#e8f3ff" stroke-width="4" fill="none"><path d="M280 95h150"/><path d="M690 95h150"/><path d="M980 150v100"/><path d="M860 345h-150" stroke="#ff6b8a"/></g>
+  <g fill="#e8f3ff"><path d="M430 80l22 15-22 15z"/><path d="M840 80l22 15-22 15z"/><path d="M965 250l15 22 15-22z"/><path d="M712 330l-22 15 22 15z" fill="#ff6b8a"/></g>
+  <path d="M450 345 C300 345 160 300 160 160" stroke="#8fa6cf" stroke-width="3" fill="none" stroke-dasharray="8 6"/><text x="250" y="400" fill="#8fa6cf" font-size="17" text-anchor="middle">ボス撃破で探索へ戻る（繰り返し）</text></svg>
+</section>
+
+<!-- 12 UI -->
+<section class="slide">
+ <h2><span>SCREEN IMAGE</span>画面イメージ（ベータ案）</h2><div class="bar" style="margin-bottom:6px"></div>
+ <div class="row" style="gap:20px"><div style="flex:1">
+ <svg viewBox="0 0 960 540" width="100%" style="border-radius:12px;border:2px solid var(--cy);display:block" font-family="Noto Sans JP">
+  <defs><linearGradient id="sk" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#1b2f6b"/><stop offset="1" stop-color="#0b1432"/></linearGradient></defs>
+  <rect width="960" height="540" fill="url(#sk)"/><path d="M0 400 L960 400 L960 540 L0 540z" fill="#0e1a3d"/>
+  <g fill="#16285c"><rect x="60" y="200" width="70" height="200"/><rect x="150" y="250" width="60" height="150"/><rect x="740" y="180" width="80" height="220"/><rect x="840" y="240" width="70" height="160"/></g>
+  <g><rect x="395" y="235" width="80" height="150" rx="30" fill="#8fa6cf"/><circle cx="435" cy="215" r="26" fill="#b9c8e6"/><rect x="405" y="250" width="14" height="50" fill="#2ee6ff"/><text x="435" y="410" fill="#8fa6cf" font-size="14" text-anchor="middle">三人称のキャラ</text></g>
+  <g stroke="#ffd83a" stroke-width="3" fill="none"><circle cx="560" cy="270" r="18"/><path d="M560 235v18M560 287v18M525 270h18M577 270h18"/></g><text x="560" y="330" fill="#ffd83a" font-size="15" text-anchor="middle">中央クロスヘア</text>
+  <rect x="24" y="24" width="300" height="130" rx="12" fill="#0a1330cc" stroke="#2ee6ff"/><text x="40" y="52" fill="#2ee6ff" font-size="16" font-weight="700">左上：特殊機能</text>
+  <rect x="40" y="66" width="76" height="76" rx="10" fill="#12214d" stroke="#2ee6ff"/><circle cx="78" cy="94" r="13" fill="none" stroke="#2ee6ff" stroke-width="3"/><circle cx="78" cy="94" r="3" fill="#ffd83a"/><text x="78" y="130" fill="#e8f3ff" font-size="12" text-anchor="middle">スカウター</text>
+  <rect x="128" y="66" width="76" height="76" rx="10" fill="#12214d" stroke="#2ee6ff"/><rect x="156" y="78" width="20" height="26" rx="6" fill="#2ee6ff"/><path d="M160 106l-4 10h8zM172 106l-4 10h8z" fill="#ffd83a"/><text x="166" y="134" fill="#e8f3ff" font-size="12" text-anchor="middle">ジェット</text>
+  <rect x="216" y="66" width="76" height="76" rx="10" fill="#12214d" stroke="#2ee6ff55"/><circle cx="254" cy="94" r="14" fill="none" stroke="#ffd83a" stroke-width="3" stroke-dasharray="5 3"/><text x="254" y="130" fill="#8fa6cf" font-size="12" text-anchor="middle">エイム</text>
+  <rect x="24" y="400" width="320" height="116" rx="12" fill="#0a1330cc" stroke="#2ee6ff"/><text x="40" y="428" fill="#2ee6ff" font-size="16" font-weight="700">左下：体力と電気</text>
+  <text x="40" y="460" fill="#ff6b8a" font-size="14">HP</text><rect x="76" y="446" width="240" height="16" rx="8" fill="#12214d"/><rect x="76" y="446" width="200" height="16" rx="8" fill="#ff6b8a"/>
+  <text x="40" y="496" fill="#ffd83a" font-size="14">電力</text><rect x="76" y="480" width="240" height="18" rx="8" fill="#12214d"/><rect x="76" y="480" width="150" height="18" rx="8" fill="#ffd83a"/>
+  <rect x="620" y="400" width="316" height="116" rx="12" fill="#0a1330cc" stroke="#2ee6ff"/><text x="636" y="428" fill="#2ee6ff" font-size="16" font-weight="700">右下：武器選択</text>
+  <rect x="636" y="440" width="88" height="62" rx="10" fill="#2ee6ff33" stroke="#2ee6ff" stroke-width="2"/><text x="680" y="476" fill="#e8f3ff" font-size="14" text-anchor="middle">電気銃</text>
+  <rect x="734" y="440" width="88" height="62" rx="10" fill="#12214d" stroke="#2ee6ff55"/><text x="778" y="476" fill="#8fa6cf" font-size="14" text-anchor="middle">武器2</text>
+  <rect x="832" y="440" width="88" height="62" rx="10" fill="#12214d" stroke="#2ee6ff55"/><text x="876" y="476" fill="#8fa6cf" font-size="14" text-anchor="middle">武器3</text>
+ </svg></div>
+ <div style="width:230px"><img class="shot" src="img/hud.png" alt="" style="border-width:1px"><p class="cap">現アルファ版（参考）</p></div></div>
+</section>
+
+<!-- 8 遊び方1 -->
+<section class="slide">
+ <h2><span>HOW TO PLAY 1</span>吸収アームで敵から電気を吸う</h2><div class="bar" style="margin-bottom:8px"></div>
+ <div class="shotbox" style="width:760px;margin:0 auto"><img class="shot" src="img/absorb.png" alt="">
+  <div class="callout" style="left:300px;top:250px">① 吸収アームを発射</div>
+  <div class="callout" style="left:30px;top:380px;background:var(--cy)">② 吸った分が電力に</div></div>
+ <p class="cap" style="text-align:center">画面はアルファ版</p>
+ <p style="text-align:center;font-size:20px;margin-top:2px">吸収中は銃が撃てない。吸いきると敵は停止、<span class="cy">逆流</span>で爆発させることも。</p>
+</section>
+
+<!-- 9 遊び方2 -->
+<section class="slide">
+ <h2><span>HOW TO PLAY 2</span>溜めた電気で撃つ・溜め撃ち</h2><div class="bar" style="margin-bottom:10px"></div>
+ <div class="row" style="gap:20px"><div style="flex:1"><img class="shot" src="img/charge.png" alt=""><p style="font-size:22px;margin-top:6px"><span class="tag">長押し</span> 電気を溜める</p></div>
+ <div style="width:50px;align-self:center"><svg viewBox="0 0 50 50"><path d="M5 10l30 15-30 15z" fill="#ffd83a"/></svg></div>
+ <div style="flex:1"><img class="shot" src="img/chargeshot.png" alt=""><p style="font-size:22px;margin-top:6px"><span class="tag">離す</span> 強力な一撃を発射</p></div></div>
+ <p style="margin-top:8px;font-size:20px">タップは電力少なめの単発。溜めるほど<b class="ye">効率の良い大ダメージ</b>。溜め中は動きが遅くなる。</p><p class="cap">画面はアルファ版</p>
+</section>
+
+<!-- 10 遊び方3 -->
+<section class="slide">
+ <h2><span>HOW TO PLAY 3</span>特殊機能と回避</h2><div class="bar" style="margin-bottom:10px"></div>
+ <div class="row" style="gap:20px"><div style="flex:1"><img class="shot" src="img/scouter.png" alt=""><p style="font-size:20px;margin-top:6px"><span class="tag">スカウター</span> 敵のHP・弱点が見える</p></div>
+ <div style="flex:1"><img class="shot" src="img/flight.png" alt=""><p style="font-size:20px;margin-top:6px"><span class="tag">飛行</span> 空中から戦える</p></div></div>
+ <p style="margin-top:6px;font-size:20px">オートエイムで照準を補助。<b class="cy">回避</b>は一瞬無敵、<b class="cy">ダッシュ</b>で素早く移動。どれも電気を消費する。</p><p class="cap">画面はアルファ版</p>
+</section>
+
+<!-- 11 ボス -->
+<section class="slide">
+ <h2><span>HOW TO PLAY 4</span>ボス戦</h2><div class="bar" style="margin-bottom:10px"></div>
+ <div class="row"><div style="flex:1.5"><img class="shot" src="img/boss.png" alt=""><p class="cap">画面はアルファ版</p></div>
+ <div style="flex:1"><p>最後の部屋には守護機<b class="ye">「ジェネレーター」</b>。</p><ul><li>弾幕と雑魚召喚</li><li>コアが周期的に露出</li><li>回避と溜め撃ちを駆使</li><li>逆流で大ダメージ</li></ul></div></div>
+</section>
+
+<!-- 6 世界観 -->
+<section class="slide">
+ <h2><span>WORLD</span>世界観</h2><div class="bar"></div>
+ <div class="row">
+  <div style="flex:1.1"><p>AIとロボットが普及した未来都市。<br>ある日突然、<b class="ye">電気が使えなくなる</b>。</p>
+  <p>原因を追うと、ある研究者が世界征服のため<b class="cy">電気を独占</b>していた。</p>
+  <p>サイボーグの主人公が、立ち上がる。</p>
+  <p class="tag" style="margin-top:10px">ストーリーは仮。今後変更予定</p></div>
+  <div style="flex:1;display:grid;grid-template-columns:1fr 1fr;gap:12px">
+   <div class="ph" style="grid-column:1/3;height:190px"><img src="img/city.png" alt="" onerror="this.remove()"><div class="lab"><b>city.png</b>Codexで生成予定（停電した未来都市）</div></div>
+   <div class="ph" style="height:260px"><img src="img/hero.png" alt="" onerror="this.remove()"><div class="lab"><b>hero.png</b>Codexで生成予定<br>主人公サイボーグ</div></div>
+   <div class="ph" style="height:260px"><img src="img/villain.png" alt="" onerror="this.remove()"><div class="lab"><b>villain.png</b>Codexで生成予定<br>黒幕の研究者</div></div>
+  </div></div>
+</section>
+
+<!-- 13 操作 -->
+<section class="slide">
+ <h2><span>CONTROLS</span>操作方法（Xboxコントローラー）</h2><div class="bar" style="margin-bottom:6px"></div>
+ <div class="row" style="gap:16px">
+ <div style="flex:1.05"><svg viewBox="0 0 560 400" width="100%" font-family="Noto Sans JP" font-size="14">
+  <path d="M100 120 Q140 100 280 100 Q420 100 460 120 Q540 200 520 330 Q500 380 460 340 L410 270 H150 L100 340 Q60 380 40 330 Q20 200 100 120z" fill="#12214d" stroke="#2ee6ff" stroke-width="3"/>
+  <rect x="110" y="66" width="90" height="26" rx="8" fill="#ffd83a"/><text x="155" y="84" text-anchor="middle" fill="#0a1330" font-weight="700">LB 吸収</text><rect x="360" y="66" width="90" height="26" rx="8" fill="#ffd83a"/><text x="405" y="84" text-anchor="middle" fill="#0a1330" font-weight="700">RB 回避</text>
+  <rect x="100" y="30" width="110" height="26" rx="8" fill="#2ee6ff"/><text x="155" y="48" text-anchor="middle" fill="#0a1330" font-weight="700">LT 照準</text><rect x="350" y="30" width="130" height="26" rx="8" fill="#2ee6ff"/><text x="415" y="48" text-anchor="middle" fill="#0a1330" font-weight="700">RT 射撃/溜め</text>
+  <circle cx="150" cy="160" r="30" fill="#0a1330" stroke="#2ee6ff" stroke-width="3"/><text x="150" y="212" text-anchor="middle" fill="#e8f3ff">Lスティック 移動</text><text x="150" y="230" text-anchor="middle" fill="#8fa6cf">押込: ダッシュ</text>
+  <circle cx="370" cy="240" r="30" fill="#0a1330" stroke="#2ee6ff" stroke-width="3"/><text x="370" y="294" text-anchor="middle" fill="#e8f3ff">Rスティック 視点</text>
+  <g stroke="#2ee6ff" stroke-width="3" fill="#0a1330"><rect x="225" y="185" width="20" height="20"/><rect x="225" y="165" width="20" height="20"/><rect x="205" y="185" width="20" height="20"/><rect x="245" y="185" width="20" height="20"/></g><text x="250" y="262" text-anchor="middle" fill="#8fa6cf" font-size="12">十字 左:スカウター 上:エイム</text>
+  <g font-weight="900" text-anchor="middle"><circle cx="440" cy="150" r="16" fill="#ffd83a"/><text x="440" y="155" fill="#0a1330">Y</text><circle cx="410" cy="180" r="16" fill="#2ee6ff"/><text x="410" y="185" fill="#0a1330">X</text><circle cx="470" cy="180" r="16" fill="#ff6b8a"/><text x="470" y="185" fill="#0a1330">B</text><circle cx="440" cy="210" r="16" fill="#7dff9a"/><text x="440" y="215" fill="#0a1330">A</text></g>
+  <text x="462" y="140" fill="#e8f3ff">飛行</text><text x="388" y="185" fill="#e8f3ff" text-anchor="end">逆流</text><text x="490" y="185" fill="#e8f3ff">回避</text><text x="440" y="240" fill="#e8f3ff" text-anchor="middle">ジャンプ</text></svg></div>
+ <div style="flex:.95"><table class="btab">
+  <tr><td>Lスティック / Rスティック</td><td>移動 / 視点</td></tr><tr><td>RT</td><td>射撃（長押しで溜め）</td></tr><tr><td>LT</td><td>照準</td></tr><tr><td>LB / X</td><td>吸収アーム / 逆流</td></tr><tr><td>B・RB / L押込</td><td>回避 / ダッシュ</td></tr><tr><td>A</td><td>ジャンプ（飛行ONで長押し飛行）</td></tr><tr><td>十字左 / 十字上 / Y</td><td>スカウター / オートエイム / 飛行</td></tr><tr><td>Start</td><td>一時停止</td></tr></table>
+ <p class="mu" style="font-size:14px;line-height:1.5;margin-top:8px">キーボード: WASD移動・マウス視点・左クリック射撃・E吸収・右クリック照準・F逆流・C回避・Shiftダッシュ・Space ジャンプ・1/2/3 機能</p></div></div>
+</section>
+
+<!-- 4 SP1 -->
+<section class="slide">
+ <h2><span>SELLING POINT 1</span>吸収と攻撃の駆け引き</h2><div class="bar"></div>
+ <div class="row"><div style="flex:1"><p>電気は<b class="ye">弾薬でもあり、体力のような資源</b>でもある。</p>
+ <ul><li>撃つ・避ける・飛ぶ・見る、すべてに電気を使う</li><li>電気は自然に回復しない</li><li>敵から吸うか、撃つか。常に判断する</li></ul>
+ <p class="mu" style="font-size:18px">= 遊ぶだけで「電気の大切さ」が体感できる</p></div>
+ <div style="flex:1"><svg viewBox="0 0 500 380" width="100%" font-family="Noto Sans JP"><rect width="500" height="380" rx="16" fill="#0a1330" stroke="#2ee6ff55"/>
+  <circle cx="250" cy="190" r="62" fill="#ffd83a22" stroke="#ffd83a" stroke-width="3"/><text x="250" y="186" fill="#ffd83a" font-size="26" font-weight="900" text-anchor="middle">電気</text><text x="250" y="212" fill="#e8f3ff" font-size="15" text-anchor="middle">共通リソース</text>
+  <g font-size="19" font-weight="700" text-anchor="middle"><rect x="30" y="30" width="150" height="46" rx="10" fill="#12214d" stroke="#2ee6ff"/><text x="105" y="60" fill="#2ee6ff">撃つ</text><rect x="320" y="30" width="150" height="46" rx="10" fill="#12214d" stroke="#2ee6ff"/><text x="395" y="60" fill="#2ee6ff">避ける</text><rect x="30" y="304" width="150" height="46" rx="10" fill="#12214d" stroke="#2ee6ff"/><text x="105" y="334" fill="#2ee6ff">飛ぶ</text><rect x="320" y="304" width="150" height="46" rx="10" fill="#12214d" stroke="#2ee6ff"/><text x="395" y="334" fill="#2ee6ff">見る・狙う</text></g>
+  <g stroke="#2ee6ff" stroke-width="2"><path d="M180 70 L215 140"/><path d="M320 70 L285 140"/><path d="M180 310 L215 240"/><path d="M320 310 L285 240"/></g>
+  <text x="105" y="100" fill="#ffd83a" font-size="14" text-anchor="middle">消費</text><text x="395" y="100" fill="#ffd83a" font-size="14" text-anchor="middle">消費</text>
+  <text x="250" y="290" fill="#ffd83a" font-size="15" text-anchor="middle">敵から吸収して補充</text></svg></div></div>
+</section>
+
+<!-- 5 SP2 -->
+<section class="slide">
+ <h2><span>SELLING POINT 2</span>未来テクノロジー</h2><div class="bar"></div>
+ <p>難しい操作は<b class="cy">技術がアシスト</b>。アクションが苦手でも気持ちよく遊べる。</p>
+ <div style="display:grid;grid-template-columns:repeat(5,1fr);gap:14px;margin-top:18px">
+  <div class="card"><svg viewBox="0 0 80 80" width="70"><circle cx="40" cy="40" r="18" fill="none" stroke="#2ee6ff" stroke-width="4"/><circle cx="40" cy="40" r="4" fill="#ffd83a"/><path d="M40 8v14M40 58v14M8 40h14M58 40h14" stroke="#2ee6ff" stroke-width="4"/></svg><p style="font-size:22px;font-weight:700">スカウター</p><p style="font-size:16px;line-height:1.5" class="mu">壁越しに敵を表示。弱点も強調</p></div>
+  <div class="card"><svg viewBox="0 0 80 80" width="70"><circle cx="40" cy="40" r="26" fill="none" stroke="#ffd83a" stroke-width="4" stroke-dasharray="10 6"/><path d="M40 20v40M20 40h40" stroke="#ffd83a" stroke-width="4"/></svg><p style="font-size:22px;font-weight:700">オートエイム</p><p style="font-size:16px;line-height:1.5" class="mu">照準が敵・弱点へ吸着</p></div>
+  <div class="card"><svg viewBox="0 0 80 80" width="70"><rect x="26" y="14" width="28" height="36" rx="8" fill="#2ee6ff"/><path d="M30 54l-6 18h12zM50 54l-6 18h12z" fill="#ffd83a"/></svg><p style="font-size:20px;font-weight:700">ジェットパック</p><p style="font-size:16px;line-height:1.5" class="mu">長押しで飛行・ホバー</p></div>
+  <div class="card"><svg viewBox="0 0 80 80" width="70"><path d="M8 60 Q30 10 70 30" stroke="#ffd83a" stroke-width="5" fill="none" stroke-dasharray="8 5"/><circle cx="70" cy="30" r="8" fill="#ff6b8a"/><rect x="4" y="52" width="14" height="16" rx="4" fill="#2ee6ff"/></svg><p style="font-size:22px;font-weight:700">吸収アーム</p><p style="font-size:16px;line-height:1.5" class="mu">伸ばして敵から電気を吸う</p></div>
+  <div class="card"><svg viewBox="0 0 80 80" width="70"><circle cx="40" cy="40" r="10" fill="#ffd83a"/><g stroke="#ff6b8a" stroke-width="5"><path d="M40 8v16M40 56v16M8 40h16M56 40h16M17 17l11 11M52 52l11 11M63 17L52 28M28 52L17 63"/></g></svg><p style="font-size:22px;font-weight:700">逆流</p><p style="font-size:16px;line-height:1.5" class="mu">吸収中の敵へ電気を流し爆発</p></div></div>
+</section>
+
+<!-- 14 開発方針 -->
+<section class="slide">
+ <h2><span>DEVELOPMENT</span>開発方針（ベータに向けて）</h2><div class="bar"></div>
+ <div class="row"><ul style="flex:1.2"><li><b class="ye">短めのボリューム</b>：1〜2時間程度でクリアできる規模</li><li><b class="cy">作りやすさ優先</b>：使い回せる仕組みとアセットで</li><li>アルファの戦闘の核（吸収と攻撃）を磨く</li><li>UIをベータ案へ変更（武器選択など）</li><li>強化要素とストーリーの導入</li></ul>
+ <svg viewBox="0 0 400 300" width="400" font-family="Noto Sans JP"><rect width="400" height="300" rx="16" fill="#0a1330" stroke="#2ee6ff55"/><g font-size="18" text-anchor="middle"><rect x="30" y="80" width="130" height="80" rx="12" fill="#12214d" stroke="#8fa6cf"/><text x="95" y="115" fill="#e8f3ff">アルファ</text><text x="95" y="140" fill="#8fa6cf" font-size="14">約10分</text><rect x="240" y="60" width="130" height="120" rx="12" fill="#12214d" stroke="#ffd83a" stroke-width="3"/><text x="305" y="115" fill="#ffd83a">ベータ</text><text x="305" y="140" fill="#e8f3ff" font-size="14">1〜2時間</text></g><path d="M165 120h55" stroke="#2ee6ff" stroke-width="4"/><path d="M218 108l18 12-18 12z" fill="#2ee6ff"/></svg></div>
+</section>
+
+<div class="pn" id="pn"></div>
+</div>
+<script>
+const S=[...document.querySelectorAll('.slide')];let i=0;
+try{i=Math.max(0,Math.min(S.length-1,(+location.hash.slice(1)||1)-1))}catch(e){}
+function show(n){i=Math.max(0,Math.min(S.length-1,n));S.forEach((s,k)=>s.classList.toggle('on',k===i));
+ document.getElementById('pn').textContent=(i+1)+' / '+S.length;try{history.replaceState(null,'','#'+(i+1))}catch(e){}}
+function fit(){const s=Math.min(innerWidth/1280,innerHeight/720);document.getElementById('stage').style.transform='translate(-50%,-50%) scale('+s+')';}
+addEventListener('resize',fit);fit();
+addEventListener('keydown',e=>{if(['ArrowRight','PageDown',' ','Enter'].includes(e.key))show(i+1);if(['ArrowLeft','PageUp','Backspace'].includes(e.key))show(i-1);if(e.key==='Home')show(0);if(e.key==='End')show(S.length-1)});
+addEventListener('click',e=>show(e.clientX<innerWidth*0.3?i-1:i+1));
+document.querySelectorAll('.ph').forEach(p=>{const im=p.querySelector('img');if(im)im.addEventListener('load',()=>p.classList.add('ok'));});
+show(i);
+</script></body></html>

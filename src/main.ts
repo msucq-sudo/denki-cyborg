@@ -5,11 +5,12 @@ import { createWorld } from './core/world';
 import type { World } from './core/types';
 import { updateProjectiles } from './core/projectiles';
 import { updateEffects } from './core/effects';
-import { initPlayer, updatePlayer, updateGun } from './player/player';
+import { initPlayer, updatePlayer, updateGun, setPlayerWeapon } from './player/player';
 import { initAbsorb, updateAbsorb } from './abilities/absorb';
 import { initFunctions, updateFunctions } from './abilities/functions';
 import { updateEnemies } from './enemies/api';
 import { buildDungeon, updateLevel } from './level/dungeon';
+import { CAMERA, CHARACTER } from './config/balance';
 import { createHUD } from './ui/hud';
 import { initAudio, resumeAudio, updateAudio } from './audio/sfx';
 import './ui/style.css';
@@ -161,6 +162,9 @@ function exposeDebug(w: World): void {
     events,
     start: () => startGame(),
     step: (dt = 1 / 60, n = 1) => { for (let i = 0; i < n; i++) step(dt); },
+    camera: CAMERA,
+    character: CHARACTER, // 見た目調整のデバッグ用（実行時に数値を触れる）
+    setWeapon: (id: string) => setPlayerWeapon(world, id),
     render: () => renderer.render(world.scene, world.camera),
     get current() { return world; },
     THREE,

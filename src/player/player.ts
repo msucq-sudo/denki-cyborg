@@ -7,6 +7,8 @@ import { drainEnergy, spendEnergy } from '../core/energy';
 import { addEffect } from '../core/effects';
 import { spawnProjectile } from '../core/projectiles';
 import { buildPlayerVisual, CYAN, type PlayerVisual } from './visual';
+import { WEAPONS } from './weapons';
+import { createAnimState, poseCharacter, type AnimState } from './pose';
 import {
   applyLook, cameraForward, cameraRight, chargeAdvance, chargeDamage, chargedBulletSize, moveVector, smoothAngle,
 } from './logic';
@@ -19,6 +21,7 @@ const TERMINAL_VEL = -45;
 
 interface PState {
   vis: PlayerVisual;
+  anim: AnimState;
   facing: number;
   walkPhase: number;
   prevOnGround: boolean;
@@ -48,7 +51,7 @@ function st(world: World): PState {
   let s = states.get(world);
   if (!s) {
     s = {
-      vis: buildPlayerVisual(world.player.root), facing: world.player.yaw, walkPhase: 0,
+      vis: buildPlayerVisual(world.player.root), anim: createAnimState(world), facing: world.player.yaw, walkPhase: 0,
       prevOnGround: false, prevHp: world.player.hp, flash: 0, fallSpeed: 0, camS: 1, aimK: 0, afterT: 0,
       spaceHold: 0, groundJumped: false, holding: false, tapQueue: 0, suppressFire: false, fullEmitted: false, sparkT: 0, hitCeilingPrev: false, muzzleFlash: 0,
     };
@@ -82,7 +85,7 @@ export function updatePlayer(world: World, dt: number): void {
     p.root.position.copy(p.pos);
     s.facing = p.yaw;
     p.root.rotation.y = s.facing;
-    animate(world, s, 0.016, false);
+    animate(world, s, 0.016);
     p.root.updateMatrixWorld(true);
     if (world.state === 'title') updateTitleCamera(world);
     else updateCamera(world, s, 0);
@@ -203,8 +206,7 @@ export function updatePlayer(world: World, dt: number): void {
     if (s.afterT <= 0) { s.afterT = 0.035; spawnGhost(world, s); }
   }
 
-  const moving = (hasInput && p.onGround) || dodging;
-  animate(world, s, dt, moving);
+  animate(world, s, dt);
   p.root.updateMatrixWorld(true);
   updateCamera(world, s, dt);
   computeAim(world, s);
@@ -212,49 +214,8 @@ export function updatePlayer(world: World, dt: number): void {
 
 // ---------------------------------------------------------------- 見た目アニメ
 
-function animate(world: World, s: PState, dt: number, moving: boolean): void {
-  const p = world.player;
-  const v = s.vis;
-  const t = world.time;
-  const hspeed = Math.hypot(p.vel.x, p.vel.z);
-  if (moving) s.walkPhase += dt * (6 + hspeed * 0.9);
-  const sw = moving ? Math.min(1, hspeed / PLAYER.moveSpeed) : 0;
-  v.leftLeg.rotation.x = Math.sin(s.walkPhase) * 0.6 * sw;
-  v.rightLeg.rotation.x = -Math.sin(s.walkPhase) * 0.6 * sw;
-  const bob = moving ? Math.abs(Math.sin(s.walkPhase)) * 0.06 * sw : Math.sin(t * 2.2) * 0.012;
-  const airLift = p.flying ? 0.1 + Math.sin(t * 6) * 0.03 : 0;
-  v.body.position.y = bob + airLift;
-  const sq = 1 + Math.sin(t * 2.2) * 0.012;
-  v.body.scale.set(1 / Math.sqrt(sq), sq, 1 / Math.sqrt(sq));
-  v.body.rotation.x = p.flying ? 0.18 : (moving ? 0.05 : 0);
-  if (!p.flying && !p.onGround) { v.leftLeg.rotation.x = 0.4; v.rightLeg.rotation.x = -0.2; }
-  if (p.flying) { v.leftLeg.rotation.x = 0.25; v.rightLeg.rotation.x = 0.25; }
-
-  // 腕：右＝銃（pitch に追従）、左＝吸収アーム根元
-  v.gunPivot.rotation.x = p.pitch * 0.9;
-  const absorbPose = p.absorbing || world.input.isDown('KeyE');
-  const targetL = absorbPose ? -Math.PI / 2 + p.pitch * 0.9 : -0.35 + Math.sin(s.walkPhase) * 0.25 * sw;
-  v.leftArm.rotation.x += (targetL - v.leftArm.rotation.x) * Math.min(1, dt * 18 + (dt === 0 ? 1 : 0));
-
-  // バッテリー：電力残量で明るさが変わる（低電力は点滅）
-  const frac = p.energy / p.maxEnergy;
-  let bi = 0.15 + frac * 2.2;
-  if (frac <= 0) bi = 0.05;
-  else if (frac < 0.25) bi *= 0.6 + 0.4 * Math.sin(t * 10);
-  v.batteryMat.emissiveIntensity = bi;
-  v.visorMat.emissiveIntensity = frac <= 0 ? 0.2 : 1.2 + frac * 1.2;
-
-  // 被弾点滅 / 回避中は半透明気味に明るく
-  const blink = s.flash > 0 && Math.floor(t * 40) % 2 === 0;
-  for (const m of v.whiteMats) {
-    m.emissiveIntensity = blink ? 1.2 : 0;
-    m.color.setHex(blink ? 0xffe0e0 : 0xf6f8ff);
-  }
-
-  // ジェット噴射
-  const jetOn = p.flying;
-  v.jets.children.forEach((c) => { if ((c as THREE.Mesh).isMesh) { c.visible = jetOn; c.scale.set(1, 0.8 + Math.random() * 0.5, 1); } });
-  v.jetLight.intensity = jetOn ? 2.5 + Math.random() * 1.2 : 0;
+function animate(world: World, s: PState, dt: number): void {
+  poseCharacter(world, s.vis, s.anim, dt);
 }
 
 function spawnGhost(world: World, s: PState): void {
@@ -483,4 +444,18 @@ function updateMuzzle(world: World, s: PState, dt: number): void {
     }
   });
   if (s.sparkT <= 0) s.sparkT = 0.04;
+}
+
+/** 吸収アームの電流エフェクトの根元（左肩のワールド位置）。まだ見た目がなければ false */
+export function getAbsorbArmRoot(world: World, out: THREE.Vector3): boolean {
+  const s = states.get(world);
+  if (!s) return false;
+  s.vis.armL.shoulder.getWorldPosition(out);
+  return true;
+}
+
+/** 武器モデルを差し替える（WEAPONS の id）。見た目の確認用フック。ゲームの挙動は変えない */
+export function setPlayerWeapon(world: World, id: string): void {
+  const def = WEAPONS[id];
+  if (def) st(world).vis.setWeapon(def);
 }

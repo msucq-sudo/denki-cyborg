@@ -6,6 +6,7 @@ import { raycastEnemies, isTargetable } from '../core/enemyUtil';
 import { addEnergy, drainEnergy } from '../core/energy';
 import { spawnBurst } from '../core/effects';
 import { drainEnemy, overloadEnemy } from '../enemies/api';
+import { getAbsorbArmRoot } from '../player/player';
 import { createArmVisual, type ArmMode, type ArmVisual } from './absorbVisual';
 
 /** 吸収アームの追加状態（World ごと） */
@@ -175,7 +176,9 @@ export function updateAbsorb(world: World, dt: number): void {
   if (a.phase === 'extending') mode = 'extending';
   else if (a.phase === 'attached') mode = ex.overloading ? 'overload' : 'attached';
   else if (a.phase === 'retracting') mode = 'retracting';
-  ex.vis.update(ex.root, a.tip, mode, world.time);
+  // 電流エフェクトは見た目のバネ腕（左肩）に沿わせる。見た目がなければ従来の根元
+  const visRoot = getAbsorbArmRoot(world, tmpA) ? tmpA : ex.root;
+  ex.vis.update(visRoot, a.tip, mode, world.time);
 }
 
 function updateAttached(world: World, ex: Extra, dt: number): void {
