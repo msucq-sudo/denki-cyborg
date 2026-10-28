@@ -18,6 +18,8 @@ export class Input {
   pointerLocked = false;
   /** false の間は入力を無視（タイトル画面など） */
   enabled = true;
+  /** true の間はゲームの操作（移動・視点・射撃…）を無効にする。演出中のロック用。rawPressed だけは通る */
+  locked = false;
 
   constructor(private target: HTMLElement) {
     window.addEventListener('keydown', (e) => {
@@ -38,7 +40,7 @@ export class Input {
       this.mouseReleasedSet.add(e.button);
     });
     window.addEventListener('mousemove', (e) => {
-      if (this.pointerLocked) {
+      if (this.pointerLocked && !this.locked) {
         this.mouseDX += e.movementX;
         this.mouseDY += e.movementY;
       }
@@ -56,8 +58,8 @@ export class Input {
 
   /**
    * ゲームパッド（Xbox 配置）をキーボード/マウス入力に変換する。毎フレーム1回呼ぶ。
-   * 左スティック=WASD、右スティック=視点、RT=射撃、LT=照準、LB=吸収(E)、A=ジャンプ/飛行、B/RB=回避(C)、Lスティック押込=ダッシュ(Shift)、
-   * X=逆流(F)、Y=飛行(3)、十字キー左/上=スカウター/オートエイム(1/2)、Start=ポーズ(P)、A=決定(PadA)
+   * 左スティック=WASD、右スティック=視点、RT=射撃、LT=照準、LB=吸収(E)、A=ジャンプ/飛行、RB=回避(C)、Lスティック押込=ダッシュ(Shift)、
+   * X=逆流(F)、B=インタラクト(PadB。ベッドなど)、Y=飛行(3)、十字キー左/上=スカウター/オートエイム(1/2)、Start=ポーズ(P)、A=決定(PadA)
    */
   pollGamepad(dt: number): void {
     const pad = navigator.getGamepads?.().find((g) => g && g.connected && g.mapping === 'standard');
@@ -72,9 +74,12 @@ export class Input {
       if (ax(0) < -T) keys.add('KeyA');
       if (ax(0) > T) keys.add('KeyD');
       if (b(0)) { keys.add('Space'); keys.add('PadA'); }
-      if (b(1) || b(5)) keys.add('KeyC');
+      // B(1)=インタラクト専用（PadB。2階のベッドなど）。回避は RB(5) だけ
+      if (b(1)) keys.add('PadB');
+      if (b(5)) keys.add('KeyC');
       if (b(2)) keys.add('KeyF');
-      if (b(3)) keys.add('Digit3');
+      // Y(3)=インタラクト（R：スイッチなど）。ジェットパックは A 長押し
+      if (b(3)) keys.add('KeyR');
       if (b(4)) keys.add('KeyE');
       if (b(14)) keys.add('Digit1');
       if (b(12)) keys.add('Digit2');
@@ -89,8 +94,10 @@ export class Input {
         const n = (m - 0.15) / 0.85;
         return Math.sign(v) * n * n;
       };
-      this.mouseDX += look(ax(2)) * PAD_LOOK_PX_PER_SEC * dt;
-      this.mouseDY += look(ax(3)) * PAD_LOOK_PX_PER_SEC * dt;
+      if (!this.locked) {
+        this.mouseDX += look(ax(2)) * PAD_LOOK_PX_PER_SEC * dt;
+        this.mouseDY += look(ax(3)) * PAD_LOOK_PX_PER_SEC * dt;
+      }
     }
     for (const k of this.padKeys) if (!keys.has(k)) this.simulateKey(k, false);
     for (const k of keys) if (!this.padKeys.has(k)) this.simulateKey(k, true);
@@ -111,12 +118,14 @@ export class Input {
     if (document.pointerLockElement) document.exitPointerLock();
   }
 
-  isDown(code: string): boolean { return this.enabled && this.down.has(code); }
-  pressed(code: string): boolean { return this.enabled && this.pressedSet.has(code); }
-  released(code: string): boolean { return this.enabled && this.releasedSet.has(code); }
-  mouse(button: number): boolean { return this.enabled && this.mouseDown.has(button); }
-  mousePressed(button: number): boolean { return this.enabled && this.mousePressedSet.has(button); }
-  mouseReleased(button: number): boolean { return this.enabled && this.mouseReleasedSet.has(button); }
+  isDown(code: string): boolean { return this.enabled && !this.locked && this.down.has(code); }
+  pressed(code: string): boolean { return this.enabled && !this.locked && this.pressedSet.has(code); }
+  released(code: string): boolean { return this.enabled && !this.locked && this.releasedSet.has(code); }
+  mouse(button: number): boolean { return this.enabled && !this.locked && this.mouseDown.has(button); }
+  mousePressed(button: number): boolean { return this.enabled && !this.locked && this.mousePressedSet.has(button); }
+  mouseReleased(button: number): boolean { return this.enabled && !this.locked && this.mouseReleasedSet.has(button); }
+  /** ロック中でも読める「押した瞬間」（演出中の起き上がりなど） */
+  rawPressed(code: string): boolean { return this.enabled && this.pressedSet.has(code); }
 
   /** テスト/デバッグ用：入力を外部から注入 */
   simulateKey(code: string, isDown: boolean): void {

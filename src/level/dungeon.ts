@@ -414,7 +414,7 @@ function enterRoom(world: World, rt: Runtime, j: number): void {
   if (j > 0) closeDoor(rt, j - 1);
   rt.pending = rt.pending.filter((t) => t.room >= j);
   const def = rt.layouts[j].def;
-  toast(world, def.name, 3);
+  void def; // 部屋名のトーストは出さない
   switch (j) {
     case 0:
       schedule(rt, j, 3.2, 'WASDで移動、マウスで視点');

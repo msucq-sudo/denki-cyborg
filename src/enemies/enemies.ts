@@ -1,6 +1,6 @@
 import * as THREE from 'three';
 import type { Enemy, World } from '../core/types';
-import { ENEMIES, BOSS, OVERLOAD } from '../config/balance';
+import { ENEMIES, BOSS, OVERLOAD, METAL } from '../config/balance';
 import type { EnemyKind } from '../config/balance';
 import { damagePlayer, playerCenter } from '../core/combat';
 import { spawnBurst, spawnFlash, spawnShockwave } from '../core/effects';
@@ -9,13 +9,17 @@ import { buildModel, disposeObject, type Model } from './models';
 import { fall, faceToward, makeCtx, separate } from './common';
 import { updateCrawler, updateDrone, updateGunner, updateHeavy } from './ai';
 import { initBossAI, updateBoss } from './boss';
+import { KIND_MODULES } from './kinds';
+import { makeDormant, updateDormant, type DormantOpts } from './dormant';
+import { spawnMetalDrop } from '../core/pickups';
 
 export interface DamageOpts { weak?: boolean; how: 'shot' | 'explosion' | 'absorb'; hitPos?: THREE.Vector3 }
 export type OverloadResult = 'none' | 'exploded' | 'shorted';
 
-const GROUND: EnemyKind[] = ['crawler', 'gunner', 'heavy'];
 /** ノックバックの効きやすさ */
-const KNOCKBACK: Record<EnemyKind, number> = { drone: 1, crawler: 1, gunner: 0.8, heavy: 0.25, boss: 0 };
+const KNOCKBACK_BASE: Partial<Record<EnemyKind, number>> = { drone: 1, crawler: 1, gunner: 0.8, heavy: 0.25, boss: 0 };
+function knockbackOf(kind: EnemyKind): number { return KNOCKBACK_BASE[kind] ?? KIND_MODULES[kind]?.knockback ?? 0.5; }
+function isFlyer(kind: EnemyKind): boolean { return kind === 'drone' || kind === 'boss' || !!KIND_MODULES[kind]?.flying; }
 const DOWN_TIME = 4;
 const FLASH_TIME = 0.12;
 const BOSS_DRAIN_FLOOR = 0.2;
@@ -31,7 +35,7 @@ const CYAN = new THREE.Color(0x40e0ff);
 const GREY = new THREE.Color(0x555050);
 
 // ------------------------------------------------------------------ spawn
-export function spawnEnemy(world: World, kind: EnemyKind, pos: THREE.Vector3): Enemy {
+export function spawnEnemy(world: World, kind: EnemyKind, pos: THREE.Vector3, opts?: DormantOpts): Enemy {
   const spec = ENEMIES[kind];
   const model = buildModel(kind);
   model.root.position.copy(pos);
@@ -60,12 +64,14 @@ export function spawnEnemy(world: World, kind: EnemyKind, pos: THREE.Vector3): E
     e.weakPoints[0].mesh.visible = false;
   }
   world.enemies.push(e);
+  // 休眠（コンテナ／天井の中で待機）。ボスは対象外
+  if (opts?.dormant && kind !== 'boss') makeDormant(world, e, opts, isFlyer(kind));
   return e;
 }
 
 // ------------------------------------------------------------------ damage
 function impulse(world: World, e: Enemy, amount: number, from?: THREE.Vector3): void {
-  const k = KNOCKBACK[e.kind];
+  const k = knockbackOf(e.kind);
   if (k <= 0) return;
   const src = from ?? world.player.pos;
   const dx = e.pos.x - src.x, dz = e.pos.z - src.z;
@@ -153,6 +159,7 @@ function downEnemy(world: World, e: Enemy): void {
   world.stats.kills++;
   world.events.emit('enemyKilled', { kind: e.kind, pos: e.pos.clone(), how: 'absorb' });
   spawnBurst(world, e.pos, 0x66e6ff, 10, 3);
+  spawnMetalDrop(world, e.kind, e.pos);
 }
 
 function clearTelegraphs(e: Enemy): void {
@@ -171,6 +178,7 @@ function killEnemy(world: World, e: Enemy, how: 'shot' | 'explosion' | 'absorb',
   clearTelegraphs(e);
   world.stats.kills++;
   world.events.emit('enemyKilled', { kind: e.kind, pos: e.pos.clone(), how });
+  spawnMetalDrop(world, e.kind, e.pos); // 倒すとメタルを落とす
   if (e.kind === 'boss') {
     e.deadTimer = BOSS_DEATH_TIME;
     e.ai.deathT = 0;
@@ -238,6 +246,8 @@ export function overloadEnemy(world: World, enemy: Enemy, amount: number): Overl
   if (playerCenter(world).distanceTo(pos) < OVERLOAD.selfDamageRadius) damagePlayer(world, OVERLOAD.selfDamage);
   world.stats.explosions++;
   killEnemy(world, enemy, 'explosion', true);
+  // 逆流（送電）で爆発させて倒した：メタルを追加で落とす（合計 METAL.overloadMul 倍）
+  spawnMetalDrop(world, enemy.kind, pos, METAL.overloadMul - 1);
   return 'exploded';
 }
 
@@ -246,7 +256,7 @@ export function updateEnemies(world: World, dt: number): void {
   for (const e of world.enemies) {
     updateOne(world, e, dt);
   }
-  separate(world.enemies);
+  separate(world.enemies.filter((e) => !e.ai.dormant));
   for (let i = world.enemies.length - 1; i >= 0; i--) {
     const e = world.enemies[i];
     if ((e.status === 'dead' || e.status === 'down') && e.deadTimer <= 0) {
@@ -271,7 +281,7 @@ function updateOne(world: World, e: Enemy, dt: number): void {
   if (e.status === 'down') {
     e.deadTimer -= dt;
     ai.collapse = Math.min(1, ai.collapse + dt * 2.5);
-    if (e.kind === 'drone' || e.kind === 'boss') {
+    if (isFlyer(e.kind)) {
       e.vel.y = Math.max(-25, e.vel.y - 24 * dt);
       e.pos.addScaledVector(e.vel, dt);
       if (resolveFloor(world, e)) e.vel.set(0, 0, 0);
@@ -285,6 +295,14 @@ function updateOne(world: World, e: Enemy, dt: number): void {
     e.overload = Math.max(0, e.overload - ENEMIES[e.kind].overloadCap * OVERLOAD_DECAY * dt);
   }
 
+  // 休眠中：AI なし。目覚め演出中だけ通常のアニメを回す
+  if (ai.dormant) {
+    if (world.state === 'playing') updateDormant(world, e, dt);
+    if (ai.dormant?.show) animate(world, e, dt);
+    else if (ai.dormant) e.root.rotation.y = ai.yaw ?? 0;
+    return;
+  }
+
   if (world.state === 'playing') {
     const c = makeCtx(world, e, dt);
     switch (e.kind) {
@@ -293,6 +311,7 @@ function updateOne(world: World, e: Enemy, dt: number): void {
       case 'gunner': updateGunner(c); break;
       case 'heavy': updateHeavy(c); break;
       case 'boss': updateBoss(c, spawnEnemy); break;
+      default: KIND_MODULES[e.kind]?.update(c, spawnEnemy); break;
     }
     if (e.kind === 'boss') checkBossPhase(world, e);
   }
@@ -452,6 +471,7 @@ function animate(world: World, e: Enemy, dt: number): void {
       p.core.scale.setScalar(1 + 0.04 * Math.sin(t * 5) + (open > 0.5 ? 0.06 : 0));
       break;
     }
+    default: KIND_MODULES[e.kind]?.animate(world, e, dt, down); break;
   }
 }
 
@@ -486,6 +506,7 @@ function bossDeath(world: World, e: Enemy, dt: number): void {
 function removeEnemy(world: World, e: Enemy): void {
   world.scene.remove(e.root);
   disposeObject(e.root);
+  KIND_MODULES[e.kind]?.onRemove?.(world, e);
   const extra: THREE.Object3D[] | undefined = e.ai.extra;
   if (extra) for (const o of extra) { world.scene.remove(o); disposeObject(o); }
   // 共有ジオメトリは dispose しない

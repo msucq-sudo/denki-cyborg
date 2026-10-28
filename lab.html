@@ -1,0 +1,23 @@
+<!doctype html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>スパークの地下特別研究室（確認用）</title>
+  <style>
+    html, body { margin: 0; height: 100%; overflow: hidden; background: #1b2230; font-family: "M PLUS Rounded 1c", "Yu Gothic", "Meiryo", sans-serif; }
+    #view { position: fixed; inset: 0; }
+    #ui { position: fixed; top: 10px; left: 10px; display: flex; flex-wrap: wrap; gap: 6px; max-width: 560px; z-index: 5; }
+    #ui button { border: 0; border-radius: 14px; padding: 7px 12px; font: 700 13px "Yu Gothic", "Meiryo", sans-serif; background: rgba(255,255,255,0.9); color: #24385f; cursor: pointer; }
+    #ui button.on { background: #2ee6ff; }
+    #ui button:hover { background: #ffd83a; }
+    #info { position: fixed; left: 10px; bottom: 10px; color: #fff; font-size: 12px; text-shadow: 0 1px 2px #000; z-index: 5; white-space: pre; }
+  </style>
+</head>
+<body>
+  <div id="view"></div>
+  <div id="ui"></div>
+  <div id="info"></div>
+  <script type="module" src="/src/tools/labViewer.ts"></script>
+</body>
+</html>

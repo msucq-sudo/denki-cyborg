@@ -1,6 +1,10 @@
 import type * as THREE from 'three';
 import type { EnemyKind } from '../config/balance';
 
+export type EnemyAction =
+  | 'crawlerDodge' | 'stompWindup' | 'stomp' | 'chargeStart' | 'wallCrash'
+  | 'summon' | 'missileLoad' | 'missileBeep' | 'missileDisrupt';
+
 /** ゲーム内イベント。SE・UI・演出はこれを購読する。発行側は emit するだけ。 */
 export interface GameEvents {
   shot: { charged: boolean; power: number };
@@ -36,12 +40,64 @@ export interface GameEvents {
   roomEnter: { index: number; name: string };
   roomClear: { index: number };
   doorOpen: { pos: THREE.Vector3 };
+  /** ドア（シャッター）が閉まる */
+  doorClose: { pos: THREE.Vector3 };
+  /** 閉じ込め戦の開始／終了（赤い警報照明＋サイレン） */
+  lockdownStart: { zone: string };
+  lockdownEnd: { zone: string };
   bossStart: {};
   bossPhase: { phase: number };
   gameStart: {};
   gameOver: {};
   gameClear: {};
   uiClick: {};
+  /** 敵が初めてプレイヤーに気づいた */
+  enemyNotice: { kind: EnemyKind; pos: THREE.Vector3 };
+  /** 敵の個別アクション（SE用）。value は 0..1 の進行度など */
+  enemyAction: { kind: EnemyKind; pos: THREE.Vector3; action: EnemyAction; value?: number };
+  /** ミサイルが撃ち落とされた / 着弾して爆発した */
+  missileDown: { pos: THREE.Vector3 };
+  missileBlast: { pos: THREE.Vector3 };
+  /** 休眠中の敵が起きる予兆（ポッドのランプ点灯 / 天井ハッチの点滅） */
+  enemyWakeWarn: { pos: THREE.Vector3; mode: 'pod' | 'drop' };
+  /** 休眠中の敵が飛び出す（ポッドが開く / 天井から落下開始） */
+  enemyEmerge: { kind: EnemyKind; pos: THREE.Vector3; mode: 'pod' | 'drop' };
+  /** 強化素材（歯車）取得 */
+  gearPickup: {};
+  /** 敵が落としたメタルを拾った */
+  metalPickup: { amount: number; total: number };
+  /** 操作ヒントが出た */
+  interactPrompt: {};
+  /** 緊急バッテリーのスイッチON */
+  switchOn: { pos: THREE.Vector3 };
+  /** 電力がエレベーターまで届いた */
+  powerRestored: { pos: THREE.Vector3 };
+  /** 電源のないエレベーターに近づいた */
+  elevatorLocked: { pos: THREE.Vector3 };
+  /** エレベーターのドアが開く */
+  elevatorOpen: { pos: THREE.Vector3 };
+  /** エレベーターに乗った（クリア） */
+  elevatorRide: {};
+  /** 階の移動（エレベーター）。to は移動先の階 */
+  floorChange: { from: number; to: number };
+  /** 改造ベッドに横になり始めた（2階） */
+  sleepStart: {};
+  /** 眠りの演出が終わった。ここに強化（アップグレード）画面を後で差し込む */
+  sleepComplete: {};
+  /** ベッドから起き上がった */
+  wakeUp: {};
+  /** ゾーンの敵の波が出現（wave: 1 or 2） */
+  zoneWave: { wave: number };
+  /** 空の充電ポイントに乗った */
+  padEmpty: {};
+  /** ジェットパックが使えない（電力切れ） */
+  flightFail: {};
+  /** グラップル：アームをポイントへ撃った／刺さった（引き寄せ開始）／到着した */
+  grappleFire: {};
+  grappleAttach: { pos: THREE.Vector3 };
+  grappleArrive: { pos: THREE.Vector3 };
+  /** 無線通信（スパーク等）。duration 秒で自動で消える（省略時は文字数から） */
+  comm: { speaker: string; text: string; duration?: number };
 }
 
 type Handler<T> = (payload: T) => void;

@@ -91,11 +91,53 @@ export function updateDrone(c: Ctx): void {
 }
 
 // ---------------------------------------------------------------- crawler
+export const CRAWLER = {
+  windup: 0.4,
+  /** 回避：弾の接近検知距離 / 最接近がこの値未満なら避ける */
+  dodgeSense: 6,
+  dodgeMiss: 1.2,
+  dodgeChance: 0.45,
+  dodgeCooldown: 1.5,
+  dodgeTime: 0.22,
+  dodgeSpeed: 12,
+  /** 吸収中の猛攻 */
+  aggroSpeed: 1.3,
+  aggroCooldown: 0.35,
+  aggroWindup: 0.7,
+};
+
+/** 自分に向かってくるプレイヤー弾を探す（最も近いもの） */
+function findIncomingBullet(world: World, e: Enemy) {
+  let best: { p: World['projectiles'][number]; dir: THREE.Vector3; side: number } | null = null;
+  let bestD = Infinity;
+  for (const p of world.projectiles) {
+    if (p.owner !== 'player' || p.dead) continue;
+    const sp = p.vel.length();
+    if (sp < 0.01) continue;
+    const dir = p.vel.clone().divideScalar(sp);
+    const rel = _v.copy(e.pos).sub(p.pos); // 弾 → 敵
+    const t = rel.dot(dir);
+    if (t < 0 || rel.length() > CRAWLER.dodgeSense) continue;
+    const off = rel.clone().addScaledVector(dir, -t); // 弾道から敵へのずれ
+    if (off.length() >= CRAWLER.dodgeMiss) continue;
+    if (t < bestD) {
+      bestD = t;
+      // 弾道に対する敵の側（左右）。ほぼ正面ならランダム
+      const cross = dir.x * rel.z - dir.z * rel.x;
+      best = { p, dir, side: Math.abs(cross) > 0.05 ? Math.sign(cross) : (Math.random() < 0.5 ? 1 : -1) };
+    }
+  }
+  return best;
+}
+
 export function updateCrawler(c: Ctx): void {
   const { world, e, dt, spec } = c;
   const ai = e.ai;
   ai.state ??= 'chase';
+  const aggro = world.player.absorbing; // 吸収中は猛攻
   ai.atkTimer = Math.max(0, (ai.atkTimer ?? 0.5) - dt);
+  ai.dodgeCd = Math.max(0, (ai.dodgeCd ?? 0) - dt);
+  if (aggro) ai.atkTimer = Math.min(ai.atkTimer, spec.attackInterval * CRAWLER.aggroCooldown);
   let wx = 0, wz = 0, accel = 30;
   let res;
   if (ai.alert <= 0) {
@@ -103,7 +145,29 @@ export function updateCrawler(c: Ctx): void {
     ai.walk = 0;
     return;
   }
+  // 弾を避ける（突進中・吸収中は避けない）
+  if (!aggro && ai.dodgeCd <= 0 && (ai.state === 'chase' || ai.state === 'recover')) {
+    const inc = findIncomingBullet(world, e);
+    if (inc && inc.p !== ai.dodgeSeen) {
+      ai.dodgeSeen = inc.p; // 1発につき1回だけ判定
+      if (Math.random() < CRAWLER.dodgeChance) {
+        // 弾道に垂直な方向へ（敵がいる側へ）
+        const px = -inc.dir.z * inc.side, pz = inc.dir.x * inc.side;
+        const l = Math.hypot(px, pz) || 1;
+        ai.dodgeDir = { x: px / l, z: pz / l };
+        ai.state = 'dodge'; ai.stateT = CRAWLER.dodgeTime; ai.dodgeCd = CRAWLER.dodgeCooldown;
+        world.events.emit('enemyAction', { kind: 'crawler', pos: e.pos.clone(), action: 'crawlerDodge' });
+      }
+    }
+  }
   switch (ai.state) {
+    case 'dodge': {
+      ai.stateT -= dt;
+      wx = ai.dodgeDir.x * CRAWLER.dodgeSpeed; wz = ai.dodgeDir.z * CRAWLER.dodgeSpeed; accel = 200;
+      faceToward(e, c.dirXZ.x, c.dirXZ.z, dt, 12);
+      if (ai.stateT <= 0) ai.state = 'chase';
+      break;
+    }
     case 'chase': {
       faceToward(e, c.dirXZ.x, c.dirXZ.z, dt, 12);
       let dx = c.dirXZ.x, dz = c.dirXZ.z;
@@ -112,9 +176,11 @@ export function updateCrawler(c: Ctx): void {
         dx += -c.dirXZ.z * ai.strafe; dz += c.dirXZ.x * ai.strafe;
       } else ai.strafe = undefined;
       const l = Math.hypot(dx, dz) || 1;
-      wx = (dx / l) * spec.speed; wz = (dz / l) * spec.speed;
+      const sp = spec.speed * (aggro ? CRAWLER.aggroSpeed : 1);
+      wx = (dx / l) * sp; wz = (dz / l) * sp;
       if (c.dist2d < 2.6 && ai.atkTimer <= 0 && Math.abs(c.pc.y - e.pos.y) < 2.2) {
-        ai.state = 'windup'; ai.stateT = 0.4; ai.lunge = c.dirXZ.clone();
+        ai.windupDur = CRAWLER.windup * (aggro ? CRAWLER.aggroWindup : 1);
+        ai.state = 'windup'; ai.stateT = ai.windupDur; ai.lunge = c.dirXZ.clone();
       }
       accel = 25;
       break;
@@ -123,7 +189,7 @@ export function updateCrawler(c: Ctx): void {
       ai.stateT -= dt;
       wx = wz = 0; accel = 60;
       faceToward(e, c.dirXZ.x, c.dirXZ.z, dt, 16);
-      warn(e, 1 - Math.max(0, ai.stateT) / 0.4);
+      warn(e, 1 - Math.max(0, ai.stateT) / ai.windupDur);
       if (ai.stateT > 0.12) ai.lunge.copy(c.dirXZ); // 直前で方向を固定
       if (ai.stateT <= 0) {
         ai.state = 'lunge'; ai.stateT = 0.32; ai.hitDone = false; warn(e, 0);
@@ -139,7 +205,7 @@ export function updateCrawler(c: Ctx): void {
         ai.hitDone = true;
         spawnBurst(world, e.pos, 0xff7a3d, 6, 3);
       }
-      if (ai.stateT <= 0) { ai.state = 'recover'; ai.stateT = 0.6; ai.atkTimer = spec.attackInterval; }
+      if (ai.stateT <= 0) { ai.state = 'recover'; ai.stateT = aggro ? 0.35 : 0.6; ai.atkTimer = spec.attackInterval * (aggro ? CRAWLER.aggroCooldown : 1); }
       break;
     }
     case 'recover': {

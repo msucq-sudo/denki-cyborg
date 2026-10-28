@@ -12,7 +12,7 @@ export const PLAYER = {
   /** 溜め中の移動速度倍率 */
   chargeMoveMul: 0.4,
   /** 吸収中の移動速度倍率 */
-  absorbMoveMul: 0.8,
+  absorbMoveMul: 0.35,
   /** 被弾後の短い無敵時間 */
   hitInvuln: 0.25,
 };
@@ -81,6 +81,33 @@ export const ABSORB = {
   breakDistance: 18,
 };
 
+/** グラップル（吸収アームを足場の「フック」に刺して体を引き寄せる） */
+export const GRAPPLE = {
+  /** false: グラップルポイントだけに刺さる。true: 向きが合う壁・天井ならどこでも刺さる（レベルデザイン用の切替） */
+  anySurface: false,
+  /** 狙える最大距離（m）。吸収アームの射程より長い */
+  range: 22,
+  /** 1回の電力消費 */
+  cost: 2,
+  /** 終了後の再使用待ち（秒） */
+  cooldown: 0.6,
+  /** 引き寄せ速度（m/s）：加速して最大まで */
+  minSpeed: 9,
+  maxSpeed: 22,
+  accel: 60,
+  /** ポイント当たり判定の標準半径 */
+  pointRadius: 1.2,
+  /** 縁のよじ登り時間 */
+  hoistTime: 0.5,
+  /** 天井でぶら下がれる最大時間（過ぎたら自動で離す） */
+  hangMax: 4,
+  /** 天井から adjacent 足場へ飛ぶ（landAt）までの待ち */
+  swingDelay: 0.3,
+  swingTime: 0.8,
+  /** 引き寄せ中に進めない状態がこの秒数続いたら中止 */
+  blockedTime: 0.2,
+};
+
 export const OVERLOAD = {
   /** 逆流中にプレイヤーが失う電力/秒 */
   energyPerSec: 25,
@@ -92,14 +119,18 @@ export const OVERLOAD = {
 };
 
 export const FUNCTIONS = {
-  scouter: { drainPerSec: 0.6 },
+  /** スカウターは電力消費なし（常時使える標準装備） */
+  scouter: { drainPerSec: 0 },
   /** オートエイムは射撃した（ロック中の）瞬間だけ costPerShot を消費 */
   autoAim: { costPerShot: 1, coneDeg: 28, maxRange: 40 },
-  /** 飛行は実際に飛んでいる間だけ消費（待機中は消費なし） */
-  flight: { flyingDrainPerSec: 5, ascendAccel: 34, maxUpSpeed: 6.5, hoverGravityMul: 0.15 },
+  /**
+   * ジェットパック（常に装備）。空中でジャンプ長押し → 縦速度が engageVy 以下になったら滞空。
+   * 高く飛ぶのではなく「その高さを維持」する。滞空中だけ消費
+   */
+  flight: { flyingDrainPerSec: 6, engageVy: 0.5, hoverDamp: 10 },
 };
 
-export type EnemyKind = 'drone' | 'crawler' | 'gunner' | 'heavy' | 'boss';
+export type EnemyKind = 'drone' | 'crawler' | 'gunner' | 'heavy' | 'walker' | 'heavyWalker' | 'missile' | 'boss';
 
 export const ENEMIES: Record<EnemyKind, {
   hp: number; speed: number; radius: number; damage: number;
@@ -111,7 +142,41 @@ export const ENEMIES: Record<EnemyKind, {
   crawler: { hp: 40,  speed: 6.5, radius: 0.6,  damage: 10, attackInterval: 1.0, projectileSpeed: 0,  weakMultiplier: 2, overloadCap: 14, sightRange: 24 },
   gunner:  { hp: 70,  speed: 3,   radius: 0.7,  damage: 5,  attackInterval: 2.4, projectileSpeed: 22, weakMultiplier: 2, overloadCap: 22, sightRange: 32 },
   heavy:   { hp: 180, speed: 3,   radius: 1.2,  damage: 22, attackInterval: 3.5, projectileSpeed: 0,  weakMultiplier: 3, overloadCap: 38, sightRange: 30 },
+  /** ウォーカー：ゆっくり近づきながら遠距離射撃（何も考えずに前進） */
+  walker:  { hp: 50,  speed: 1.6, radius: 0.7,  damage: 6,  attackInterval: 2.0, projectileSpeed: 16, weakMultiplier: 2, overloadCap: 18, sightRange: 30 },
+  /** ヘビーウォーカー：突進＋踏みつけ電撃（範囲）。damage=踏みつけ */
+  heavyWalker: { hp: 220, speed: 2.2, radius: 1.3, damage: 18, attackInterval: 3.0, projectileSpeed: 0, weakMultiplier: 2.5, overloadCap: 42, sightRange: 30 },
+  /** ミサイル溜めロボット：護衛を召喚→ミサイルを溜めて発射。damage=ミサイル1発、attackInterval=溜め時間 */
+  missile: { hp: 160, speed: 1.8, radius: 1.1,  damage: 16, attackInterval: 7.0, projectileSpeed: 11, weakMultiplier: 2.5, overloadCap: 34, sightRange: 34 },
   boss:    { hp: 900, speed: 2.5, radius: 2.4,  damage: 6,  attackInterval: 2.0, projectileSpeed: 16, weakMultiplier: 2.5, overloadCap: 60, sightRange: 60 },
+};
+
+/**
+ * 敵の「気づき」。プレイヤーがこの距離まで近づく（かつ見えている）まで反応しない。
+ * 一度気づいたら sightRange まで追い続ける。撃たれた場合も気づく。
+ */
+export const ENEMY_NOTICE = {
+  range: 15,
+  /** 気づいた敵の周りこの距離の仲間も気づく */
+  shareRadius: 9,
+};
+
+/**
+ * 敵を倒すと落とす「メタル」（強化素材）。雑魚は少なめ、強い敵は多め。
+ * drop=1体あたりの量。見た目のかけらは最大 maxPieces 個に分けて散らばる
+ */
+export const METAL = {
+  drop: { drone: 1, crawler: 1, gunner: 2, walker: 2, heavy: 6, heavyWalker: 8, missile: 10, boss: 30 } as Record<EnemyKind, number>,
+  maxPieces: 6,
+  /** 逆流（送電）で爆発させて倒したときの倍率（2＝通常の2倍） */
+  overloadMul: 2,
+  /** これより近いと吸い寄せられる（m） */
+  magnetRadius: 6,
+  magnetSpeed: 16,
+  /** これより近いと拾う（m） */
+  pickupRadius: 1.1,
+  /** 拾われないまま消えるまで（秒） */
+  life: 90,
 };
 
 export const BOSS = {
@@ -119,6 +184,10 @@ export const BOSS = {
   shortStun: 4,
   shortDamage: 150,
 };
+
+/** 閉じ込め戦の演出。enabled=false で赤い警報照明とサイレンを両方止める（ドアの開閉はそのまま） */
+/** 閉じ込め戦の演出。enabled=false で赤い照明とサイレンを消す（扉の開閉はそのまま）。sirenCycles=サイレンを鳴らす回数 */
+export const LOCKDOWN = { enabled: true, light: 0xff2a20, sirenVolume: 0.5, sirenCycles: 3 };
 
 export const LEVEL = {
   chargePadRate: 20,     // 電力/秒
@@ -171,10 +240,11 @@ export const CHARACTER = {
   anim: {
     moveRate: 12, runRate: 8, aimRate: 14, absorbRate: 22, airRate: 12, flyRate: 7,
     /** 1周期（左右2歩）で進む距離。足が滑らないよう速度から位相を決める */
-    strideWalk: 2.4, strideRun: 3.6,
-    legAmpWalk: 0.55, legAmpRun: 0.85,
-    kneeWalk: [0.12, 0.9], kneeRun: [0.3, 1.5],
-    armSwingWalk: 0.5, armSwingRun: 0.9, elbowWalk: 0.25, elbowRun: 1.2,
+    // 重量級：歩幅を大きく・足の回転はゆっくり（のっしのっし）。進む速さは同じ
+    strideWalk: 3.7, strideRun: 5.2,
+    legAmpWalk: 0.82, legAmpRun: 1.05,
+    kneeWalk: [0.15, 1.05], kneeRun: [0.35, 1.6],
+    armSwingWalk: 0.42, armSwingRun: 0.8, elbowWalk: 0.22, elbowRun: 1.1,
     hipTwist: 0.1, spineTwist: 0.12, leanWalk: 0.06, leanRun: 0.22,
     breathRate: 1.7, breathAmp: 0.014, swayRate: 0.6,
     chargeSplay: 0.12, chargeKnee: 0.35, chargeShake: 0.006,

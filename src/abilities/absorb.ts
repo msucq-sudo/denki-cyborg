@@ -1,5 +1,5 @@
 import * as THREE from 'three';
-import { ABSORB, OVERLOAD } from '../config/balance';
+import { ABSORB, GRAPPLE, OVERLOAD } from '../config/balance';
 import type { Enemy, World } from '../core/types';
 import { hasLineOfSight, raycastLevel } from '../core/collision';
 import { raycastEnemies, isTargetable } from '../core/enemyUtil';
@@ -7,6 +7,11 @@ import { addEnergy, drainEnergy } from '../core/energy';
 import { spawnBurst } from '../core/effects';
 import { drainEnemy, overloadEnemy } from '../enemies/api';
 import { getAbsorbArmRoot } from '../player/player';
+import { getSockets, type PowerSocket } from '../core/sockets';
+import { segmentSphere } from '../core/collision';
+import {
+  canGrapple, findAimedGrapple, hitGrapple, isGrappleHolding, startGrapple, surfacePoint, type GrapplePoint,
+} from '../core/grapple';
 import { createArmVisual, type ArmMode, type ArmVisual } from './absorbVisual';
 
 /** 吸収アームの追加状態（World ごと） */
@@ -20,6 +25,13 @@ interface Extra {
   overloading: boolean;
   noEnergyShown: boolean;
   sparkTimer: number;
+  /** 電気を送っている固定ソケット（敵ではなく装置に刺さっている間） */
+  socket: PowerSocket | null;
+  socketT: number;
+  /** グラップルで刺さっているポイント（引き寄せ・ぶら下がり中） */
+  grapple: GrapplePoint | null;
+  /** 今回の射程（グラップルポイントを狙っているときだけ長い） */
+  reach: number;
 }
 
 const extras = new WeakMap<World, Extra>();
@@ -30,6 +42,7 @@ const SHOULDER_SIDE = 0.32;
 
 const tmpA = new THREE.Vector3();
 const tmpB = new THREE.Vector3();
+const tmpC = new THREE.Vector3();
 const UP = new THREE.Vector3(0, 1, 0);
 
 export function initAbsorb(world: World): void {
@@ -40,7 +53,8 @@ export function initAbsorb(world: World): void {
   world.absorb.visual = vis.group;
   extras.set(world, {
     vis, root: new THREE.Vector3(), anchor: new THREE.Vector3(), hasAnchor: false,
-    losLost: 0, overloading: false, noEnergyShown: false, sparkTimer: 0,
+    losLost: 0, overloading: false, noEnergyShown: false, sparkTimer: 0, socket: null, socketT: 0,
+    grapple: null, reach: ABSORB.range,
   });
 }
 
@@ -71,6 +85,8 @@ function startRetract(world: World, ex: Extra): void {
   endOverload(world, ex);
   setTether(a.target, false);
   a.target = null;
+  ex.socket = null;
+  ex.grapple = null;
   ex.hasAnchor = false;
   ex.losLost = 0;
   a.phase = 'retracting';
@@ -112,7 +128,16 @@ export function updateAbsorb(world: World, dt: number): void {
       a.tip.copy(world.aimOrigin);
       a.length = 0;
       a.target = null;
-      world.events.emit('absorbFire', {});
+      // グラップルポイントを狙っていれば長い射程で撃つ
+      ex.reach = ABSORB.range;
+      const aimed = findAimedGrapple(world);
+      if (aimed && canGrapple(world)) {
+        ex.reach = GRAPPLE.range;
+        world.events.emit('grappleFire', {});
+      } else {
+        if (aimed && world.player.energy < GRAPPLE.cost) world.events.emit('noEnergy', {});
+        world.events.emit('absorbFire', {});
+      }
     } else if (a.phase === 'attached') {
       world.events.emit('absorbBreak', {});
       startRetract(world, ex);
@@ -124,12 +149,44 @@ export function updateAbsorb(world: World, dt: number): void {
     case 'extending': {
       const step = ABSORB.extendSpeed * dt;
       const p0 = tmpA.copy(a.tip);
-      const remain = Math.max(0, ABSORB.range - a.length);
+      const remain = Math.max(0, ex.reach - a.length);
       const move = Math.min(step, remain);
       const p1 = tmpB.copy(a.tip).addScaledVector(a.dir, move);
       const eh = raycastEnemies(world.enemies, p0, p1, TIP_RADIUS);
       const lt = raycastLevel(world.colliders, p0, p1);
-      if (eh && (lt === null || eh.t <= lt)) {
+      // 電源ソケット（装置）：最も近い命中を探す
+      let sk: PowerSocket | null = null, st = Infinity;
+      for (const s of getSockets(world)) {
+        if (!s.enabled) continue;
+        const t = segmentSphere(p0, p1, s.pos, s.radius);
+        if (t !== null && t < st) { st = t; sk = s; }
+      }
+      // グラップルポイント（登録済み）。anySurface のときは壁・天井そのものにも刺さる
+      let gp: GrapplePoint | null = null, gt = Infinity;
+      if (canGrapple(world)) {
+        const gh = hitGrapple(world, p0, p1);
+        if (gh) { gp = gh.pt; gt = gh.t; }
+        if (!gp && GRAPPLE.anySurface && lt !== null && !(eh && eh.t <= lt)) {
+          gp = surfacePoint(world, tmpC.lerpVectors(p0, p1, lt));
+          gt = lt;
+        }
+      }
+      if (gp && gt <= (lt ?? Infinity) + 1e-6 && gt <= (eh ? eh.t : Infinity) && gt <= st) {
+        a.tip.lerpVectors(p0, p1, gt);
+        if (startGrapple(world, gp)) {
+          a.phase = 'attached';
+          a.target = null;
+          ex.grapple = gp;
+        } else a.phase = 'retracting';
+      } else if (sk && st <= (lt ?? Infinity) && st <= (eh ? eh.t : Infinity)) {
+        a.tip.lerpVectors(p0, p1, st);
+        a.phase = 'attached';
+        a.target = null;
+        ex.socket = sk;
+        ex.socketT = 0.45;
+        world.events.emit('absorbAttach', { pos: a.tip.clone() });
+        sk.onFeed();
+      } else if (eh && (lt === null || eh.t <= lt)) {
         attach(world, ex, eh.enemy, eh.point);
       } else if (lt !== null) {
         a.tip.lerpVectors(p0, p1, lt);
@@ -137,12 +194,20 @@ export function updateAbsorb(world: World, dt: number): void {
       } else {
         a.tip.copy(p1);
         a.length += move;
-        if (a.length >= ABSORB.range - 1e-4) a.phase = 'retracting';
+        if (a.length >= ex.reach - 1e-4) a.phase = 'retracting';
       }
       break;
     }
     case 'attached':
-      updateAttached(world, ex, dt);
+      if (ex.grapple) {
+        // 引き寄せ・ぶら下がりの間だけ刺さったまま。終わったら（よじ登り開始・中断）戻す
+        a.tip.copy(ex.grapple.pos);
+        if (!isGrappleHolding(world)) startRetract(world, ex);
+      } else if (ex.socket) {
+        ex.socketT -= dt;
+        a.tip.copy(ex.socket.pos);
+        if (ex.socketT <= 0) startRetract(world, ex);
+      } else updateAttached(world, ex, dt);
       break;
     case 'retracting': {
       const toRoot = tmpA.subVectors(ex.root, a.tip);

@@ -1,0 +1,25 @@
+<!doctype html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>効果音ボード</title>
+<style>
+  body { margin: 0; padding: 16px; background: #1a2238; color: #e8ecf5; font-family: 'Segoe UI', 'Yu Gothic UI', sans-serif; }
+  h1 { font-size: 20px; margin: 0 0 4px; }
+  p.note { margin: 0 0 14px; opacity: .7; font-size: 13px; }
+  h2 { font-size: 15px; margin: 18px 0 8px; color: #f2b01e; }
+  .grid { display: flex; flex-wrap: wrap; gap: 6px; }
+  button { background: #2d3a5e; color: #fff; border: 1px solid #4a5a8c; border-radius: 5px; padding: 8px 12px; cursor: pointer; font: inherit; font-size: 13px; }
+  button:hover { background: #3d4e7e; }
+  button:active { background: #f2b01e; color: #111; }
+  button.on { background: #f2b01e; color: #111; border-color: #f2b01e; }
+</style>
+</head>
+<body>
+<h1>効果音ボード</h1>
+<p class="note">ボタンを押すとその効果音が鳴ります（実際のゲームと同じ合成）。「ループ」は押すごとに ON/OFF。スカウターは無音の仕様です。</p>
+<div id="root"></div>
+<script type="module" src="/src/tools/sfxBoard.ts"></script>
+</body>
+</html>

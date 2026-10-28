@@ -99,7 +99,7 @@ export function noise(x: Eng, t0: number, o: NoiseOpts): void {
 /* 継続音（ループ）                                                    */
 /* ------------------------------------------------------------------ */
 
-export type LoopName = 'absorb' | 'overload' | 'flight' | 'charge' | 'scouter';
+export type LoopName = 'absorb' | 'overload' | 'flight' | 'charge' | 'scouter' | 'siren';
 
 export interface Loop {
   /** 0..1 の制御値（overload: 過負荷率、charge: 溜め率）。不要なループでは無視 */
@@ -234,7 +234,14 @@ class FlightLoop extends LoopBase {
     const g = x.ctx.createGain();
     g.gain.value = 0.07;
     this.noiseSrc().connect(bp).connect(g).connect(this.out);
-    this.lfo(7, 180, bp.frequency);
+    this.lfo(7, 90, bp.frequency);
+    // ホバリング：一定の推力ハム（高さを保って浮いている感じ）
+    const hum = x.ctx.createGain();
+    hum.gain.value = 0.05;
+    this.osc('sine', 120).connect(hum).connect(this.out);
+    const hum2 = x.ctx.createGain();
+    hum2.gain.value = 0.02;
+    this.osc('triangle', 241).connect(hum2).connect(this.out);
   }
 }
 
@@ -278,6 +285,30 @@ class ScouterLoop extends LoopBase {
   }
 }
 
+/** 警報サイレン：ウーーと上下する唸り（ratio=音量 0..1） */
+class SirenLoop extends LoopBase {
+  private vol: GainNode;
+  constructor(x: Eng) {
+    super(x);
+    this.vol = x.ctx.createGain();
+    this.vol.gain.value = 0.12;
+    const lp = x.ctx.createBiquadFilter();
+    lp.type = 'lowpass';
+    lp.frequency.value = 1400;
+    const saw = this.osc('sawtooth', 620);
+    const sq = this.osc('square', 622);
+    const g2 = x.ctx.createGain();
+    g2.gain.value = 0.35;
+    saw.connect(lp);
+    sq.connect(g2).connect(lp);
+    lp.connect(this.vol).connect(this.out);
+    // 周期約 1.6 秒で 440〜800Hz を往復
+    this.lfo(0.62, 180, saw.frequency);
+    this.lfo(0.62, 180, sq.frequency);
+  }
+  set(ratio: number): void { this.vol.gain.value = 0.24 * Math.max(0, Math.min(1, ratio)); }
+}
+
 export function createLoop(name: LoopName, x: Eng): Loop {
   switch (name) {
     case 'absorb': return new AbsorbLoop(x);
@@ -285,5 +316,6 @@ export function createLoop(name: LoopName, x: Eng): Loop {
     case 'flight': return new FlightLoop(x);
     case 'charge': return new ChargeLoop(x);
     case 'scouter': return new ScouterLoop(x);
+    case 'siren': return new SirenLoop(x);
   }
 }

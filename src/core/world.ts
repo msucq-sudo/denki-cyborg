@@ -36,7 +36,8 @@ export function createWorld(input: Input, events: EventBus, aspect: number): Wor
       phase: 'idle', tip: new THREE.Vector3(), dir: new THREE.Vector3(0, 0, -1), length: 0,
       target: null, cooldown: 0, totalAbsorbed: 0, visual: null,
     },
-    functions: { scouter: false, autoAim: false, flight: false },
+    // スカウターは最初から装備・ON。flight=ジェットパック装備（常にtrue）
+    functions: { scouter: true, autoAim: false, flight: true },
     aimOrigin: new THREE.Vector3(),
     aimDir: new THREE.Vector3(0, 0, -1),
     aimTarget: null,
@@ -45,6 +46,9 @@ export function createWorld(input: Input, events: EventBus, aspect: number): Wor
     toasts: [],
     nextId: 1,
     effects: [],
+    unlocks: { autoAim: false },
+    inventory: { gears: 0, metal: 0 },
+    drops: [],
   };
   scene.add(world.player.root);
   return world;

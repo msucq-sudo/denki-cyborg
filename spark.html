@@ -1,0 +1,30 @@
+<!doctype html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>スパーク ビューア</title>
+<style>
+  html, body { margin: 0; height: 100%; overflow: hidden; background: #1a2238; font-family: 'Segoe UI', 'Yu Gothic UI', sans-serif; color: #e8ecf5; }
+  canvas { display: block; width: 100%; height: 100%; }
+  #ui { position: fixed; top: 10px; left: 10px; display: flex; flex-direction: column; gap: 8px; background: rgba(10,14,28,.72); padding: 10px 12px; border-radius: 8px; font-size: 13px; }
+  #ui .row { display: flex; gap: 6px; flex-wrap: wrap; align-items: center; }
+  #ui b { width: 56px; opacity: .75; font-weight: 600; }
+  button { background: #2d3a5e; color: #fff; border: 1px solid #4a5a8c; border-radius: 5px; padding: 4px 10px; cursor: pointer; font: inherit; }
+  button:hover { background: #3d4e7e; }
+  button.on { background: #f2b01e; color: #111; border-color: #f2b01e; }
+  body.clean #ui { display: none; }
+</style>
+</head>
+<body>
+<div id="ui">
+  <div class="row"><b>ポーズ</b>
+    <button data-pose="idle">待機</button><button data-pose="tablet">タブレット</button><button data-pose="talk">会話</button><button data-pose="wave">手を振る</button></div>
+  <div class="row"><b>カメラ</b>
+    <button data-view="front">正面</button><button data-view="side">側面</button><button data-view="back">背面</button><button data-view="face">顔</button></div>
+  <div class="row"><b>表示</b>
+    <button id="btnGlasses">メガネ</button><button id="btnBg">背景: 明</button><button id="btnSpin">回転</button><button id="btnRef">1.8m基準</button></div>
+</div>
+<script type="module" src="/src/tools/sparkViewer.ts"></script>
+</body>
+</html>

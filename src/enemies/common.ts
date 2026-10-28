@@ -1,5 +1,5 @@
 import * as THREE from 'three';
-import { ENEMIES, PLAYER } from '../config/balance';
+import { ENEMIES, ENEMY_NOTICE, PLAYER } from '../config/balance';
 import type { Enemy, World } from '../core/types';
 import { hasLineOfSight, moveCharacter, resolveSphere } from '../core/collision';
 import { playerCenter } from '../core/combat';
@@ -31,9 +31,21 @@ export function makeCtx(world: World, e: Enemy, dt: number): Ctx {
   const dist = Math.hypot(dist2d, dy);
   const dirXZ = new THREE.Vector3(dist2d > 1e-6 ? dx / dist2d : 0, 0, dist2d > 1e-6 ? dz / dist2d : 1);
   const los = dist < spec.sightRange && hasLineOfSight(world.colliders, e.pos, pc);
-  // 気づき：視認できたら一定時間「警戒」。被弾でも警戒（damageEnemy 側）
-  if (los) e.ai.alert = e.kind === 'boss' ? 1e9 : 4;
-  else e.ai.alert = Math.max(0, (e.ai.alert ?? 0) - dt);
+  // 気づき：未警戒なら ENEMY_NOTICE.range まで近づかれないと反応しない。
+  // 警戒中は sightRange まで追い続ける。被弾でも警戒（damageEnemy 側）
+  const wasAlert = (e.ai.alert ?? 0) > 0;
+  const noticeDist = wasAlert || e.kind === 'boss' ? spec.sightRange : Math.min(spec.sightRange, ENEMY_NOTICE.range);
+  if (los && dist < noticeDist) {
+    e.ai.alert = e.kind === 'boss' ? 1e9 : 4;
+    // 気づいた瞬間、近くの仲間にも知らせる
+    if (!wasAlert) {
+      world.events.emit('enemyNotice', { kind: e.kind, pos: e.pos.clone() });
+      for (const o of world.enemies) {
+        if (o === e || o.status !== 'active') continue;
+        if (o.pos.distanceTo(e.pos) < ENEMY_NOTICE.shareRadius) o.ai.alert = Math.max(o.ai.alert ?? 0, 4);
+      }
+    }
+  } else e.ai.alert = Math.max(0, (e.ai.alert ?? 0) - dt);
   return { world, e, dt, spec, pc, dirXZ, dist, dist2d, los };
 }
 
@@ -112,7 +124,7 @@ export function separate(enemies: Enemy[]): void {
       const nx = dx / d, ny = dy / d, nz = dz / d;
       const wa = a.kind === 'boss' ? 0 : b.kind === 'boss' ? 1 : 0.5;
       const wb = b.kind === 'boss' ? 0 : a.kind === 'boss' ? 1 : 0.5;
-      const flyA = a.kind === 'drone', flyB = b.kind === 'drone';
+      const flyA = a.kind === 'drone' || !!a.ai.flying, flyB = b.kind === 'drone' || !!b.ai.flying;
       a.pos.x -= nx * pen * wa; a.pos.z -= nz * pen * wa;
       b.pos.x += nx * pen * wb; b.pos.z += nz * pen * wb;
       if (flyA) a.pos.y -= ny * pen * wa * 0.5;

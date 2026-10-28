@@ -6,6 +6,7 @@ import { raycastEnemies } from '../core/enemyUtil';
 import { drainEnergy, spendEnergy } from '../core/energy';
 import { addEffect } from '../core/effects';
 import { spawnProjectile } from '../core/projectiles';
+import { isGrappling, stepGrapple } from '../core/grapple';
 import { buildPlayerVisual, CYAN, type PlayerVisual } from './visual';
 import { WEAPONS } from './weapons';
 import { createAnimState, poseCharacter, type AnimState } from './pose';
@@ -14,7 +15,6 @@ import {
 } from './logic';
 
 const AIM_RANGE = 100;
-const JUMP_HOLD_TO_FLY = 0.18;
 /** 射撃クリックの先行入力受付（秒） */
 const TAP_BUFFER = 0.25;
 const TERMINAL_VEL = -45;
@@ -104,6 +104,20 @@ export function updatePlayer(world: World, dt: number): void {
   const look = applyLook(p.yaw, p.pitch, input.mouseDX, input.mouseDY, CAMERA.mouseSensitivity * (1 - (1 - CAMERA.aim.sensMul) * s.aimK));
   p.yaw = look.yaw; p.pitch = look.pitch;
 
+  // グラップル中（引き寄せ／ぶら下がり／よじ登り）は専用の移動に任せる
+  if (stepGrapple(world, dt)) {
+    if (p.flying) { p.flying = false; world.events.emit('flightEnd', {}); }
+    s.fallSpeed = 0;
+    s.facing = p.yaw;
+    p.root.rotation.y = s.facing;
+    p.root.position.copy(p.pos);
+    animate(world, s, dt);
+    p.root.updateMatrixWorld(true);
+    updateCamera(world, s, dt);
+    computeAim(world, s);
+    return;
+  }
+
   // 入力
   const fIn = (input.isDown('KeyW') ? 1 : 0) - (input.isDown('KeyS') ? 1 : 0);
   const rIn = (input.isDown('KeyD') ? 1 : 0) - (input.isDown('KeyA') ? 1 : 0);
@@ -111,7 +125,8 @@ export function updatePlayer(world: World, dt: number): void {
   const hasInput = mv.x !== 0 || mv.z !== 0;
 
   // 回避
-  const dodgePressed = input.pressed('KeyC');
+  // 吸収中は回避・ダッシュ・ジャンプ・ジェットパック不可（吸収のリスク）
+  const dodgePressed = input.pressed('KeyC') && !p.absorbing;
   if (dodgePressed) {
     if (p.charging) {
       cancelCharge(world, s);
@@ -154,7 +169,7 @@ export function updatePlayer(world: World, dt: number): void {
   // ジャンプ / 飛行
   const spaceDown = input.isDown('Space');
   if (!spaceDown) { s.spaceHold = 0; s.groundJumped = false; } else s.spaceHold += dt;
-  if (input.pressed('Space') && p.onGround && !dodging) {
+  if (input.pressed('Space') && p.onGround && !dodging && !p.absorbing) {
     p.vel.y = PLAYER.jumpSpeed;
     p.onGround = false;
     s.groundJumped = true;
@@ -162,11 +177,15 @@ export function updatePlayer(world: World, dt: number): void {
   }
   const F = FUNCTIONS.flight;
   const wasFlying = p.flying;
-  let wantFly = world.functions.flight && spaceDown && !p.onGround && p.energy > 0
-    && (!s.groundJumped || s.spaceHold >= JUMP_HOLD_TO_FLY);
+  // ジェットパック：空中で長押し → 落下し始めたらその高さで滞空（上昇はしない）
+  let wantFly = world.functions.flight && spaceDown && !p.onGround && p.energy > 0 && !p.absorbing
+    && (wasFlying || p.vel.y <= F.engageVy);
   if (wantFly) {
     const ratio = drainEnergy(world, F.flyingDrainPerSec * dt);
     if (ratio < 1) wantFly = p.energy > 0;
+  }
+  if (!wantFly && !wasFlying && world.functions.flight && spaceDown && !p.onGround && p.energy <= 0 && p.vel.y <= F.engageVy) {
+    world.events.emit('flightFail', {});
   }
   p.flying = wantFly;
   if (p.flying && !wasFlying) world.events.emit('flightStart', {});
@@ -175,8 +194,9 @@ export function updatePlayer(world: World, dt: number): void {
   if (dodging) {
     if (!p.onGround) p.vel.y = 0;
   } else if (p.flying) {
-    if (p.vel.y < F.maxUpSpeed && !s.hitCeilingPrev) p.vel.y = Math.min(F.maxUpSpeed, p.vel.y + F.ascendAccel * dt);
-    p.vel.y -= PLAYER.gravity * F.hoverGravityMul * dt;
+    // 縦速度を0へ寄せて高度を維持（上昇させない）
+    p.vel.y += (0 - p.vel.y) * (1 - Math.exp(-F.hoverDamp * dt));
+    if (p.vel.y > 0) p.vel.y = 0;
   } else {
     p.vel.y = Math.max(TERMINAL_VEL, p.vel.y - PLAYER.gravity * dt);
   }
@@ -328,7 +348,7 @@ export function updateGun(world: World, dt: number): void {
   p.fireCooldown = Math.max(0, p.fireCooldown - dt);
 
   // 吸収中は撃てない。溜め中に吸収開始(E)でキャンセル
-  if (p.absorbing || input.pressed('KeyE')) {
+  if (p.absorbing || isGrappling(world) || input.pressed('KeyE')) {
     if (p.charging) cancelCharge(world, s);
     s.suppressFire = input.mouse(0);
     s.holding = false;
@@ -452,6 +472,13 @@ export function getAbsorbArmRoot(world: World, out: THREE.Vector3): boolean {
   if (!s) return false;
   s.vis.armL.shoulder.getWorldPosition(out);
   return true;
+}
+
+/** 向き（体）を即座に合わせる。演出（ベッドから起きた後など）で体の向きが飛ばないように */
+export function setPlayerFacing(world: World, yaw: number): void {
+  const s = st(world);
+  s.facing = yaw;
+  world.player.root.rotation.y = yaw;
 }
 
 /** 武器モデルを差し替える（WEAPONS の id）。見た目の確認用フック。ゲームの挙動は変えない */

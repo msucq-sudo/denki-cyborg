@@ -2,3 +2,5 @@ node_modules
 dist
 .wrangler
 dist-e2e
+tests/e2e/out
+debug.log

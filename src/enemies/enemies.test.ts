@@ -6,6 +6,8 @@ import { ENEMIES, BOSS, OVERLOAD } from '../config/balance';
 import { makeAABB } from '../core/collision';
 import { spawnEnemy, updateEnemies, damageEnemy, drainEnemy, overloadEnemy } from './enemies';
 import { isTargetable } from '../core/enemyUtil';
+import { spawnProjectile } from '../core/projectiles';
+import { CRAWLER } from './ai';
 
 const V = (x: number, y: number, z: number) => new THREE.Vector3(x, y, z);
 
@@ -21,6 +23,25 @@ function collect(w: World, name: any): any[] {
   w.events.on(name, (p: any) => l.push(p));
   return l;
 }
+
+test('enemies only notice the player within ENEMY_NOTICE.range, and wake nearby allies', () => {
+  const w = mkWorld();
+  // プレイヤー (0,0,20)。見えているが遠い（25m）→ 気づかない
+  const far = spawnEnemy(w, 'walker', V(0, 0.8, -5));
+  const buddy = spawnEnemy(w, 'crawler', V(4, 0.7, -5));
+  for (let i = 0; i < 30; i++) updateEnemies(w, 1 / 30);
+  expect(far.ai.alert ?? 0).toBe(0);
+  expect(buddy.ai.alert ?? 0).toBe(0);
+  // 近づく（10m）→ 気づき、近くの仲間も気づく
+  w.player.pos.set(0, 0, 5);
+  updateEnemies(w, 1 / 30);
+  expect(far.ai.alert).toBeGreaterThan(0);
+  expect(buddy.ai.alert).toBeGreaterThan(0);
+  // 一度気づいたら遠く（索敵距離内）まで追い続ける
+  w.player.pos.set(0, 0, 20);
+  for (let i = 0; i < 10; i++) updateEnemies(w, 1 / 30);
+  expect(far.ai.alert).toBeGreaterThan(0);
+});
 
 test('weak multiplier is applied', () => {
   const w = mkWorld();
@@ -173,4 +194,66 @@ test('crawler approaches and hits the player', () => {
   for (let i = 0; i < 60 * 4; i++) { w.time += 1 / 60; updateEnemies(w, 1 / 60); w.player.invuln = Math.max(0, w.player.invuln - 1 / 60); }
   expect(w.player.hp).toBeLessThan(w.player.maxHp);
   expect(c.status).toBe('active');
+});
+
+// ---- crawler: 回避と吸収中の猛攻
+function awakeCrawler(w: World) {
+  w.player.pos.set(0, 0, 14);
+  const c = spawnEnemy(w, 'crawler', V(0, 0.6, 0));
+  for (let i = 0; i < 5; i++) { w.time += 1 / 60; updateEnemies(w, 1 / 60); }
+  expect(c.ai.alert).toBeGreaterThan(0);
+  return c;
+}
+function shootAt(w: World, c: any) {
+  spawnProjectile(w, {
+    pos: V(c.pos.x, c.pos.y, c.pos.z + 4), vel: V(0, 0, -40), damage: 5, owner: 'player',
+    radius: 0.2, size: 0.2, life: 2, color: 0xffffff,
+  } as any);
+}
+
+test('crawler sidesteps an incoming player bullet (with cooldown)', () => {
+  const w = mkWorld();
+  const c = awakeCrawler(w);
+  const rnd = vi.spyOn(Math, 'random').mockReturnValue(0.1);
+  shootAt(w, c);
+  const x0 = c.pos.x;
+  w.time += 1 / 60; updateEnemies(w, 1 / 60);
+  expect(c.ai.state).toBe('dodge');
+  for (let i = 0; i < 10; i++) { w.time += 1 / 60; updateEnemies(w, 1 / 60); }
+  expect(Math.abs(c.pos.x - x0)).toBeGreaterThan(0.5);
+  // クールダウン中は避けない
+  for (let i = 0; i < 30; i++) { w.time += 1 / 60; updateEnemies(w, 1 / 60); }
+  shootAt(w, c);
+  w.time += 1 / 60; updateEnemies(w, 1 / 60);
+  expect(c.ai.state).not.toBe('dodge');
+  rnd.mockRestore();
+});
+
+test('crawler does not dodge while the player is absorbing', () => {
+  const w = mkWorld();
+  const c = awakeCrawler(w);
+  const rnd = vi.spyOn(Math, 'random').mockReturnValue(0.1);
+  w.player.absorbing = true;
+  shootAt(w, c);
+  w.time += 1 / 60; updateEnemies(w, 1 / 60);
+  expect(c.ai.state).not.toBe('dodge');
+  rnd.mockRestore();
+});
+
+test('crawler attack cooldown is shorter while the player is absorbing', () => {
+  const run = (absorbing: boolean) => {
+    const w = mkWorld();
+    w.player.pos.set(0, 0, 1.5);
+    w.player.absorbing = absorbing;
+    const c = spawnEnemy(w, 'crawler', V(0, 0.6, 0));
+    c.ai.alert = 1;
+    for (let i = 0; i < 60 * 2 && c.ai.state !== 'recover'; i++) {
+      w.time += 1 / 60; updateEnemies(w, 1 / 60); w.player.invuln = 1;
+    }
+    expect(c.ai.state).toBe('recover');
+    return c.ai.atkTimer as number;
+  };
+  const normal = run(false), aggro = run(true);
+  expect(normal).toBeGreaterThan(ENEMIES.crawler.attackInterval * 0.9);
+  expect(aggro).toBeLessThanOrEqual(ENEMIES.crawler.attackInterval * CRAWLER.aggroCooldown + 1e-6);
 });

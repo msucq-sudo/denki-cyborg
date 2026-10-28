@@ -5,13 +5,13 @@ import { hasLineOfSight } from '../core/collision';
 import { drainEnergy } from '../core/energy';
 import { isTargetable, weakPointWorld } from '../core/enemyUtil';
 
-type FnName = 'scouter' | 'autoAim' | 'flight';
-const KEYS: [string, FnName][] = [['Digit1', 'scouter'], ['Digit2', 'autoAim'], ['Digit3', 'flight']];
-/** ON の間じゅう常時消費するもの（オートエイム/飛行は使用時のみ消費するので含めない） */
+/** スカウター・ジェットパックは最初から使える基本機能。オートエイムは world.unlocks で解放してから */
+type FnName = 'scouter' | 'autoAim';
+const KEYS: [string, FnName][] = [['Digit1', 'scouter'], ['Digit2', 'autoAim']];
+/** ON の間じゅう常時消費するもの（オートエイムは射撃時のみ消費するので0） */
 const DRAIN: Record<FnName, number> = {
   scouter: FUNCTIONS.scouter.drainPerSec,
   autoAim: 0,
-  flight: 0,
 };
 
 interface Marker {
@@ -95,11 +95,14 @@ export function initFunctions(world: World): void {
 
 function toggle(world: World, name: FnName): void {
   const f = world.functions;
+  // オートエイムは解放されるまで使えない（スカウターは最初から使える）
+  if (name === 'autoAim' && !world.unlocks.autoAim) return;
   if (f[name]) {
     f[name] = false;
     world.events.emit('functionToggle', { name, on: false });
   } else {
-    if (world.player.energy <= 0) { world.events.emit('noEnergy', {}); return; }
+    // スカウターは電力不要。それ以外は電力0だとONにできない
+    if (name !== 'scouter' && world.player.energy <= 0) { world.events.emit('noEnergy', {}); return; }
     f[name] = true;
     world.events.emit('functionToggle', { name, on: true });
   }
@@ -116,6 +119,7 @@ export function updateFunctions(world: World, dt: number): void {
   for (const name of Object.keys(DRAIN) as FnName[]) if (f[name]) drainEnergy(world, DRAIN[name] * dt);
   if (world.player.energy <= 0) {
     for (const name of Object.keys(DRAIN) as FnName[]) {
+      if (name === 'scouter') continue; // スカウターは電力切れでも動く
       if (f[name]) { f[name] = false; world.events.emit('functionToggle', { name, on: false }); }
     }
   }
@@ -185,10 +189,17 @@ function updateScouter(world: World, st: FnState, dt: number): void {
   const t = world.time;
   const pulse = 0.5 + 0.5 * Math.sin(t * 7);
 
+  // スカウターは壁越しに敵を見せない：カメラから直接見えている敵だけ HP・弱点を表示
+  const camEye = world.camera.position;
+  const visible = new Set<Enemy>();
+  for (const e of world.enemies) {
+    if (isTargetable(e) && hasLineOfSight(world.colliders, camEye, e.pos)) visible.add(e);
+  }
+
   // 弱点の強調
   const seen = new Set<THREE.Mesh>();
   for (const e of world.enemies) {
-    if (!isTargetable(e)) continue;
+    if (!visible.has(e)) continue;
     for (const wp of e.weakPoints) seen.add(wp.mesh);
   }
   for (const mesh of [...st.wps.keys()]) if (!seen.has(mesh)) restoreWp(st, mesh);
@@ -198,7 +209,7 @@ function updateScouter(world: World, st: FnState, dt: number): void {
   for (const [m, v] of [...st.mats]) if (!usedMats.has(m)) { (m as any).emissiveIntensity = v; st.mats.delete(m); }
 
   for (const e of world.enemies) {
-    if (!isTargetable(e)) continue;
+    if (!visible.has(e)) continue;
     for (const wp of e.weakPoints) {
       const mesh = wp.mesh;
       let s = st.wps.get(mesh);
@@ -221,11 +232,11 @@ function updateScouter(world: World, st: FnState, dt: number): void {
     }
   }
 
-  // 位置マーカー（壁越し）
+  // HPマーカー（見えている敵のみ）
   const alive = new Set<number>();
   const camPos = world.camera.position;
   for (const e of world.enemies) {
-    if (!isTargetable(e)) continue;
+    if (!visible.has(e)) continue;
     alive.add(e.id);
     let mk = st.markers.get(e.id);
     if (!mk) { mk = makeMarker(st); st.markers.set(e.id, mk); }

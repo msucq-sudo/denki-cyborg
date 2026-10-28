@@ -60,6 +60,9 @@ beforeEach(() => {
   events = new EventBus();
   world = createWorld(input as any, events, 1.6);
   world.state = 'playing';
+  // 既存テストは電力の計算を単純にするためスカウターOFFから始める（初期ONは 'toggles with keys' で確認）
+  world.functions.scouter = false;
+  world.unlocks.autoAim = true; // 既存のオートエイムのテスト用に解放しておく
   world.aimOrigin.set(0, 1.5, 0);
   world.aimDir.set(0, 0, -1);
   world.camera.position.set(0, 2, 4);
@@ -228,18 +231,20 @@ describe('absorb arm', () => {
 
 describe('functions', () => {
   it('toggles with keys and drains', () => {
-    const tg = vi.fn(); events.on('functionToggle', tg);
-    input.pressedK.add('Digit1'); input.pressedK.add('Digit3');
-    step(1 / 60);
+    // スカウターは初期ON、ジェットパックは常に装備
+    world = createWorld(input as any, events, 1.6);
+    world.state = 'playing';
     expect(world.functions.scouter).toBe(true);
     expect(world.functions.flight).toBe(true);
-    expect(tg).toHaveBeenCalledTimes(2);
+    const tg = vi.fn(); events.on('functionToggle', tg);
     const e0 = world.player.energy;
     step(1 / 60, 60);
     const expected = FUNCTIONS.scouter.drainPerSec;
     expect(e0 - world.player.energy).toBeCloseTo(expected, 1);
-    input.pressedK.add('Digit1'); step();
+    input.pressedK.add('Digit1'); input.pressedK.add('Digit3'); step();
     expect(world.functions.scouter).toBe(false);
+    expect(world.functions.flight).toBe(true);
+    expect(tg).toHaveBeenCalledTimes(1);
   });
 
   it('cannot turn on with no energy, auto-off at zero', () => {
@@ -249,14 +254,12 @@ describe('functions', () => {
     expect(world.functions.autoAim).toBe(false);
     expect(ne).toHaveBeenCalledTimes(1);
 
-    world.player.energy = 0.005;
-    input.pressedK.add('Digit1'); input.pressedK.add('Digit2'); input.pressedK.add('Digit3');
-    const offs: string[] = [];
-    events.on('functionToggle', (p) => { if (!p.on) offs.push(p.name); });
+    world.functions.scouter = false;
+    input.pressedK.add('Digit1'); input.pressedK.add('Digit3');
     step(1 / 60, 3);
-    expect(world.player.energy).toBe(0);
-    expect(world.functions).toEqual({ scouter: false, autoAim: false, flight: false });
-    expect(offs.sort()).toEqual(['autoAim', 'flight', 'scouter']);
+    // スカウターは電力不要・消費なし。電力0でもONにでき、切れない
+    // ジェットパック（flight）は常に装備で、3キーでは切り替わらない
+    expect(world.functions).toEqual({ scouter: true, autoAim: false, flight: true });
   });
 
   it('autoAim locks the in-cone enemy and prefers weak point', () => {

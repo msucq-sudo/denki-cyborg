@@ -1,0 +1,54 @@
+<!doctype html>
+<html><head><meta charset="utf-8"><style>html,body{margin:0;background:#8fa0b8}canvas{display:block}</style></head>
+<body>
+<script type="module">
+import * as THREE from 'three';
+import { buildModel } from '/src/enemies/models.ts';
+import '/src/enemies/kinds/index.ts';
+import { ENEMIES } from '/src/config/balance.ts';
+
+const W = 960, H = 480;
+const r = new THREE.WebGLRenderer({ antialias: true, preserveDrawingBuffer: true });
+r.setSize(W, H);
+r.shadowMap.enabled = true;
+document.body.appendChild(r.domElement);
+const scene = new THREE.Scene();
+scene.background = new THREE.Color(0x8fa0b8);
+scene.add(new THREE.HemisphereLight(0xdde8ff, 0x445066, 1.1));
+const sun = new THREE.DirectionalLight(0xffffff, 2.2);
+sun.position.set(4, 8, 5);
+scene.add(sun);
+const floor = new THREE.Mesh(new THREE.PlaneGeometry(40, 40), new THREE.MeshStandardMaterial({ color: 0x5a6578 }));
+floor.rotation.x = -Math.PI / 2;
+scene.add(floor);
+let cur = null;
+window.show = (kind, anim) => {
+  if (cur) scene.remove(cur.root);
+  const m = buildModel(kind);
+  cur = m;
+  const rad = ENEMIES[kind].radius;
+  m.root.position.y = 0;
+  m.vis.position.y = rad; // 体の中心 = 半径の高さ（足が床）
+  m.root.position.y = 0;
+  floor.position.y = 0;
+  scene.add(m.root);
+  // 体中心を原点基準にするため root を rad 持ち上げる
+  m.root.position.y = rad; m.vis.position.y = 0; floor.position.y = 0;
+  floor.position.y = 0;
+  if (anim) anim(m);
+  const cam = new THREE.PerspectiveCamera(35, 0.5 * W / H, 0.1, 100);
+  const d = rad * 4.6 + 1.5;
+  r.setScissorTest(true);
+  for (const [i, ang] of [[0, 0.65], [1, Math.PI + 0.65]]) {
+    cam.position.set(Math.sin(ang) * d, rad * 1.4 + 0.3, Math.cos(ang) * d);
+    cam.lookAt(0, rad * 0.9, 0);
+    r.setViewport(i * W / 2, 0, W / 2, H);
+    r.setScissor(i * W / 2, 0, W / 2, H);
+    r.render(scene, cam);
+  }
+  return m.root.children.length;
+};
+window.stats = () => { let t = 0, n = 0; cur.root.traverse((o) => { if (o.isMesh) { n++; const g = o.geometry; t += (g.index ? g.index.count : g.attributes.position.count) / 3; } }); return { meshes: n, tris: Math.round(t) }; };
+window.ready = true;
+</script>
+</body></html>

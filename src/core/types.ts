@@ -90,6 +90,20 @@ export interface Projectile {
   /** 重力の影響（0=なし） */
   gravity?: number;
   dead?: boolean;
+  /** 撃ち落とせる弾（敵弾のみ）。player の弾が当たると hp が減り、0 で無害に爆散 */
+  shootable?: boolean;
+  hp?: number;
+  /** 経過時間（ホーミング開始待ちなど） */
+  age?: number;
+  /** ホーミング：delay 秒後から旋回（rad/s）。speed があればその速さへ加減速 */
+  homing?: { turnRate: number; target: 'player'; delay?: number; speed?: number; accel?: number };
+  /** 命中時の小爆発（見た目のみ） */
+  blast?: { radius: number; color: number };
+  /** メッシュを速度方向へ向ける（+Z が先端） */
+  orient?: boolean;
+  /** 軌跡の火花の色 */
+  trail?: number;
+  trailT?: number;
 }
 
 export type AbsorbPhase = 'idle' | 'extending' | 'attached' | 'retracting' | 'cooldown';
@@ -173,6 +187,15 @@ export interface World {
   nextId: number;
   /** 一時的な演出（effects.ts が管理） */
   effects: EffectInstance[];
+  /**
+   * 後から解放する特殊機能（スカウター・ジェットパックは最初から使える基本機能なので含めない）。
+   * どれも未解放のうちは左上の「特殊機能」パネルを出さない
+   */
+  unlocks: { autoAim: boolean };
+  /** 強化素材の所持数（歯車＝探索で拾う／メタル＝敵が落とす） */
+  inventory: { gears: number; metal: number };
+  /** 床に落ちているメタル（pickups.ts が管理） */
+  drops: import('./pickups').MetalDrop[];
 }
 
 export interface EffectInstance {
