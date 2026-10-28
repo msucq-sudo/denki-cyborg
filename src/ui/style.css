@@ -232,8 +232,8 @@ html, body { margin: 0; height: 100%; overflow: hidden; background: #0d1420; }
 
 /* ハッキング：コード入力（中央下。クロスヘアにかぶらない位置） */
 .hack {
-  position: fixed; bottom: 200px; left: 50%; transform: translateX(-50%);
-  width: min(460px, 94vw); padding: 10px 14px 10px; text-align: center;
+  position: fixed; bottom: 14px; left: 50%; transform: translateX(-50%);
+  width: min(460px, 94vw); padding: 8px 14px 8px; text-align: center;
   background: var(--hud-glass); border: 1px solid var(--hud-glass-edge); border-radius: 12px;
   -webkit-backdrop-filter: blur(8px); backdrop-filter: blur(8px);
   box-shadow: var(--hud-shadow);
@@ -246,12 +246,12 @@ html, body { margin: 0; height: 100%; overflow: hidden; background: #0d1420; }
   55% { transform: translateX(calc(-50% - 6px)); }
   75% { transform: translateX(calc(-50% + 4px)); }
 }
-.hk-head { display: flex; justify-content: space-between; align-items: baseline; gap: 10px; margin-bottom: 8px; }
+.hk-head { display: flex; justify-content: space-between; align-items: baseline; gap: 10px; margin-bottom: 7px; }
 .hk-title { font-size: 14px; font-weight: 800; letter-spacing: 0.14em; color: var(--hud-cyan); text-shadow: 0 0 8px rgba(46, 230, 255, 0.55); }
 .hk-count { font-size: 13px; font-weight: 800; font-variant-numeric: tabular-nums; color: #bff8ff; }
 .hk-code { display: flex; justify-content: center; gap: 6px; }
 .hk-glyph {
-  width: 46px; height: 52px; display: flex; align-items: center; justify-content: center;
+  width: 46px; height: 50px; display: flex; align-items: center; justify-content: center;
   border-radius: 10px; background: rgba(4, 12, 22, 0.55); border: 1px solid rgba(143, 166, 207, 0.35);
   opacity: 0.6; transition: opacity 0.1s, transform 0.1s, box-shadow 0.1s, border-color 0.1s;
 }
@@ -270,15 +270,17 @@ html, body { margin: 0; height: 100%; overflow: hidden; background: #0d1420; }
 /* パッド：十字キー（暗い角丸） */
 .hk-face.dir { border-radius: 8px; background: linear-gradient(#4a5568, #2b3340); color: #fff; font-size: 24px; box-shadow: 0 3px 0 #161b22; }
 /* パッド：ABXY（Xbox の色） */
-.hk-face.btn { border-radius: 50%; color: #fff; text-shadow: 0 1px 2px rgba(0, 0, 0, 0.5); box-shadow: 0 3px 0 rgba(0, 0, 0, 0.45); }
-.hk-face.btn.a { background: #3fb950; }
-.hk-face.btn.b { background: #e5484d; }
-.hk-face.btn.x { background: #3b82f6; }
-.hk-face.btn.y { background: #f5c518; color: #3a2d00; text-shadow: none; }
-.hk-hint { margin-top: 9px; font-size: 12px; opacity: 0.85; }
+.hk-face.pbtn { border-radius: 50%; color: #fff; text-shadow: 0 1px 2px rgba(0, 0, 0, 0.5); box-shadow: 0 3px 0 rgba(0, 0, 0, 0.45); }
+.hk-face.pb-a { background: #3fb950; }
+.hk-face.pb-b { background: #e5484d; }
+.hk-face.pb-x { background: #3b82f6; }
+.hk-face.pb-y { background: #f5c518; color: #3a2d00; text-shadow: none; }
+.hk-hint { margin-top: 8px; font-size: 12px; opacity: 0.85; }
+/* ハッキング中は吸収パネルを上へずらして重ならないように */
+.play.hacking .absorb { bottom: 138px; }
 
 .hack-ok {
-  position: fixed; bottom: 200px; left: 50%; transform: translateX(-50%);
+  position: fixed; bottom: 150px; left: 50%; transform: translateX(-50%);
   padding: 12px 26px; border-radius: 999px; font-size: 20px; font-weight: 800; white-space: nowrap;
   background: rgba(20, 90, 80, 0.72); border: 1px solid #6dffe0; color: #e6fff8;
   -webkit-backdrop-filter: blur(6px); backdrop-filter: blur(6px);
@@ -489,7 +491,9 @@ html, body { margin: 0; height: 100%; overflow: hidden; background: #0d1420; }
   .tr { top: 12px; right: 12px; }
   .comm { top: 120px; left: 12px; }
   .absorb { bottom: 150px; }
-  .hack, .hack-ok { bottom: 230px; }
+  .hack { bottom: 12px; }
+  .hack-ok { bottom: 150px; }
+  .play.hacking .absorb { bottom: 150px; }
   .hk-glyph { width: 36px; height: 44px; }
   .hk-face { width: 28px; height: 28px; font-size: 17px; }
   .ally-box { bottom: 150px; left: 12px; }

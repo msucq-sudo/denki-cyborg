@@ -115,6 +115,12 @@ export const redWalker: KindModule = {
   updateAlly(c) {
     const { world, e, dt, spec, dist2d } = c;
     const ai = e.ai;
+    if (!ai.allyInit) {
+      // 味方になった直後：敵だったときの射撃タイマーを持ち越さない
+      ai.allyInit = true;
+      ai.atkTimer = 0.3;
+      ai.windup = 0;
+    }
     ai.allyT = (ai.allyT ?? 0) - dt;
     updateBolts(world, e, dt);
     if (ai.allyT <= 0) {

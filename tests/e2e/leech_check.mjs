@@ -142,8 +142,10 @@ try {
   s = await info();
   for (let i = 0; i < 400 && s.arm !== 'attached'; i++) { await aim(); await S(1 / 60, 3); s = await info(); }
   let tethered = false;
+  console.log('tether phase', Date.now());
   for (let tries = 0; tries < 8 && !tethered; tries++) {
-    await aimOn();
+    const on = await aimOn();
+    console.log('try', tries, 'aimOn', on, Date.now());
     await page.evaluate(() => { window.__game.world.player.energy = Math.max(window.__game.world.player.energy, 30); window.__game.input.simulateKey('KeyE', true); });
     await S(1 / 60, 2);
     await page.evaluate(() => window.__game.input.simulateKey('KeyE', false));

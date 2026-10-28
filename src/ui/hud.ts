@@ -135,7 +135,7 @@ function glyphFace(key: string, pad: boolean): GlyphFace {
     case 'PadDown': return { text: '↓', cls: 'dir' };
     case 'PadLeft': return { text: '←', cls: 'dir' };
     case 'PadRight': return { text: '→', cls: 'dir' };
-    default: return { text: key.replace('Pad', ''), cls: `btn ${key.replace('Pad', '').toLowerCase()}` };
+    default: return { text: key.replace('Pad', ''), cls: `pbtn pb-${key.replace('Pad', '').toLowerCase()}` };
   }
 }
 
@@ -799,6 +799,7 @@ export function createHUD(root: HTMLElement, cb: HudCallbacks): Hud {
     const hk = world.hack;
     const hacking = st === 'playing' && hk.active && hk.codeKeys.length > 0;
     setCls(hackBox, 'off', !hacking);
+    setCls(playRoot, 'hacking', hacking);
     if (hacking) {
       const pad = hk.device === 'pad';
       const codes = pad ? hk.codePad : hk.codeKeys;

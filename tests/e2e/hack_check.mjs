@@ -20,6 +20,7 @@ const results = [];
 const check = (name, ok, info) => { results.push(ok); console.log(ok ? 'PASS' : 'FAIL', name, info === undefined ? '' : JSON.stringify(info)); };
 const run = (n, dt = 1 / 60) => page.evaluate(([n, dt]) => window.__game.step(dt, n), [n, dt]);
 const shot = async (name) => {
+  if (process.env.NOSHOT) return;
   await page.evaluate(() => window.__game.render());
   await page.screenshot({ path: `${outDir}/hack_${name}.png`, timeout: 280000 });
   console.log('shot', name);
@@ -44,6 +45,8 @@ const tap = async (code) => {
 try {
   await page.goto(`http://localhost:${port}/?manual`, { waitUntil: 'load' });
   await page.waitForFunction(() => !!window.__game, null, { timeout: 120000 });
+  // ソフトウェア描画では backdrop-filter（ぼかし）が非常に遅いので、撮影中だけ切る（見た目はほぼ同じ）
+  await page.addStyleTag({ content: '*, *::before, *::after { -webkit-backdrop-filter: none !important; backdrop-filter: none !important; }' });
   await page.evaluate(async () => {
     window.__api = await import('/src/enemies/api.ts');
     const g = window.__game, w = g.world, T = g.THREE;
@@ -130,9 +133,10 @@ try {
     const g = window.__game, w = g.world, T = g.THREE, OX = window.OX;
     window.FOE = window.__api.spawnEnemy(w, 'heavy', new T.Vector3(OX + 7, 1, -14));
     window.FOE.hp = window.FOE.maxHp = 1e6;
-    w.player.pos.set(OX + 3, 0, 4); w.player.yaw = -0.35; w.player.pitch = 0.05;
+    w.player.pos.set(OX - 2.5, 0, 3); w.player.yaw = -0.3; w.player.pitch = 0.1;
   });
   const hp0 = (await state()).foeHp;
+  if (process.env.NOSHOT) for (let i = 0; i < 6; i++) { await run(30); console.log(JSON.stringify(await page.evaluate(() => ({ rw: window.RW.pos.toArray().map((v) => +v.toFixed(1)), yaw: +window.RW.ai.yaw.toFixed(2), tgt: window.RW.ai.allyTarget?.kind ?? null, foe: window.FOE.pos.toArray().map((v) => +v.toFixed(1)), hp: window.FOE.hp, bolts: (window.RW.ai.bolts ?? []).length, atk: window.RW.ai.atkTimer })))); }
   await run(90);
   await shot('7_ally_attack');
   await run(60);

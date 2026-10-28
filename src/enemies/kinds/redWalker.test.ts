@@ -67,6 +67,7 @@ describe('redWalker', () => {
 
   it('as an ally shoots the nearest enemy, tints blue, and keeps its weapon off the player', () => {
     const a = ally();
+    a.ai.atkTimer = 3.5; // 敵だったときの長い射撃間隔が残っていても、すぐ撃ち始める
     const foe = spawnEnemy(world, 'heavy', V(0, 1, -10));
     const hp0 = foe.hp;
     world.player.pos.set(0, 0, 12);
@@ -75,7 +76,9 @@ describe('redWalker', () => {
     run(0.5);
     expect(a.ai.allyTarget).toBe(foe); // 視界内の敵を標的にして、そちらへ転がる
     expect(a.pos.z).toBeLessThan(0);
-    run(4.5);
+    run(1);
+    expect(foe.hp).toBeLessThan(hp0); // 持ち越しのタイマー(3.5秒)に関係なく、すぐ撃ち始める
+    run(3.5);
     expect(foe.hp).toBeLessThan(hp0);
     expect(hits.length).toBeGreaterThan(0);
     expect(world.player.hp).toBe(world.player.maxHp);
