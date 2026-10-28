@@ -52,6 +52,7 @@ export function createWorld(input: Input, events: EventBus, aspect: number): Wor
     effects: [],
     unlocks: { autoAim: false },
     inventory: { gears: 0, metal: 0 },
+    upgrades: {},
     drops: [],
   };
   scene.add(world.player.root);

@@ -101,6 +101,8 @@ export interface GameEvents {
   sleepStart: {};
   /** 眠りの演出が終わった。ここに強化（アップグレード）画面を後で差し込む */
   sleepComplete: {};
+  /** 強化でレベルが上がった */
+  upgrade: { id: string; level: number };
   /** ベッドから起き上がった */
   wakeUp: {};
   /** ゾーンの敵の波が出現（wave: 1 or 2） */

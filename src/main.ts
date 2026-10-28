@@ -83,7 +83,7 @@ function changeFloor(to: 1 | 2): void {
   const prev = world;
   const from = levelId === 'floor2' ? 2 : 1;
   const keep = {
-    hp: prev.player.hp, energy: prev.player.energy, inventory: { ...prev.inventory }, functions: { ...prev.functions },
+    hp: prev.player.hp, energy: prev.player.energy, inventory: { ...prev.inventory }, upgrades: { ...prev.upgrades }, functions: { ...prev.functions },
     stats: { ...prev.stats },
   };
   levelId = to === 2 ? 'floor2' : 'floor1';
@@ -92,6 +92,7 @@ function changeFloor(to: 1 | 2): void {
   world = newWorld();
   Object.assign(world.player, { hp: keep.hp, energy: keep.energy });
   world.inventory = keep.inventory;
+  world.upgrades = keep.upgrades;
   world.functions = keep.functions;
   Object.assign(world.stats, keep.stats);
   world.state = 'playing';
