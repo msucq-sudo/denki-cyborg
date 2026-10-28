@@ -297,13 +297,18 @@ function subscribe(events: EventBus): void {
   });
   sub(events, 'enemyAttack', (p) => {
     // ウォーカー・ミサイルは専用。ヘビーウォーカーは enemyAction 側
-    if (p.kind === 'walker') { onWalkerShot(p.pos); return; }
-    if (p.kind === 'missile') { onMissileLaunch(p.pos); return; }
+    if (p.kind === 'walker' || p.kind === 'redWalker') { onWalkerShot(p.pos); return; }
+    if (p.kind === 'missile' || p.kind === 'missileDrone') { onMissileLaunch(p.pos); return; }
+    // ビーマーは beamFire 側で鳴らす
+    if (p.kind === 'beamer') return;
+    if (p.kind === 'jumper') { onJumperThrust(p.pos); return; }
+    if (p.kind === 'bomber') { onBomberThrow(p.pos); return; }
     if (p.kind === 'heavyWalker') return;
     // 攻撃の予兆。種類ごとに音色を変える
     play('enemyAttack', 0.45, (x, t) => {
       switch (p.kind) {
         case 'drone':
+        case 'redDrone':
           tone(x, t, { type: 'triangle', f: 330, dur: 0.1, gain: 0.1 });
           tone(x, t, { type: 'triangle', f: 330, at: 0.14, dur: 0.1, gain: 0.1 });
           break;
@@ -473,6 +478,7 @@ function subscribe(events: EventBus): void {
   }));
   subscribeNew(events);
   subscribeWake(events);
+  subscribePhase3(events);
 }
 
 /* ------------------------------------------------------------------ */
@@ -684,6 +690,25 @@ function onEnemyAction(p: GameEvents['enemyAction']): void {
       });
       break;
     }
+    case 'jumperLand':
+      // 重い着地のドスン＋装甲が開くカシャ
+      play('jumperLand', 0.5, (x, t) => {
+        tone(x, t, { type: 'sine', f: 110, f2: 40, dur: 0.3, gain: 0.35 * a, attack: 0.002 });
+        noise(x, t, { dur: 0.18, gain: 0.18 * a, filter: { type: 'lowpass', f: 800, f2: 150 } });
+        tone(x, t, { type: 'triangle', f: 1200, f2: 1600, at: 0.08, dur: 0.06, gain: 0.06 * a });
+        tone(x, t, { type: 'triangle', f: 1500, f2: 2000, at: 0.14, dur: 0.06, gain: 0.05 * a });
+      });
+      break;
+    case 'bombBlast':
+      // 電気の爆発：低いドン＋バチバチ
+      play('bombBlast', 0.7, (x, t) => {
+        tone(x, t, { type: 'sine', f: 130, f2: 40, dur: 0.45, gain: 0.4 * a, attack: 0.002 });
+        noise(x, t, { dur: 0.4, gain: 0.25 * a, filter: { type: 'lowpass', f: 2500, f2: 200 } });
+        for (let i = 0; i < 5; i++) {
+          noise(x, t, { at: 0.03 + i * 0.07 + Math.random() * 0.03, dur: 0.035, gain: (0.14 - i * 0.02) * a, filter: { type: 'bandpass', f: 3000 + Math.random() * 3000, q: 3 } });
+        }
+      });
+      break;
     case 'missileDisrupt':
       // 溜めが途切れるパワーダウン＋グリッチ
       play('missileDisrupt', 0.5, (x, t) => {
@@ -839,5 +864,115 @@ export function auditionHeartbeat(): void {
   play('heartbeat', 0.4, (x, t) => {
     tone(x, t, { type: 'sine', f: 80, f2: 45, dur: 0.14, gain: 0.22, attack: 0.005 });
     tone(x, t, { type: 'sine', f: 70, f2: 40, at: 0.17, dur: 0.16, gain: 0.16, attack: 0.005 });
+  });
+}
+
+// ---------------------------------------------------------------- Phase 3（新しい雑魚・ハッキング）
+
+/** ジャンパー：着地からの突き（シュッ＋金属音） */
+function onJumperThrust(pos: P3): void {
+  const a = att(pos);
+  play('jumperThrust', 0.3, (x, t) => {
+    noise(x, t, { dur: 0.12, gain: 0.14 * a, attack: 0.004, filter: { type: 'bandpass', f: 1200, f2: 4000, q: 1.5 } });
+    tone(x, t, { type: 'triangle', f: 1800, f2: 900, at: 0.08, dur: 0.15, gain: 0.08 * a });
+  });
+}
+
+/** ボンバー：電気の球を投げる（ブォン＋ジジッ） */
+function onBomberThrow(pos: P3): void {
+  const a = att(pos);
+  play('bomberThrow', 0.35, (x, t) => {
+    noise(x, t, { dur: 0.25, gain: 0.1 * a, attack: 0.02, filter: { type: 'bandpass', f: 400, f2: 1600, q: 1 } });
+    tone(x, t, { type: 'square', f: 600, f2: 1100, dur: 0.2, gain: 0.03 * a, filter: { type: 'lowpass', f: 2500 } });
+  });
+}
+
+function subscribePhase3(events: EventBus): void {
+  // ---- ビーマー
+  sub(events, 'beamCharge', (p) => {
+    const a = att(p.pos);
+    // 長い溜め：じわじわ上がるうなり
+    play('beamCharge', 2.6, (x, t) => {
+      tone(x, t, { type: 'sawtooth', f: 90, f2: 520, dur: 2.5, gain: 0.08 * a, attack: 0.3, filter: { type: 'lowpass', f: 400, f2: 2400 } });
+      tone(x, t, { type: 'sine', f: 180, f2: 1040, dur: 2.5, gain: 0.06 * a, attack: 0.3 });
+      noise(x, t, { at: 1.9, dur: 0.6, gain: 0.05 * a, attack: 0.2, filter: { type: 'highpass', f: 4000 } });
+    });
+  });
+  sub(events, 'beamFire', (p) => {
+    const a = att(p.pos);
+    play('beamFire', 0.7, (x, t) => {
+      tone(x, t, { type: 'sawtooth', f: 160, f2: 60, dur: 0.6, gain: 0.25 * a, attack: 0.003, filter: { type: 'lowpass', f: 3000, f2: 400 } });
+      noise(x, t, { dur: 0.45, gain: 0.28 * a, attack: 0.003, filter: { type: 'bandpass', f: 2000, f2: 500, q: 0.8 } });
+      tone(x, t, { type: 'sine', f: 70, f2: 35, dur: 0.6, gain: 0.35 * a });
+    });
+  });
+  sub(events, 'beamInterrupt', (p) => {
+    const a = att(p.pos);
+    play('beamInterrupt', 0.5, (x, t) => {
+      tone(x, t, { type: 'sawtooth', f: 1000, f2: 80, dur: 0.45, gain: 0.12 * a, filter: { type: 'lowpass', f: 2500, f2: 200 } });
+      noise(x, t, { dur: 0.06, gain: 0.15 * a, filter: { type: 'highpass', f: 3000 } });
+    });
+  });
+  // ---- リーチ
+  sub(events, 'leechFire', (p) => {
+    const a = att(p.pos);
+    play('leechFire', 0.3, (x, t) => {
+      tone(x, t, { type: 'triangle', f: 500, f2: 1400, dur: 0.2, gain: 0.08 * a });
+      noise(x, t, { dur: 0.15, gain: 0.05 * a, filter: { type: 'bandpass', f: 3000, q: 2 } });
+    });
+  });
+  sub(events, 'leechAttach', () => play('leechAttach', 0.5, (x, t) => {
+    // 吸われる：下がっていくズズッ
+    tone(x, t, { type: 'sawtooth', f: 700, f2: 220, dur: 0.45, gain: 0.1, filter: { type: 'lowpass', f: 1800, f2: 500 } });
+    tone(x, t, { type: 'square', f: 140, dur: 0.12, gain: 0.04, filter: { type: 'lowpass', f: 800 } });
+  }));
+  sub(events, 'leechBreak', () => play('leechBreak', 0.2, (x, t) => {
+    tone(x, t, { type: 'triangle', f: 900, f2: 1500, dur: 0.1, gain: 0.08 });
+    noise(x, t, { dur: 0.06, gain: 0.06, filter: { type: 'highpass', f: 3000 } });
+  }));
+  sub(events, 'leechFlee', (p) => {
+    const a = att(p.pos);
+    // あわてて逃げる：ピロピロ
+    play('leechFlee', 0.4, (x, t) => {
+      [1400, 1900, 1400, 1900].forEach((f, i) => tone(x, t, { type: 'square', f, at: i * 0.07, dur: 0.06, gain: 0.03 * a, filter: { type: 'lowpass', f: 3000 } }));
+    });
+  });
+  // ---- ハッキング
+  sub(events, 'hackStart', () => play('hackStart', 0.4, (x, t) => {
+    [880, 1320, 1760].forEach((f, i) => tone(x, t, { type: 'square', f, at: i * 0.06, dur: 0.07, gain: 0.04, filter: { type: 'lowpass', f: 4000 } }));
+  }));
+  sub(events, 'hackInput', (p) => {
+    if (p.ok) {
+      // 正解：進むほど音が上がる
+      const f = 700 + p.progress * 90;
+      play('hackOk', 0.1, (x, t) => tone(x, t, { type: 'square', f, dur: 0.07, gain: 0.05, filter: { type: 'lowpass', f: 4000 } }));
+    } else {
+      play('hackFail', 0.3, (x, t) => {
+        tone(x, t, { type: 'sawtooth', f: 180, f2: 120, dur: 0.25, gain: 0.12, filter: { type: 'lowpass', f: 1200 } });
+        noise(x, t, { dur: 0.12, gain: 0.1, filter: { type: 'bandpass', f: 2500, q: 2 } });
+      });
+    }
+  });
+  sub(events, 'hackCancel', () => play('hackCancel', 0.25, (x, t) => {
+    tone(x, t, { type: 'square', f: 600, f2: 300, dur: 0.2, gain: 0.04, filter: { type: 'lowpass', f: 2000 } });
+  }));
+  sub(events, 'hackSuccess', () => play('hackSuccess', 0.8, (x, t) => {
+    [1047, 1319, 1568, 2093].forEach((f, i) => tone(x, t, { type: 'square', f, at: i * 0.08, dur: 0.14, gain: 0.05, filter: { type: 'lowpass', f: 5000 } }));
+    tone(x, t, { type: 'sine', f: 2093, at: 0.32, dur: 0.4, gain: 0.06 });
+  }));
+  sub(events, 'allyExpire', (p) => {
+    const a = att(p.pos);
+    play('allyExpire', 0.6, (x, t) => {
+      tone(x, t, { type: 'sawtooth', f: 800, f2: 100, dur: 0.55, gain: 0.08 * a, filter: { type: 'lowpass', f: 2000, f2: 300 } });
+    });
+  });
+  // ---- 守られた敵に弾かれる（カキン）
+  sub(events, 'shieldBlock', (p) => {
+    const a = att(p.pos);
+    play('shieldBlock', 0.25, (x, t) => {
+      tone(x, t, { type: 'triangle', f: 2400, f2: 2100, dur: 0.2, gain: 0.08 * a, attack: 0.001 });
+      tone(x, t, { type: 'sine', f: 3600, dur: 0.12, gain: 0.03 * a });
+      noise(x, t, { dur: 0.03, gain: 0.08 * a, filter: { type: 'highpass', f: 5000 } });
+    });
   });
 }

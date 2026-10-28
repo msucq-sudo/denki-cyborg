@@ -3,7 +3,7 @@ import type { EnemyKind } from '../config/balance';
 
 export type EnemyAction =
   | 'crawlerDodge' | 'stompWindup' | 'stomp' | 'chargeStart' | 'wallCrash'
-  | 'summon' | 'missileLoad' | 'missileBeep' | 'missileDisrupt' | 'bombBlast';
+  | 'summon' | 'missileLoad' | 'missileBeep' | 'missileDisrupt' | 'bombBlast' | 'jumperLand';
 
 /** ゲーム内イベント。SE・UI・演出はこれを購読する。発行側は emit するだけ。 */
 export interface GameEvents {

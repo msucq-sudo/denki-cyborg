@@ -248,6 +248,7 @@ function land(world: World, e: Enemy, stunned: boolean): void {
   const foot = new THREE.Vector3(e.pos.x, e.pos.y - e.radius + 0.1, e.pos.z);
   spawnShockwave(world, foot, 0xbfe0ff, 2.0, 0.4);
   spawnBurst(world, foot, 0x9fd8ff, 10, 4);
+  world.events.emit('enemyAction', { kind: e.kind, pos: e.pos.clone(), action: 'jumperLand' });
 }
 
 function thrust(world: World, e: Enemy, dirX: number, dirZ: number, dist2d: number, pcY: number, damage: number): void {
