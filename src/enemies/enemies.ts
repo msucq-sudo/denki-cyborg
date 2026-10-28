@@ -109,6 +109,13 @@ export function checkBossPhase(world: World, e: Enemy): void {
 
 export function damageEnemy(world: World, enemy: Enemy, amount: number, opts: DamageOpts): void {
   if (!isTargetable(enemy)) return;
+  if (enemy.shielded) {
+    // 守られている：はじく（ダメージなし）
+    const at = (opts.hitPos ?? enemy.pos).clone();
+    spawnBurst(world, at, 0xd8e8ff, 6, 3);
+    world.events.emit('shieldBlock', { pos: at });
+    return;
+  }
   let dmg = amount;
   if (opts.weak) dmg *= weakMulFor(enemy, opts.hitPos);
   if (enemy.kind === 'boss' && enemy.status === 'stunned') dmg *= BOSS_STUN_DAMAGE_MUL;
@@ -127,7 +134,7 @@ export function damageEnemy(world: World, enemy: Enemy, amount: number, opts: Da
 }
 
 export function drainEnemy(world: World, enemy: Enemy, amount: number): number {
-  if (!isTargetable(enemy) || amount <= 0) return 0;
+  if (!isTargetable(enemy) || enemy.shielded || amount <= 0) return 0;
   let allowed = enemy.hp;
   if (enemy.kind === 'boss') allowed = Math.max(0, enemy.hp - enemy.maxHp * BOSS_DRAIN_FLOOR);
   const actual = Math.min(amount, allowed);

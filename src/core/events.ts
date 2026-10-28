@@ -62,6 +62,8 @@ export interface GameEvents {
   hackCancel: {};
   hackSuccess: { pos: THREE.Vector3 };
   allyExpire: { pos: THREE.Vector3 };
+  /** 守られた敵に弾・アームがはじかれた */
+  shieldBlock: { pos: THREE.Vector3 };
   gameStart: {};
   gameOver: {};
   gameClear: {};

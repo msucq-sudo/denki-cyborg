@@ -107,7 +107,8 @@ function steer(world: World, p: Projectile, pc: THREE.Vector3, dt: number): void
 }
 
 /** 撃ち落とされた：無害に爆散 */
-function shootDown(world: World, q: Projectile): void {
+/** 撃ち落とせる敵弾を壊す（弾・吸収アームが当たったとき） */
+export function shootDown(world: World, q: Projectile): void {
   q.dead = true;
   spawnBurst(world, q.pos, 0xffd070, 10, 4);
   spawnBurst(world, q.pos, 0xffffff, 5, 2.5);

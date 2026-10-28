@@ -130,7 +130,7 @@ export const FUNCTIONS = {
   flight: { flyingDrainPerSec: 6, engageVy: 0.5, hoverDamp: 10 },
 };
 
-export type EnemyKind = 'drone' | 'crawler' | 'gunner' | 'heavy' | 'walker' | 'redWalker' | 'heavyWalker' | 'missile' | 'beamer' | 'leech' | 'boss';
+export type EnemyKind = 'drone' | 'crawler' | 'gunner' | 'heavy' | 'walker' | 'redWalker' | 'heavyWalker' | 'missile' | 'beamer' | 'leech' | 'jumper' | 'missileDrone' | 'bomber' | 'redDrone' | 'boss';
 
 export const ENEMIES: Record<EnemyKind, {
   hp: number; speed: number; radius: number; damage: number;
@@ -153,9 +153,17 @@ export const ENEMIES: Record<EnemyKind, {
   /** 赤ウォーカー：ウォーカーの赤い版。ハッキングできる（吸収アームをつなぐとコード入力）。T3-C で調整 */
   redWalker: { hp: 60, speed: 1.8, radius: 0.7, damage: 7, attackInterval: 1.8, projectileSpeed: 17, weakMultiplier: 2, overloadCap: 20, sightRange: 30 },
   /** ビーマー：遠距離で長く溜めて極太ビーム。体力が多い。damage=ビーム1発 */
-  beamer:  { hp: 240, speed: 2,   radius: 0.9,  damage: 30, attackInterval: 4.5, projectileSpeed: 0,  weakMultiplier: 3, overloadCap: 45, sightRange: 42 },
+  beamer:  { hp: 240, speed: 2,   radius: 1.0,  damage: 30, attackInterval: 3.5, projectileSpeed: 0,  weakMultiplier: 3, overloadCap: 45, sightRange: 42 },
   /** リーチ（吸収マン）：とても小さい。吸収アームでプレイヤーの電力を吸う。つながれると逃げる */
   leech:   { hp: 30,  speed: 5,   radius: 0.32, damage: 0,  attackInterval: 3.0, projectileSpeed: 0,  weakMultiplier: 2, overloadCap: 10, sightRange: 26 },
+  /** ジャンパー：大きな頭の二足歩行。ジャンプでゆっくり移動し、着地の瞬間に突き。頭（核）が開いている間しか攻撃も吸収も効かない。T3-D で調整 */
+  jumper:  { hp: 120, speed: 2.4, radius: 0.95, damage: 16, attackInterval: 2.6, projectileSpeed: 0,  weakMultiplier: 2.5, overloadCap: 30, sightRange: 30 },
+  /** ミサイルドローン：4発のミサイルを放つドローン。ミサイルは撃つかアームを当てると消せる。damage=ミサイル1発。T3-E で調整 */
+  missileDrone: { hp: 45, speed: 3.5, radius: 0.65, damage: 9, attackInterval: 4.5, projectileSpeed: 10, weakMultiplier: 2, overloadCap: 14, sightRange: 32 },
+  /** ボンバー：小さく丸い。電気の球を投げ、着弾で爆発（中心ほど大ダメージ）。damage=爆心ダメージ。T3-F で調整 */
+  bomber:  { hp: 35,  speed: 3.2, radius: 0.45, damage: 22, attackInterval: 2.8, projectileSpeed: 12, weakMultiplier: 2, overloadCap: 12, sightRange: 26 },
+  /** 赤ドローン：ドローンの赤い版。ハッキングできる。T3-C で調整 */
+  redDrone: { hp: 40, speed: 4,   radius: 0.55, damage: 6,  attackInterval: 1.8, projectileSpeed: 18, weakMultiplier: 2, overloadCap: 14, sightRange: 28 },
   boss:    { hp: 900, speed: 2.5, radius: 2.4,  damage: 6,  attackInterval: 2.0, projectileSpeed: 16, weakMultiplier: 2.5, overloadCap: 60, sightRange: 60 },
 };
 
@@ -277,7 +285,7 @@ export const BEAMER = {
   /** 溜め中の照準の追従速度（rad/秒） */
   trackRate: 1.6,
   /** ビームの持続・太さ・長さ */
-  fireTime: 0.35, beamWidth: 0.55, beamLength: 60,
+  fireTime: 0.35, beamWidth: 0.8, beamLength: 60,
   /** 発射後の硬直 */
   recover: 1.4,
   /** 溜め中にレンズへ1回でこれ以上のダメージが入ると溜め中断 */
@@ -285,19 +293,29 @@ export const BEAMER = {
   interruptStun: 1.3,
 };
 
-/** リーチ（吸収マン）の吸収アーム。T3-B で調整 */
+/** リーチ（吸収マン）の吸収アーム */
 export const LEECH = {
   /** 好む距離 */
   prefMin: 8, prefMax: 13,
   /** アームを撃つ前の予備動作 */
   windup: 0.6,
   armRange: 15, armSpeed: 20,
+  /** アーム先端の当たり半径（プレイヤーの当たり半径に足す） */
+  tipRadius: 0.15,
+  /** アームを巻き戻す速さ（armSpeed の倍率） */
+  retractMul: 2.5,
   /** つながっている間にプレイヤーから吸う電力/秒 */
   drainPerSec: 7,
   /** この距離を超える／この秒数たつとアームが外れる */
   breakDistance: 18, maxAttach: 5,
+  /** 見通しが切れてもこの秒数まではつながったまま */
+  losGrace: 0.25,
   /** プレイヤーにアームをつながれたときの逃げ足 */
   fleeSpeed: 8.5,
+  /** 逃げ足が最高速になるまでの秒数（つながれた直後は少し出遅れる） */
+  fleeRamp: 0.45,
+  /** つなぎが切れた後も、この秒数は怯えて逃げ続ける */
+  fear: 1.0,
   /** 浮く高さ（床から） */
   hoverHeight: 1.1,
   /** 盗んだ電力をためられる上限（吸い切ると戻ってくる） */

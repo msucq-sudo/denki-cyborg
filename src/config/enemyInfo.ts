@@ -14,7 +14,7 @@ export interface EnemyInfo {
   look: string;
 }
 
-export const ENEMY_ORDER: EnemyKind[] = ['drone', 'crawler', 'gunner', 'walker', 'redWalker', 'leech', 'heavy', 'heavyWalker', 'beamer', 'missile', 'boss'];
+export const ENEMY_ORDER: EnemyKind[] = ['drone', 'crawler', 'gunner', 'walker', 'redWalker', 'leech', 'heavy', 'heavyWalker', 'beamer', 'jumper', 'missileDrone', 'bomber', 'redDrone', 'missile', 'boss'];
 
 export const ENEMY_INFO: Record<EnemyKind, EnemyInfo> = {
   drone: {
@@ -65,7 +65,27 @@ export const ENEMY_INFO: Record<EnemyKind, EnemyInfo> = {
   leech: {
     name: 'リーチ', role: '小型・電力泥棒',
     behavior: ['遠くから吸収アームを伸ばし、プレイヤーの電力を吸う（回避で外れる）', 'こちらの吸収アームをつなぐと全力で逃げる', '吸い切ると盗まれた電力が戻ってくる'],
-    weakness: '背中のタンク', area: 'ボルト研究室前', look: '（T3-B で決定）',
+    weakness: '背中のタンク', area: 'ボルト研究室前', look: '白と青のまるい小さな体に大きな目。前に紫のバネ腕の吸い口、背中にたまった電力が見える透明タンク（ここが弱点）',
+  },
+  jumper: {
+    name: 'ジャンパー', role: '重装・跳躍',
+    behavior: ['ジャンプしながらゆっくり近づく', '着地の瞬間に突き（近いと痛い）', '大きな頭の核は着地のときだけ開く。開いている間しか攻撃も吸収も効かない'],
+    weakness: '頭の核（開いているときだけ）', area: 'ボルト研究室前', look: '（T3-D で決定）大きな頭の二足歩行',
+  },
+  missileDrone: {
+    name: 'ミサイルドローン', role: '浮遊・ミサイル4連',
+    behavior: ['距離を取って浮遊', 'ミサイルを4発まとめて放つ（追いかけてくる）', 'ミサイルは銃で撃つか、吸収アームを当てると一発で消える'],
+    weakness: '下のコア', area: 'ボルト研究室前', look: '（T3-E で決定）',
+  },
+  bomber: {
+    name: 'ボンバー', role: '小型・電気爆弾',
+    behavior: ['電気の球を山なりに投げてくる', '球は着弾で爆発。中心ほど大ダメージ、端なら少なめ'],
+    weakness: '背中の電池', area: 'ボルト研究室前', look: '（T3-F で決定）小さく丸い',
+  },
+  redDrone: {
+    name: '赤ドローン', role: 'ハッキング可能',
+    behavior: ['ドローンと同じく周回して射撃', '吸収アームをつなぐとハッキング開始。コードを入力すると味方になる'],
+    weakness: '下のコア', area: 'ボルト研究室前', look: '（T3-C で決定）ドローンの赤い版',
   },
   boss: {
     name: 'ジェネレーター', role: 'ボス（サージ収容所）',

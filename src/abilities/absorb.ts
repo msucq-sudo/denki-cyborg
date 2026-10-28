@@ -9,6 +9,7 @@ import { spawnBurst } from '../core/effects';
 import { drainEnemy, overloadEnemy } from '../enemies/api';
 import { getAbsorbArmRoot } from '../player/player';
 import { getSockets, type PowerSocket } from '../core/sockets';
+import { shootDown } from '../core/projectiles';
 import { segmentSphere } from '../core/collision';
 import {
   canGrapple, findAimedGrapple, hitGrapple, isGrappleHolding, startGrapple, surfacePoint, type GrapplePoint,
@@ -37,6 +38,8 @@ interface Extra {
 
 const extras = new WeakMap<World, Extra>();
 const LOS_GRACE = 0.25;
+/** アームでミサイル等を壊すときの当たり判定の余裕 */
+const ARM_SHOOT_PAD = 0.3;
 const TIP_RADIUS = 0.2;
 const RETRACT_DONE = 0.4;
 const SHOULDER_SIDE = 0.32;
@@ -153,6 +156,11 @@ export function updateAbsorb(world: World, dt: number): void {
       const remain = Math.max(0, ex.reach - a.length);
       const move = Math.min(step, remain);
       const p1 = tmpB.copy(a.tip).addScaledVector(a.dir, move);
+      // 撃ち落とせる敵弾（ミサイルなど）はアームの先端が触れた瞬間に壊れる。アームはそのまま伸び続ける
+      for (const q of world.projectiles) {
+        if (q.dead || !q.shootable || q.owner !== 'enemy') continue;
+        if (segmentSphere(p0, p1, q.pos, q.radius + TIP_RADIUS + ARM_SHOOT_PAD) !== null) shootDown(world, q);
+      }
       const eh = raycastEnemies(world.enemies, p0, p1, TIP_RADIUS);
       const lt = raycastLevel(world.colliders, p0, p1);
       // 電源ソケット（装置）：最も近い命中を探す
@@ -187,6 +195,12 @@ export function updateAbsorb(world: World, dt: number): void {
         ex.socketT = 0.45;
         world.events.emit('absorbAttach', { pos: a.tip.clone() });
         sk.onFeed();
+      } else if (eh && (lt === null || eh.t <= lt) && eh.enemy.shielded) {
+        // 守られている（ジャンパーの閉じた頭など）：はじかれて戻る
+        a.tip.copy(eh.point);
+        a.phase = 'retracting';
+        spawnBurst(world, eh.point, 0xd8e8ff, 8, 3);
+        world.events.emit('shieldBlock', { pos: eh.point.clone() });
       } else if (eh && (lt === null || eh.t <= lt)) {
         attach(world, ex, eh.enemy, eh.point);
       } else if (lt !== null) {
@@ -252,6 +266,13 @@ function updateAttached(world: World, ex: Extra, dt: number): void {
   const enemy = a.target;
   if (!enemy || !world.enemies.includes(enemy) || !isTargetable(enemy)) {
     // 他の要因で消えた／倒れた：静かに解除
+    startRetract(world, ex);
+    return;
+  }
+  if (enemy.shielded) {
+    // 守りに入った（ジャンパーの頭が閉じた等）：はじかれて外れる
+    world.events.emit('absorbBreak', {});
+    world.events.emit('shieldBlock', { pos: a.tip.clone() });
     startRetract(world, ex);
     return;
   }

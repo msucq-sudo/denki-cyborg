@@ -102,6 +102,7 @@ const KIND: Record<EnemyKind, [string, string]> = {
   drone: ['D', '#3aa0ff'], crawler: ['C', '#f08a24'], gunner: ['G', '#d4a800'], walker: ['W', '#2fa86a'],
   heavy: ['H', '#d23c3c'], heavyWalker: ['HW', '#8a3cd2'], missile: ['M', '#444'], boss: ['B', '#000'],
   redWalker: ['RW', '#e0302a'], beamer: ['BM', '#0a6cc4'], leech: ['L', '#c43ab0'],
+  jumper: ['J', '#2a6a8a'], missileDrone: ['MD', '#5a5aa0'], bomber: ['BO', '#c8a020'], redDrone: ['RD', '#e04848'],
 };
 for (const z of plan.zones) {
   const lists: [typeof z.spawns, string][] = [[z.spawns, 'w1']];

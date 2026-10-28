@@ -80,6 +80,8 @@ export interface Enemy {
   deadTimer: number;
   /** ハッキングされて味方になった。true の間は撃っても当たらず、吸収できず、部屋のクリア判定にも数えない */
   allied?: boolean;
+  /** 守られている（ジャンパーの閉じた頭など）。true の間は弾が当たってもダメージ0（はじく）、吸収アームも刺さらない */
+  shielded?: boolean;
 }
 
 export type ProjectileOwner = 'player' | 'enemy';
