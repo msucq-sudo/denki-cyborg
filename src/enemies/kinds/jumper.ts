@@ -174,10 +174,10 @@ function buildJumper(): Model {
     placeOnShell(rib, d, Math.PI * 0.12, 0.005);
     if (i === 0) {
       // 顔：バイザーとスリットの目
-      const visor = b.block(0.58, 0.22, 0.08, navy, inner, 0, 0, 0, 0.03);
+      const visor = b.block(0.58, 0.08, 0.22, navy, inner, 0, 0, 0, 0.03);
       placeOnShell(visor, d, Math.PI * 0.45, 0.0);
-      const eye = b.mesh(boxGeo(0.46, 0.065, 0.04), b.eye(), inner);
-      placeOnShell(eye, d, Math.PI * 0.45, 0.05);
+      const eye = b.mesh(boxGeo(0.46, 0.03, 0.065), b.eye(), inner);
+      placeOnShell(eye, d, Math.PI * 0.45, 0.045);
     } else if (i === 2) {
       // 後ろのアンテナ
       const ant = b.prism(0.018, 0.32, 4, navy, inner);
@@ -194,7 +194,7 @@ function buildJumper(): Model {
   }
 
   // 核（弱点）：開いたときだけ当たる。頭の中に置く
-  const wp = b.weak(0, 0, 0, 0.42, [1, 1, 1], 0.3);
+  const wp = b.weak(0, 0, 0, 0.55, [1, 1, 1], 0.3);
   head.add(wp.mesh);
   wp.mesh.position.set(0, CORE_REST_Y, 0);
   wp.exposed = false;
@@ -246,7 +246,7 @@ function land(world: World, e: Enemy, stunned: boolean): void {
   ai.landK = 1;
   e.vel.x = 0; e.vel.z = 0;
   const foot = new THREE.Vector3(e.pos.x, e.pos.y - e.radius + 0.1, e.pos.z);
-  spawnShockwave(world, foot, 0xbfe0ff, 2.6, 0.45);
+  spawnShockwave(world, foot, 0xbfe0ff, 2.0, 0.4);
   spawnBurst(world, foot, 0x9fd8ff, 10, 4);
 }
 
@@ -414,8 +414,8 @@ export const jumper: KindModule = {
     p.ring.scale.setScalar(0.4 + 0.7 * o);
     p.ring.visible = o > 0.02;
     p.glow.position.y = coreY;
-    p.glow.scale.setScalar(0.8 + 0.5 * o + 0.06 * Math.sin(t * 10));
-    (p.glow.material as THREE.MeshBasicMaterial).opacity = 0.34 * o;
+    p.glow.scale.setScalar(0.7 + 0.45 * o + 0.06 * Math.sin(t * 10));
+    (p.glow.material as THREE.MeshBasicMaterial).opacity = 0.22 * o;
     const colY = -0.27;
     const top = coreY - 0.05;
     p.column.scale.y = Math.max(0.2, (top - colY) / 0.3);

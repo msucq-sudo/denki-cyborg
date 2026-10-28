@@ -5,6 +5,7 @@ import type { World, Enemy } from '../../core/types';
 import { ENEMIES } from '../../config/balance';
 import { makeAABB } from '../../core/collision';
 import { spawnEnemy, updateEnemies, damageEnemy, drainEnemy } from '../enemies';
+import { raycastEnemies, weakPointWorld } from '../../core/enemyUtil';
 import { JUMPER } from './jumper';
 
 const V = (x: number, y: number, z: number) => new THREE.Vector3(x, y, z);
@@ -131,4 +132,19 @@ test('not alerted: stays put with the head closed', () => {
   expect(e.ai.state).toBe('idle');
   expect(Math.hypot(e.pos.x, e.pos.z)).toBeLessThan(0.01);
   expect(e.shielded).toBe(true);
+});
+
+test('ray at the head: closed = body hit only; open = the core is hit as a weak point', () => {
+  const { w, e } = mk(15);
+  step(w, 0.2);
+  const w0 = weakPointWorld(e, e.weakPoints[0]);
+  const from = V(0, w0.y, 8), to = V(0, w0.y, -8);
+  expect(raycastEnemies(w.enemies, from, to)?.weak).toBe(false);
+  e.ai.alert = 100;
+  expect(until(w, () => e.ai.state === 'open')).toBe(true);
+  step(w, 0.4);
+  const w1 = weakPointWorld(e, e.weakPoints[0]);
+  const hit = raycastEnemies(w.enemies, V(e.pos.x, w1.y, e.pos.z + 8), V(e.pos.x, w1.y, e.pos.z - 8));
+  expect(hit?.enemy).toBe(e);
+  expect(hit?.weak).toBe(true);
 });

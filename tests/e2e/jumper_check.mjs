@@ -15,7 +15,7 @@ const exe = process.env.CHROME_EXE ?? (fs.existsSync(winExe) ? winExe : '/opt/pw
 const browser = await chromium.launch({ executablePath: exe, args: ['--use-gl=angle', '--use-angle=swiftshader', '--enable-unsafe-swiftshader'] });
 const page = await browser.newPage({ viewport: { width: 960, height: 540 } });
 const errors = [];
-page.on('console', (m) => { if (m.type() === 'error' && !m.text().includes('ERR_TUNNEL')) errors.push(m.text()); });
+page.on('console', (m) => { if (m.type() === 'error' && !m.text().includes('ERR_TUNNEL') && !m.text().includes('ERR_FAILED')) errors.push(m.text()); });
 page.on('pageerror', (e) => errors.push(String(e)));
 // 外部（フォント等）への通信は切る：スクショが「フォント待ち」で止まるのを防ぐ
 await page.route('**/*', (r) => (r.request().url().startsWith(`http://localhost:${port}`) ? r.continue() : r.abort()));
@@ -82,17 +82,15 @@ try {
       const g = window.__game, w = g.world, e = window.E, p = w.player;
       const keep = { x: p.pos.x, y: p.pos.y, z: p.pos.z, yaw: p.yaw, pitch: p.pitch };
       const saved = w.enemies; w.enemies = [];
-      const place = (dx, dz, dy = 0) => {
-        p.pos.set(e.pos.x + dx, e.pos.y - e.radius + dy, e.pos.z + dz); p.vel.set(0, 0, 0);
-        const ddx = e.pos.x - p.pos.x, ddz = e.pos.z - p.pos.z, ddy = (e.pos.y + 0.5) - (p.pos.y + 1.6);
-        p.yaw = Math.atan2(-ddx, -ddz); p.pitch = Math.atan2(ddy, Math.hypot(ddx, ddz));
-      };
-      if (from === 'front') place(0, 3.2);
-      else if (from === 'side') place(3.4, 1.0);
-      else place(2.6, 2.6, 0.9);
       p.root.visible = false;
+      g.step(1 / 60, 3);
+      // カメラを直接置く（敵の前・横・斜め上から）
+      const cam = w.camera;
+      const at = from === 'front' ? [0.6, 0.9, 6.0] : from === 'side' ? [6.0, 0.9, 1.0] : [4.2, 2.8, 4.2];
+      cam.fov = 38; cam.updateProjectionMatrix();
+      cam.position.set(e.pos.x + at[0], e.pos.y + at[1], e.pos.z + at[2]);
+      cam.lookAt(e.pos.x, e.pos.y + 0.35, e.pos.z);
       document.getElementById('hud') && (document.getElementById('hud').style.display = 'none');
-      g.step(1 / 60, 30);
       g.render();
       w.enemies = saved;
       p.root.visible = true;
