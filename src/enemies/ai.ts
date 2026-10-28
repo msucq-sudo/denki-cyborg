@@ -30,7 +30,10 @@ export function fireAt(
 function warn(e: Enemy, k: number): void { e.ai.warn = k; }
 
 // ---------------------------------------------------------------- drone
-export function updateDrone(c: Ctx): void {
+/** ドローン AI の調整（赤ドローンのジャム用）。既定は等倍 */
+export interface DroneTune { speedMul?: number; intervalMul?: number }
+
+export function updateDrone(c: Ctx, tune: DroneTune = {}): void {
   const { world, e, dt, spec, pc } = c;
   const ai = e.ai;
   ai.t = (ai.t ?? 0) + dt;
@@ -50,7 +53,7 @@ export function updateDrone(c: Ctx): void {
     ai.prefDist = 9.5 + Math.random() * 3;
   }
   const d2 = c.dist2d;
-  const speed = spec.speed;
+  const speed = spec.speed * (tune.speedMul ?? 1);
   // 放射方向（プレイヤーへ向かう）と接線
   const rx = c.dirXZ.x, rz = c.dirXZ.z;
   const tx = -rz * ai.orbitDir, tz = rx * ai.orbitDir;
@@ -83,10 +86,25 @@ export function updateDrone(c: Ctx): void {
         fireAt(world, from, lead, spec.projectileSpeed, spec.damage, 0.015);
         world.events.emit('enemyAttack', { kind: 'drone', pos: e.pos.clone() });
       }
-      ai.atkTimer = spec.attackInterval * (0.85 + Math.random() * 0.3);
+      ai.atkTimer = spec.attackInterval * (tune.intervalMul ?? 1) * (0.85 + Math.random() * 0.3);
     }
   } else if (ai.atkTimer <= 0 && c.los && c.dist < spec.sightRange) {
     ai.windup = 0.35;
+  }
+}
+
+/** ドローンのアニメ（リング・プロペラ・傾き・墜落）。enemies.ts の 'drone' と同じ動き */
+export function animateDrone(e: Enemy, dt: number, down: boolean): void {
+  const ai = e.ai;
+  const p = ai.model.parts;
+  const vis = ai.model.vis as THREE.Group;
+  if (!down) {
+    p.ring.rotation.y += dt * 4;
+    for (const d of p.props) d.rotation.y += dt * 40;
+    vis.rotation.z = THREE.MathUtils.lerp(vis.rotation.z, THREE.MathUtils.clamp(-e.vel.x * 0.05, -0.3, 0.3), Math.min(1, dt * 6));
+  } else {
+    vis.rotation.z = ai.tilt * 1.1 * ai.collapse;
+    vis.rotation.x = 0.5 * ai.collapse;
   }
 }
 

@@ -162,8 +162,8 @@ export const ENEMIES: Record<EnemyKind, {
   missileDrone: { hp: 45, speed: 3.5, radius: 0.7, damage: 9, attackInterval: 4.5, projectileSpeed: 9, weakMultiplier: 2, overloadCap: 14, sightRange: 32 },
   /** ボンバー：小さく丸い。電気の球を投げ、着弾で爆発（中心ほど大ダメージ）。damage=爆心ダメージ。T3-F で調整 */
   bomber:  { hp: 35,  speed: 3.2, radius: 0.45, damage: 22, attackInterval: 2.4, projectileSpeed: 12, weakMultiplier: 2, overloadCap: 12, sightRange: 26 },
-  /** 赤ドローン：ドローンの赤い版。ハッキングできる。T3-C で調整 */
-  redDrone: { hp: 40, speed: 4,   radius: 0.55, damage: 6,  attackInterval: 1.8, projectileSpeed: 18, weakMultiplier: 2, overloadCap: 14, sightRange: 28 },
+  /** 赤ドローン：ドローンの赤い版。ハッキングできる。つなぐと吸収が遅くなる(HACK.drainMul)ので、コード入力の時間が取れるよう体力は多め */
+  redDrone: { hp: 60, speed: 4,   radius: 0.55, damage: 6,  attackInterval: 1.8, projectileSpeed: 18, weakMultiplier: 2, overloadCap: 14, sightRange: 28 },
   boss:    { hp: 900, speed: 2.5, radius: 2.4,  damage: 6,  attackInterval: 2.0, projectileSpeed: 16, weakMultiplier: 2.5, overloadCap: 60, sightRange: 60 },
 };
 

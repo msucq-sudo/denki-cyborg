@@ -12,8 +12,6 @@ import { KIND_MODULES } from '../enemies/kinds';
 export const HACK_FAIL_FLASH = 0.4;
 /** 成功表示の長さ（秒） */
 export const HACK_SUCCESS_FLASH = 2.2;
-/** 成功直後、十字キー/ABXY をゲーム操作に戻さない猶予（押しっぱなしでジャンプしないように） */
-const PAD_RELEASE_GRACE = 0.3;
 
 /** 0以上1未満の乱数（テストで差し替えられる） */
 export type Rng = () => number;
@@ -134,8 +132,17 @@ export function updateHack(world: World, dt: number): void {
   }
 
   world.player.hacking = h.active;
-  // ハッキング中（と成功直後のわずかな間）は十字キー/ABXY をゲーム操作にしない
-  input.padCapture = h.active || h.successFlash > HACK_SUCCESS_FLASH - PAD_RELEASE_GRACE;
+  // ハッキング中は十字キー/ABXY をゲーム操作にしない。終わった（成功・中止）あとも、
+  // 押しっぱなしのボタンが離されるまでは捕まえたままにする（押しっぱなしでジャンプなどが暴発しないように）。
+  // このために、終了後も出題コードは「押しっぱなしのボタンがある間」だけ残しておく
+  const held = h.active || (h.codeKeys.length > 0 && padHeld(input));
+  if (!h.active && !held && h.codeKeys.length > 0) { h.codeKeys = []; h.codePad = []; }
+  input.padCapture = held;
+}
+
+/** パッドの出題ボタン（十字キー・ABXY）のどれかが押されたままか */
+function padHeld(input: World['input']): boolean {
+  return HACK.padKeys.some((k) => input.isDown(k));
 }
 
 function startHack(world: World, e: Enemy): void {

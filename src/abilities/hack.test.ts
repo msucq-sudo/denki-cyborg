@@ -9,7 +9,7 @@ import { HACK } from '../config/balance';
 import { spawnEnemy, updateEnemies } from '../enemies/enemies';
 import { initAbsorb, updateAbsorb } from './absorb';
 import {
-  codeToKeys, codeToPad, generateCode, indexOfKey, initHack, stepCode, updateHack, HACK_SUCCESS_FLASH,
+  codeToKeys, codeToPad, generateCode, indexOfKey, initHack, stepCode, updateHack,
 } from './hack';
 
 const V = (x: number, y: number, z: number) => new THREE.Vector3(x, y, z);
@@ -71,6 +71,9 @@ class FakeInput {
   rawPressed(c: string) { return this.pressedSet.has(c); }
   /** このフレームに押した */
   tap(c: string) { this.pressedSet.add(c); }
+  /** 押しっぱなしにする／離す */
+  hold(c: string) { this.down.add(c); this.pressedSet.add(c); }
+  release(c: string) { this.down.delete(c); }
   endFrame() { this.pressedSet.clear(); }
 }
 
@@ -180,9 +183,7 @@ describe('hacking flow', () => {
     expect(['retracting', 'cooldown']).toContain(world.absorb.phase);
     expect(world.absorb.target).toBe(null);
     expect(e.tethered).toBe(false);
-    // 押しっぱなしでジャンプしないよう少しだけ猶予してから解除
-    expect(input.padCapture).toBe(true);
-    step(Math.ceil((HACK_SUCCESS_FLASH) * 60));
+    // 何も押しっぱなしでなければ、すぐにゲーム操作へ戻る
     expect(input.padCapture).toBe(false);
     // 味方になった敵は吸収もできない
     expect(e.hp).toBeGreaterThan(0);
@@ -251,6 +252,49 @@ describe('hacking flow', () => {
     expect(world.player.hacking).toBe(false);
     expect(input.padCapture).toBe(false);
     expect(e.allied).toBeFalsy();
+  });
+
+  it('keeps capturing after success until a held pad button is released', () => {
+    const e = spawnEnemy(world, 'redWalker', V(0, 0.7, -6));
+    attach(e);
+    step();
+    typeCorrect(HACK.codeLength - 1);
+    // 最後の1個を押しっぱなしにして完成させる
+    const last = HACK.padKeys[nextIndex()];
+    input.hold(last);
+    step();
+    expect(e.allied).toBe(true);
+    step(30);
+    expect(input.padCapture).toBe(true); // まだ押している：ジャンプなどに化けさせない
+    input.release(last);
+    step();
+    expect(input.padCapture).toBe(false);
+  });
+
+  it('keeps capturing after a cancel until a held pad button is released', () => {
+    const e = spawnEnemy(world, 'redWalker', V(0, 0.7, -6));
+    attach(e);
+    step();
+    typeCorrect(2);
+    const held = HACK.padKeys[nextIndex()];
+    input.hold(held);
+    step();
+    input.tap('KeyE'); // 解除（LB）
+    step();
+    expect(world.hack.active).toBe(false);
+    step(30);
+    expect(input.padCapture).toBe(true);
+    input.release(held);
+    step();
+    expect(input.padCapture).toBe(false);
+    // 出題コードの残りも片付く
+    expect(world.hack.codeKeys).toHaveLength(0);
+  });
+
+  it('does not capture the pad when no hack has happened (A-hold jetpack etc.)', () => {
+    input.hold('PadA');
+    step(10);
+    expect(input.padCapture).toBe(false);
   });
 
   it('cancels when the target is gone, and never leaves padCapture stuck', () => {
