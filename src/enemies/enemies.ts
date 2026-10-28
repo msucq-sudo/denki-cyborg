@@ -7,7 +7,7 @@ import { spawnBurst, spawnFlash, spawnShockwave } from '../core/effects';
 import { isTargetable } from '../core/enemyUtil';
 import { buildModel, disposeObject, type Model } from './models';
 import { fall, faceToward, makeCtx, separate } from './common';
-import { updateCrawler, updateDrone, updateGunner, updateHeavy } from './ai';
+import { animateDrone, updateCrawler, updateDrone, updateGunner, updateHeavy } from './ai';
 import { initBossAI, updateBoss } from './boss';
 import { KIND_MODULES } from './kinds';
 import { makeDormant, updateDormant, type DormantOpts } from './dormant';
@@ -428,17 +428,7 @@ function animate(world: World, e: Enemy, dt: number): void {
   // ---- 種類別アニメ
   const p = model.parts;
   switch (e.kind) {
-    case 'drone': {
-      if (!down) {
-        p.ring.rotation.y += dt * 4;
-        for (const d of p.props) d.rotation.y += dt * 40;
-        vis.rotation.z = THREE.MathUtils.lerp(vis.rotation.z, THREE.MathUtils.clamp(-e.vel.x * 0.05, -0.3, 0.3), Math.min(1, dt * 6));
-      } else {
-        vis.rotation.z = ai.tilt * 1.1 * ai.collapse;
-        vis.rotation.x = 0.5 * ai.collapse;
-      }
-      break;
-    }
+    case 'drone': animateDrone(e, dt, down); break;
     case 'crawler': {
       const legs: THREE.Group[] = p.legs;
       if (!down) {
