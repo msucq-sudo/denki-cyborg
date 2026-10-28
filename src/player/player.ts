@@ -9,6 +9,9 @@ import { spawnProjectile } from '../core/projectiles';
 import { isGrappling, stepGrapple } from '../core/grapple';
 import { buildPlayerVisual, CYAN, type PlayerVisual } from './visual';
 import { WEAPONS } from './weapons';
+import {
+  dodgeCost, dodgeInvuln, flightDrainPerSec, gunChargeMaxDamage, gunDamage, gunTapCost, moveSpeed, syncPlayerStats,
+} from '../progression/effects';
 import { createAnimState, poseCharacter, type AnimState } from './pose';
 import {
   applyLook, cameraForward, cameraRight, chargeAdvance, chargeDamage, chargedBulletSize, moveVector, smoothAngle,
@@ -92,6 +95,9 @@ export function updatePlayer(world: World, dt: number): void {
     return;
   }
 
+  // 強化で決まる数値（最大HP）を反映
+  syncPlayerStats(world);
+
   // タイマー
   p.invuln = Math.max(0, p.invuln - dt);
   p.dodgeCooldown = Math.max(0, p.dodgeCooldown - dt);
@@ -130,12 +136,12 @@ export function updatePlayer(world: World, dt: number): void {
   if (dodgePressed) {
     if (p.charging) {
       cancelCharge(world, s);
-    } else if (p.dodgeCooldown <= 0 && p.dodgeTimer <= 0 && spendEnergy(world, DODGE.cost)) {
+    } else if (p.dodgeCooldown <= 0 && p.dodgeTimer <= 0 && spendEnergy(world, dodgeCost(world))) {
       if (hasInput) p.dodgeDir.set(mv.x, 0, mv.z).normalize();
       else { const f = cameraForward(p.yaw, 0); p.dodgeDir.set(f.x, 0, f.z).normalize(); }
       p.dodgeTimer = DODGE.duration;
       p.dodgeCooldown = DODGE.cooldown;
-      p.invuln = Math.max(p.invuln, DODGE.invuln);
+      p.invuln = Math.max(p.invuln, dodgeInvuln(world));
       s.afterT = 0;
       world.events.emit('dodge', {});
     }
@@ -143,7 +149,7 @@ export function updatePlayer(world: World, dt: number): void {
   const dodging = p.dodgeTimer > 0;
 
   // 水平速度
-  let speed = PLAYER.moveSpeed;
+  let speed = moveSpeed(world);
   if (p.charging) speed *= PLAYER.chargeMoveMul;
   if (p.absorbing) speed *= PLAYER.absorbMoveMul;
   if (input.mouse(2)) speed *= CAMERA.aim.moveMul;
@@ -181,7 +187,7 @@ export function updatePlayer(world: World, dt: number): void {
   let wantFly = world.functions.flight && spaceDown && !p.onGround && p.energy > 0 && !p.absorbing
     && (wasFlying || p.vel.y <= F.engageVy);
   if (wantFly) {
-    const ratio = drainEnergy(world, F.flyingDrainPerSec * dt);
+    const ratio = drainEnergy(world, flightDrainPerSec(world) * dt);
     if (ratio < 1) wantFly = p.energy > 0;
   }
   if (!wantFly && !wasFlying && world.functions.flight && spaceDown && !p.onGround && p.energy <= 0 && p.vel.y <= F.engageVy) {
@@ -373,7 +379,7 @@ export function updateGun(world: World, dt: number): void {
   if (s.tapQueue > 0) {
     s.tapQueue -= dt;
     if (p.charging) s.tapQueue = 0;
-    else if (p.fireCooldown <= 0 && spendEnergy(world, GUN.tapCost)) {
+    else if (p.fireCooldown <= 0 && spendEnergy(world, gunTapCost(world))) {
       fire(world, false, 0);
       p.fireCooldown = GUN.tapInterval;
       s.tapQueue = 0;
@@ -422,13 +428,13 @@ function fire(world: World, charged: boolean, charge: number): void {
   if (charged) {
     const b = chargedBulletSize(charge);
     spawnProjectile(world, {
-      pos: origin, vel: dir.multiplyScalar(GUN.chargedBulletSpeed), damage: chargeDamage(charge),
+      pos: origin, vel: dir.multiplyScalar(GUN.chargedBulletSpeed), damage: chargeDamage(charge, gunChargeMaxDamage(world)),
       owner: 'player', radius: b.radius, size: b.size, life: GUN.bulletLife, charged: true, color: 0x9ff4ff,
     });
     st(world).muzzleFlash = 0.18 + charge * 0.1;
   } else {
     spawnProjectile(world, {
-      pos: origin, vel: dir.multiplyScalar(GUN.bulletSpeed), damage: GUN.tapDamage,
+      pos: origin, vel: dir.multiplyScalar(GUN.bulletSpeed), damage: gunDamage(world),
       owner: 'player', radius: 0.12, life: GUN.bulletLife, charged: false,
     });
     st(world).muzzleFlash = 0.1;

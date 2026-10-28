@@ -1,7 +1,8 @@
 // 主人公の手続きアニメーション。毎フレーム、すべての関節を状態から計算し直し（スカラーだけ指数平滑）、
 // 状態間をなめらかにブレンドする。ゲームロジックの状態は読むだけ。
 import * as THREE from 'three';
-import { ABSORB, CHARACTER, DODGE, PLAYER } from '../config/balance';
+import { ABSORB, CHARACTER, DODGE } from '../config/balance';
+import { moveSpeed } from '../progression/effects';
 import type { World } from '../core/types';
 import type { PlayerVisual, ArmRig } from './visual';
 
@@ -92,7 +93,7 @@ export function poseCharacter(world: World, v: PlayerVisual, a: AnimState, dt: n
 
   // ---------- 状態スカラー ----------
   a.moveK = smooth(a.moveK, grounded && !dodging && hs > 0.5 ? 1 : 0, A.moveRate, dt);
-  a.runK = smooth(a.runK, hs > PLAYER.moveSpeed * 1.25 ? 1 : 0, A.runRate, dt);
+  a.runK = smooth(a.runK, hs > moveSpeed(world) * 1.25 ? 1 : 0, A.runRate, dt);
   if (hs > 0.3) { a.fwdF = smooth(a.fwdF, fwd / hs, 14, dt); a.sideF = smooth(a.sideF, side / hs, 14, dt); }
   if (grounded && hs > 0.3) a.phase += (hs / mix(A.strideWalk, A.strideRun, a.runK)) * Math.PI * 2 * dt;
   a.airK = smooth(a.airK, !grounded && !flying && !dodging ? 1 : 0, A.airRate, dt);
@@ -137,7 +138,7 @@ export function poseCharacter(world: World, v: PlayerVisual, a: AnimState, dt: n
   const breath = Math.sin(t * A.breathRate);
   const sway = Math.sin(t * A.swayRate);
   const runK = a.runK, moveK = a.moveK, aimK = a.aimK;
-  const ampScale = clamp(0.3 + (0.7 * hs) / PLAYER.moveSpeed, 0.3, 1);
+  const ampScale = clamp(0.3 + (0.7 * hs) / moveSpeed(world), 0.3, 1);
   const legAmp = mix(A.legAmpWalk, A.legAmpRun, runK) * ampScale;
   const k0 = mix(A.kneeWalk[0], A.kneeRun[0], runK), k1 = mix(A.kneeWalk[1], A.kneeRun[1], runK);
   const cK = a.chargeK;

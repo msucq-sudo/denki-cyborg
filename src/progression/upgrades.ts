@@ -4,6 +4,7 @@
 // - 通貨は歯車（world.inventory.gears）
 // 状態は world.upgrades に持つ（リトライで World を作り直すため。階の移動では main.ts が引き継ぐ）
 import type { World } from '../core/types';
+import { ABSORB, DASH, DODGE, FUNCTIONS, GUN, HACK, OVERLOAD, PLAYER } from '../config/balance';
 
 export type Category = 'gun' | 'body' | 'arm' | 'skill';
 
@@ -38,64 +39,80 @@ export interface TrackRef { category: Category; id: string }
 /** world.upgrades：項目 id → 今のレベル（1 から）。無い項目はレベル1 */
 export type UpgradeState = Record<string, number>;
 
-// ---------------------------------------------------------------- データ（T4-A で数値を決める）
+// ---------------------------------------------------------------- データ
+// レベル1の値は balance.ts の定数から作る（定数を変えてもズレない）。
+// 歯車は1階に7個しかないので、最初のレベルアップは1〜2個、その先は急に高くして「何を上げるか」を選ばせる。
+
+const round = (v: number, digits: number): number => Math.round(v * 10 ** digits) / 10 ** digits;
+/** base に倍率をかけた段階表。factors[0] は 1（＝初期値そのまま） */
+const mul = (base: number, factors: number[], digits = 0): number[] => factors.map((f) => round(base * f, digits));
+/** base に差を足した段階表。deltas[0] は 0 */
+const add = (base: number, deltas: number[], digits = 0): number[] => deltas.map((d) => round(base + d, digits));
+
+/** 銃・ボディ・アームの強化段階（Lv1〜5）の倍率 */
+const MAIN_FACTORS = [1, 1.15, 1.3, 1.5, 1.7];
 
 export const GUN_TRACKS: Track[] = [
   {
     id: 'gun.pistol', category: 'gun', name: 'ピストル', desc: '電気銃。1発が重い',
-    costs: [1, 1, 2, 2],
+    costs: [1, 2, 3, 4],
     stats: [
-      { key: 'damage', label: 'ダメージ', values: [20, 23, 26, 30, 34] },
-      { key: 'chargeDamage', label: '溜め撃ちダメージ', values: [48, 54, 60, 68, 76] },
-      { key: 'cost', label: '消費電力', values: [8, 8, 7, 7, 6], lowerIsBetter: true },
+      { key: 'damage', label: '単発のダメージ', values: mul(GUN.tapDamage, MAIN_FACTORS) },
+      { key: 'chargeDamage', label: '溜め撃ちの最大ダメージ', values: mul(GUN.chargeMaxDamage, MAIN_FACTORS) },
+      { key: 'cost', label: '単発の消費電力', values: add(GUN.tapCost, [0, 0, -1, -1, -2]), lowerIsBetter: true },
     ],
   },
 ];
 
 export const BODY_TRACK: Track = {
   id: 'body', category: 'body', name: 'ボディ', desc: '体の耐久力',
-  costs: [1, 1, 2, 2],
+  costs: [1, 2, 3, 4],
   stats: [
-    { key: 'maxHp', label: '最大HP', values: [100, 115, 130, 145, 160] },
-    { key: 'defense', label: '防御力', digits: 2, values: [1, 1.05, 1.1, 1.15, 1.2] },
+    { key: 'maxHp', label: '最大HP', values: add(PLAYER.maxHp, [0, 15, 30, 45, 60]) },
+    // 受けるダメージを何%減らすか（レベル1は0%＝今まで通り）
+    { key: 'reduction', label: '被ダメージ軽減', unit: '%', values: [0, 5, 10, 15, 20] },
   ],
 };
 
 export const ARM_TRACK: Track = {
   id: 'arm', category: 'arm', name: 'アーム', desc: '吸収アームの性能',
-  costs: [1, 1, 2, 2],
+  costs: [1, 2, 3, 4],
   stats: [
-    { key: 'drainPerSec', label: '吸収スピード', unit: '/秒', values: [20, 23, 26, 30, 34] },
-    { key: 'conversion', label: '吸収量', unit: '%', values: [65, 70, 75, 80, 85] },
-    { key: 'overloadPerSec', label: '逆流量', unit: '/秒', values: [25, 28, 31, 35, 40] },
+    { key: 'drainPerSec', label: '吸収スピード', unit: '/秒', values: mul(ABSORB.drainPerSec, MAIN_FACTORS) },
+    // 吸った量のうち電力になる割合（%）。ABSORB.conversion は 0..1 なので 100 倍して持つ
+    { key: 'conversion', label: '電力への変換', unit: '%', values: add(round(ABSORB.conversion * 100, 2), [0, 5, 10, 15, 20]) },
+    { key: 'overloadPerSec', label: '逆流量', unit: '/秒', values: mul(OVERLOAD.energyPerSec, [1, 1.12, 1.24, 1.4, 1.6]) },
   ],
 };
 
 export const SKILL_TRACKS: Track[] = [
   {
     id: 'skill.jetpack', category: 'skill', name: 'ジェットパック', desc: '滞空中の電力消費が減る',
-    costs: [1, 2, 2],
-    stats: [{ key: 'drainMul', label: '滞空の消費', unit: '%', values: [100, 85, 70, 55], lowerIsBetter: true }],
+    costs: [2, 3, 4],
+    stats: [{ key: 'drainPerSec', label: '滞空の消費電力', unit: '/秒', digits: 1, lowerIsBetter: true, values: mul(FUNCTIONS.flight.flyingDrainPerSec, [1, 0.85, 0.7, 0.55], 2) }],
   },
   {
     id: 'skill.speed', category: 'skill', name: '素早さ', desc: '移動とダッシュが速くなる',
-    costs: [1, 2, 2],
-    stats: [{ key: 'moveMul', label: '移動速度', unit: '%', values: [100, 106, 112, 118] }],
+    costs: [2, 3, 4],
+    stats: [
+      { key: 'moveSpeed', label: '移動速度', unit: ' m/s', digits: 1, values: mul(PLAYER.moveSpeed, [1, 1.06, 1.12, 1.18], 3) },
+      { key: 'dashSpeed', label: 'ダッシュ速度', unit: ' m/s', digits: 1, values: mul(PLAYER.moveSpeed * DASH.speedMul, [1, 1.06, 1.12, 1.18], 3) },
+    ],
   },
   {
     id: 'skill.dodge', category: 'skill', name: '回避', desc: '回避の消費が減り、無敵時間が伸びる',
-    costs: [1, 2, 2],
+    costs: [2, 3, 4],
     stats: [
-      { key: 'cost', label: '回避の消費', values: [4, 3.5, 3, 2.5], digits: 1, lowerIsBetter: true },
-      { key: 'invuln', label: '無敵時間', unit: '秒', digits: 2, values: [0.32, 0.36, 0.4, 0.45] },
+      { key: 'cost', label: '回避の消費電力', digits: 1, lowerIsBetter: true, values: add(DODGE.cost, [0, -0.5, -1, -1.5], 2) },
+      { key: 'invuln', label: '無敵時間', unit: '秒', digits: 2, values: add(DODGE.invuln, [0, 0.04, 0.08, 0.13], 2) },
     ],
   },
   {
     id: 'skill.hack', category: 'skill', name: 'ハッキング', desc: '味方でいる時間が伸び、入力ミスの電力が減る',
-    costs: [1, 2, 2],
+    costs: [2, 3, 4],
     stats: [
-      { key: 'allyTime', label: '味方の時間', unit: '秒', values: [20, 25, 30, 36] },
-      { key: 'failEnergy', label: 'ミスの電力', values: [3, 2, 1, 0], lowerIsBetter: true },
+      { key: 'allyTime', label: '味方でいる時間', unit: '秒', values: add(HACK.allyTime, [0, 5, 10, 16]) },
+      { key: 'failEnergy', label: 'ミス1回の消費電力', lowerIsBetter: true, values: add(HACK.failEnergy, [0, -1, -2, -3]) },
     ],
   },
 ];
@@ -134,6 +151,13 @@ export function upgrade(world: World, t: Track): boolean {
   world.inventory.gears -= c;
   const lv = getLevel(world, t.id) + 1;
   world.upgrades[t.id] = lv;
+  // ボディを上げたら、最大HPが増えた分だけ今のHPも増やす
+  if (t.id === BODY_TRACK.id) {
+    const p = world.player;
+    const maxHp = statAt(world, BODY_TRACK.id, 'maxHp');
+    if (maxHp > p.maxHp && p.hp > 0) p.hp += maxHp - p.maxHp;
+    p.maxHp = maxHp;
+  }
   world.events.emit('upgrade', { id: t.id, level: lv });
   return true;
 }
