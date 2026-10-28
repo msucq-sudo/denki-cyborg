@@ -106,7 +106,8 @@ try {
   await page.evaluate((c) => window.__game.input.simulateKey(c, true), wrong);
   await run(2);
   await page.evaluate((c) => window.__game.input.simulateKey(c, false), wrong);
-  await run(4);
+  await run(2);
+  check('panel shakes red on a miss (fail class)', await page.evaluate(() => document.querySelector('.hack').classList.contains('fail')));
   await shot('4_fail');
   s = await state();
   check('wrong key resets progress', s.progress === 0 && s.ev.badIn === 1, s);
@@ -137,7 +138,13 @@ try {
   });
   const hp0 = (await state()).foeHp;
   if (process.env.NOSHOT) for (let i = 0; i < 6; i++) { await run(30); console.log(JSON.stringify(await page.evaluate(() => ({ rw: window.RW.pos.toArray().map((v) => +v.toFixed(1)), yaw: +window.RW.ai.yaw.toFixed(2), tgt: window.RW.ai.allyTarget?.kind ?? null, foe: window.FOE.pos.toArray().map((v) => +v.toFixed(1)), hp: window.FOE.hp, bolts: (window.RW.ai.bolts ?? []).length, atk: window.RW.ai.atkTimer })))); }
-  await run(90);
+  // 弾が飛んでいる瞬間を撮る
+  let flying = 0;
+  for (let i = 0; i < 150 && flying === 0; i++) { await run(1); flying = await page.evaluate(() => (window.RW.ai.bolts ?? []).length); }
+  await run(2);
+  check('ally bolt spawned', flying > 0, flying);
+  await shot('7_ally_bolt');
+  await run(60);
   await shot('7_ally_attack');
   await run(60);
   s = await state();
