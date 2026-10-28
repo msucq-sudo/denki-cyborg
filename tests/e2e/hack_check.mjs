@@ -1,4 +1,5 @@
-// 使い方: CHROME_EXE=... node tests/e2e/hack_check.mjs   （ポート 5303）
+// 使い方: CHROME_EXE=... [KIND=redDrone] node tests/e2e/hack_check.mjs   （ポート 5303）
+// KIND は redWalker（既定）か redDrone。redDrone のときは出力が reddrone_*.png
 // 赤ウォーカーにハッキング → コード入力 → 味方 → 他の敵を撃つ、の流れを撮って確認する。
 // 出力: tests/e2e/out/hack_*.png
 import { chromium } from 'playwright-core';
@@ -7,6 +8,8 @@ import fs from 'node:fs';
 
 const port = Number(process.env.PORT ?? 5303);
 const outDir = 'tests/e2e/out';
+const KIND = process.env.KIND ?? 'redWalker';
+const PFX = KIND === 'redDrone' ? 'reddrone' : 'hack';
 fs.mkdirSync(outDir, { recursive: true });
 const server = await createServer({ server: { port, strictPort: true, hmr: false, watch: null }, logLevel: 'error' });
 await server.listen();
@@ -22,7 +25,7 @@ const run = (n, dt = 1 / 60) => page.evaluate(([n, dt]) => window.__game.step(dt
 const shot = async (name) => {
   if (process.env.NOSHOT) return;
   await page.evaluate(() => window.__game.render());
-  await page.screenshot({ path: `${outDir}/hack_${name}.png`, timeout: 280000 });
+  await page.screenshot({ path: `${outDir}/${PFX}_${name}.png`, timeout: 280000 });
   console.log('shot', name);
 };
 const state = () => page.evaluate(() => {
@@ -47,7 +50,7 @@ try {
   await page.waitForFunction(() => !!window.__game, null, { timeout: 120000 });
   // ソフトウェア描画では backdrop-filter（ぼかし）が非常に遅いので、撮影中だけ切る（見た目はほぼ同じ）
   await page.addStyleTag({ content: '*, *::before, *::after { -webkit-backdrop-filter: none !important; backdrop-filter: none !important; }' });
-  await page.evaluate(async () => {
+  await page.evaluate(async (kind) => {
     window.__api = await import('/src/enemies/api.ts');
     const g = window.__game, w = g.world, T = g.THREE;
     g.start();
@@ -68,9 +71,10 @@ try {
     g.events.on('hackSuccess', () => window.EV.hackSuccess++);
     g.events.on('allyExpire', () => window.EV.allyExpire++);
     g.events.on('hackInput', (p) => { if (p.ok) window.EV.okIn++; else window.EV.badIn++; });
-    window.RW = window.__api.spawnEnemy(w, 'redWalker', new T.Vector3(OX, 0.7, -6));
-    window.RW.ai.alert = 4;
-  });
+    // ドローンは吸収アームが確実に当たるよう、つなぐまで浮いて待たせる（つなぐと update が警戒状態にする）
+    window.RW = window.__api.spawnEnemy(w, kind, new T.Vector3(OX, kind === 'redDrone' ? 1.6 : 0.7, -6));
+    if (kind !== 'redDrone') window.RW.ai.alert = 4;
+  }, KIND);
   await run(30);
 
   // ---- 吸収アームをつなぐ（E）
@@ -121,6 +125,7 @@ try {
   s = await state();
   check('allied after the full code', s.rw?.allied === true && s.ev.hackSuccess === 1, s);
   await run(4);
+  check('ally HUD timer uses the enemy name', (await page.evaluate(() => document.querySelector('.ally-name').textContent)) === (KIND === 'redDrone' ? '味方：赤ドローン' : '味方：赤ウォーカー'));
   await shot('6_success');
   await run(30);
   s = await state();

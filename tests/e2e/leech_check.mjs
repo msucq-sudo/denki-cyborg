@@ -92,7 +92,7 @@ try {
     }, back).then((url) => fs.writeFileSync(`tests/e2e/out/leech_${name}.png`, Buffer.from(url.split(',')[1], 'base64')));
     console.log('shot', name);
   };
-  /** クロスヘアがリーチに乗るまで yaw/pitch を探す（肩越しカメラなので真正面では外れる）。乗れば true */
+  /** 吸収アームの線がリーチに当たるまで yaw/pitch を探す（肩越しカメラなので真正面では外れる）。乗れば true */
   const aimOn = () => page.evaluate(() => {
     const g = window.__game, w = g.world, e = window.E, p = w.player;
     const dx = e.pos.x - p.pos.x, dz = e.pos.z - p.pos.z, dy = e.pos.y - (p.pos.y + 1.6);
@@ -102,7 +102,12 @@ try {
         for (const dp of [0, 0.03, -0.03]) {
           p.yaw = yaw0 + sgn * k * 0.01; p.pitch = pitch0 + dp;
           g.step(1 / 60, 1);
-          if (w.aimTarget === e) return true;
+          // 吸収アームは aimOrigin から aimDir へ伸びる。その線がリーチ（半径+先端0.2）に当たるか
+          const o = w.aimOrigin, d = w.aimDir;
+          const rx = e.pos.x - o.x, ry = e.pos.y - o.y, rz = e.pos.z - o.z;
+          const tt = rx * d.x + ry * d.y + rz * d.z;
+          const off = Math.hypot(rx - d.x * tt, ry - d.y * tt, rz - d.z * tt);
+          if (tt > 0 && off < 0.35) return true;
         }
       }
     }
@@ -142,14 +147,12 @@ try {
   s = await info();
   for (let i = 0; i < 400 && s.arm !== 'attached'; i++) { await aim(); await S(1 / 60, 3); s = await info(); }
   let tethered = false;
-  console.log('tether phase', Date.now());
   for (let tries = 0; tries < 8 && !tethered; tries++) {
-    const on = await aimOn();
-    console.log('try', tries, 'aimOn', on, Date.now());
+    await aimOn();
     await page.evaluate(() => { window.__game.world.player.energy = Math.max(window.__game.world.player.energy, 30); window.__game.input.simulateKey('KeyE', true); });
     await S(1 / 60, 2);
     await page.evaluate(() => window.__game.input.simulateKey('KeyE', false));
-    await S(1 / 60, 8);
+    await S(1 / 60, 22);
     s = await info();
     tethered = s.tethered && s.target;
     if (!tethered) await S(1 / 60, 60);
