@@ -8,7 +8,7 @@ import fs from 'node:fs';
 const port = 5306;
 const outDir = 'tests/e2e/out';
 fs.mkdirSync(outDir, { recursive: true });
-const server = await createServer({ server: { port, strictPort: true }, logLevel: 'error' });
+const server = await createServer({ server: { port, strictPort: true, hmr: false, watch: null }, logLevel: 'error' });
 await server.listen();
 const exe = process.env.CHROME_EXE ?? '/opt/pw-browsers/chromium_headless_shell-1243/chrome-headless-shell-linux64/chrome-headless-shell';
 const browser = await chromium.launch({ executablePath: exe, args: ['--use-gl=angle', '--use-angle=swiftshader', '--enable-unsafe-swiftshader'] });
@@ -54,6 +54,7 @@ try {
     g.events.on('playerHit', (p) => window.log.hit.push(p.amount));
   });
   await ev(() => window.__game.start());
+  await ev(() => { const h = document.getElementById('hud'); if (h) h.style.display = 'none'; });
   await ev(() => window.__game.step(1 / 60, 5));
   // ボンバーを配置してプレイヤーは止まったまま向き合う
   await ev(async () => {
@@ -98,18 +99,18 @@ try {
     window.E.ai.atkTimer = 99;
     w.player.hp = w.player.maxHp; w.player.invuln = 0;
     window.log.hit.length = 0;
-    const c = window.__game.current.player.pos.clone().add(new T.Vector3(1.2, 0.2, -2.5));
+    const c = window.__game.current.player.pos.clone().add(new T.Vector3(1.2, 4, -2.5));
     import('/src/core/projectiles.ts').then(({ spawnProjectile }) => {
       spawnProjectile(w, {
-        pos: c, vel: new T.Vector3(0, -2, 0), damage: 22, owner: 'enemy', radius: 0.2, size: 0.22, life: 2, gravity: 0, color: 0x7fe0ff,
+        pos: c, vel: new T.Vector3(0, 0, 0), damage: 22, owner: 'enemy', radius: 0.2, size: 0.22, life: 3, gravity: 10, color: 0x7fe0ff,
         shootable: true, hp: 10, blast: { radius: 3.5, color: 0x7fe0ff, damage: 22, minMul: 0.25, onExpire: true, warnRing: true },
       });
     });
   });
-  await S(1 / 60, 8);
+  await S(1 / 60, 25);
   await shot('flight_near');
-  for (let i = 0; i < 40; i++) await S(1 / 60, 1);
-  await S(1 / 60, 4);
+  for (let i = 0; i < 80 && (await orbState()); i++) await S(1 / 60, 1);
+  await S(1 / 60, 3);
   await shot('blast_near');
   const hit = await ev(() => window.log.hit);
   check('近い爆発でダメージ（満タンより小さく 0 より大きい）', hit.length === 1 && hit[0] > 5 && hit[0] < 22, hit);
