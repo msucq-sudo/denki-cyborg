@@ -16,6 +16,16 @@ export interface EnemyInfo {
 
 export const ENEMY_ORDER: EnemyKind[] = ['drone', 'crawler', 'gunner', 'walker', 'heavy', 'heavyWalker', 'missile', 'boss'];
 
+/** 図鑑番号（ENEMY_ORDER の順に 1 から）。マップ・図鑑・データ一覧で共通 */
+export function enemyNo(kind: EnemyKind): number { return ENEMY_ORDER.indexOf(kind) + 1; }
+/** 'No.01' 形式 */
+export function enemyNoLabel(kind: EnemyKind): string { return `No.${String(enemyNo(kind)).padStart(2, '0')}`; }
+/** マップの印の色（種類ごと） */
+export const ENEMY_COLOR: Record<EnemyKind, string> = {
+  drone: '#3aa0ff', crawler: '#f08a24', gunner: '#c79a00', walker: '#2fa86a',
+  heavy: '#d23c3c', heavyWalker: '#8a3cd2', missile: '#444c5c', boss: '#000000',
+};
+
 export const ENEMY_INFO: Record<EnemyKind, EnemyInfo> = {
   drone: {
     name: 'ドローン', role: '浮遊射撃',

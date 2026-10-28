@@ -1,6 +1,7 @@
 // 1階の平面図（書き込み用）。配置データから2Dで描く。方眼＝10m（A,B,C… × 1,2,3…）
 import { generateFloor1, type BoxPrim } from '../level/floor1/plan';
 import type { EnemyKind } from '../config/balance';
+import { ENEMY_COLOR, ENEMY_INFO, ENEMY_ORDER, enemyNo, enemyNoLabel } from '../config/enemyInfo';
 
 const PX = 12;            // 1m あたりのピクセル
 const PAD = 70;           // 余白（方眼ラベル用）
@@ -19,7 +20,7 @@ for (const b of boxes) {
 minX = Math.floor((minX - 2) / GRID) * GRID; maxX = Math.ceil((maxX + 2) / GRID) * GRID;
 minZ = Math.floor((minZ - 2) / GRID) * GRID; maxZ = Math.ceil((maxZ + 2) / GRID) * GRID;
 
-const LEGEND_W = 300;
+const LEGEND_W = 360;
 const W = (maxX - minX) * PX + PAD * 2 + LEGEND_W;
 const H = (maxZ - minZ) * PX + PAD * 2;
 const cv = document.getElementById('sheet') as HTMLCanvasElement;
@@ -32,13 +33,30 @@ const rect = (b: { x0: number; x1: number; z0: number; z1: number }, fill: strin
   if (stroke) { c.strokeStyle = stroke; c.lineWidth = lw; c.strokeRect(X(b.x0), Z(b.z0), (b.x1 - b.x0) * PX, (b.z1 - b.z0) * PX); }
 };
 
+// 配置されている敵の一覧（通し番号 #1, #2…）。ゾーン順・出現順
+interface Placed { id: number; kind: EnemyKind; x: number; z: number; zone: string; mode: 'pod' | 'drop'; high: boolean }
+const placed: Placed[] = [];
+for (const zn of plan.zones) {
+  for (const s of [...zn.spawns, ...((zn as { then?: typeof zn.spawns }).then ?? [])]) {
+    const mode = s.kind === 'drone' || (s as { mode?: string }).mode === 'drop' ? 'drop' : 'pod';
+    placed.push({ id: placed.length + 1, kind: s.kind, x: s.x, z: s.z, zone: zn.name, mode, high: !!s.floor });
+  }
+}
+/** 方眼の番地（例：C9） */
+const cellOf = (x: number, z: number) => `${colName(Math.floor((x - minX) / GRID))}${Math.floor((z - minZ) / GRID) + 1}`;
+const colName = (i: number) => (i < 26 ? String.fromCharCode(65 + i) : 'A' + String.fromCharCode(65 + i - 26));
+
+/** 強調表示する敵の種類（null＝全部） */
+let focus: EnemyKind | null = null;
+
+function draw(): void {
+c.globalAlpha = 1;
 c.fillStyle = '#ffffff'; c.fillRect(0, 0, W, H);
 
 // 床
 for (const b of boxes) if (b.tag === 'floor') rect(b, '#e9edf2');
 
 // 方眼
-const colName = (i: number) => (i < 26 ? String.fromCharCode(65 + i) : 'A' + String.fromCharCode(65 + i - 26));
 c.font = 'bold 15px "Noto Sans JP", sans-serif';
 c.textAlign = 'center'; c.textBaseline = 'middle';
 for (let x = minX, i = 0; x <= maxX; x += GRID, i++) {
@@ -97,35 +115,33 @@ const dot = (x: number, z: number, r: number, fill: string, label?: string, labe
 // 充電ポイント・修理キット
 for (const p of plan.pads) dot(p.x, p.z, 9, '#18b6d6', '電');
 for (const k of plan.kits) dot(k.x, k.z, 8, '#ff6b8a', '+', '#fff', 'bold 15px sans-serif');
-// 敵
-const KIND: Record<EnemyKind, [string, string]> = {
-  drone: ['D', '#3aa0ff'], crawler: ['C', '#f08a24'], gunner: ['G', '#d4a800'], walker: ['W', '#2fa86a'],
-  heavy: ['H', '#d23c3c'], heavyWalker: ['HW', '#8a3cd2'], missile: ['M', '#444'], boss: ['B', '#000'],
-};
-for (const z of plan.zones) {
-  const lists: [typeof z.spawns, string][] = [[z.spawns, 'w1']];
-  for (const [list, tag] of lists) {
-    for (const s of list) {
-      const [lab, col] = KIND[s.kind];
-      const r = s.kind === 'heavy' || s.kind === 'heavyWalker' || s.kind === 'missile' ? 11 : 9;
-      if (tag === 'w1') {
-        // 地上＝ポッド（四角）、ドローン＝天井から（丸）
-        if (s.kind === 'drone' || s.mode === 'drop') dot(s.x, s.z, r, col, lab);
-        else {
-          c.fillStyle = col; c.fillRect(X(s.x) - r, Z(s.z) - r, r * 2, r * 2);
-          c.strokeStyle = '#fff'; c.lineWidth = 1.5; c.strokeRect(X(s.x) - r, Z(s.z) - r, r * 2, r * 2);
-          c.fillStyle = '#fff'; c.font = 'bold 11px sans-serif'; c.fillText(lab, X(s.x), Z(s.z) + 0.5);
-        }
-        if (s.floor) { c.fillStyle = '#1f5aa0'; c.font = 'bold 10px sans-serif'; c.fillText('高台', X(s.x), Z(s.z) - r - 7); }
-      } else {
-        // 増援（天井から）＝点線の丸
-        c.beginPath(); c.arc(X(s.x), Z(s.z), r, 0, Math.PI * 2); c.fillStyle = 'rgba(255,255,255,0.9)'; c.fill();
-        c.setLineDash([3, 2]); c.lineWidth = 2; c.strokeStyle = col; c.stroke(); c.setLineDash([]);
-        c.fillStyle = col; c.font = 'bold 11px sans-serif'; c.fillText(lab, X(s.x), Z(s.z) + 0.5);
-        c.font = 'bold 10px sans-serif'; c.fillText(tag === 'final' ? '最終' : '2波', X(s.x), Z(s.z) + r + 7);
-      }
-    }
+// 敵：中の数字＝図鑑番号（No.）、右上の小さい #＝配置の通し番号。■ポッド ●天井から
+for (const p of placed) {
+  const col = ENEMY_COLOR[p.kind];
+  const big = p.kind === 'heavy' || p.kind === 'heavyWalker' || p.kind === 'missile';
+  const r = big ? 13 : 11;
+  const dim = focus !== null && focus !== p.kind;
+  c.globalAlpha = dim ? 0.15 : 1;
+  const x = X(p.x), z = Z(p.z);
+  if (focus === p.kind) { c.beginPath(); c.arc(x, z, r + 9, 0, Math.PI * 2); c.fillStyle = 'rgba(255,214,0,0.45)'; c.fill(); }
+  if (p.mode === 'drop') {
+    c.beginPath(); c.arc(x, z, r, 0, Math.PI * 2); c.fillStyle = col; c.fill();
+    c.setLineDash([3, 2]); c.lineWidth = 2; c.strokeStyle = '#fff'; c.stroke(); c.setLineDash([]);
+  } else {
+    c.fillStyle = col; c.fillRect(x - r, z - r, r * 2, r * 2);
+    c.strokeStyle = '#fff'; c.lineWidth = 1.5; c.strokeRect(x - r, z - r, r * 2, r * 2);
   }
+  c.textAlign = 'center';
+  c.fillStyle = '#fff'; c.font = 'bold 13px sans-serif'; c.fillText(String(enemyNo(p.kind)), x, z + 0.5);
+  // 通し番号
+  c.font = 'bold 10px sans-serif';
+  const tag = `#${p.id}`;
+  const tw = c.measureText(tag).width + 6;
+  c.fillStyle = '#111'; c.fillRect(x + r - 2, z - r - 9, tw, 13);
+  c.fillStyle = '#fff'; c.textAlign = 'left'; c.fillText(tag, x + r + 1, z - r - 2);
+  c.textAlign = 'center';
+  if (p.high) { c.fillStyle = '#1f5aa0'; c.font = 'bold 10px sans-serif'; c.fillText('高台', x, z + r + 8); }
+  c.globalAlpha = 1;
 }
 // 歯車
 plan.gears.forEach((g, i) => {
@@ -173,9 +189,10 @@ for (const g of plan.gates) {
 }
 // 順路番号 ①②③…
 for (const r of plan.route) {
-  c.beginPath(); c.arc(X(r.x), Z(r.z), 14, 0, Math.PI * 2); c.fillStyle = '#d02050'; c.fill();
-  c.lineWidth = 2; c.strokeStyle = '#fff'; c.stroke();
-  c.fillStyle = '#fff'; c.font = 'bold 15px sans-serif'; c.fillText(String(r.n), X(r.x), Z(r.z) + 1);
+  // 敵の印と見分けるため、白地に赤い縁の丸
+  c.beginPath(); c.arc(X(r.x), Z(r.z), 14, 0, Math.PI * 2); c.fillStyle = '#fff'; c.fill();
+  c.lineWidth = 3; c.strokeStyle = '#d02050'; c.stroke();
+  c.fillStyle = '#d02050'; c.font = 'bold 15px sans-serif'; c.fillText(String(r.n), X(r.x), Z(r.z) + 1);
 }
 c.textAlign = 'center';
 const el = plan.elevator;
@@ -201,13 +218,13 @@ const legend: [string, () => void][] = [
   ['家具・箱（当たりあり）', () => { c.fillStyle = '#c9a36b'; c.fillRect(LX, ly - 8, 18, 16); }],
   ['高台デッキ（高さ7.2m）', () => { c.fillStyle = 'rgba(90,170,230,0.5)'; c.fillRect(LX, ly - 8, 18, 16); }],
   ['登れる段（アスレチック）', () => { c.fillStyle = 'rgba(60,140,220,0.8)'; c.fillRect(LX, ly - 8, 18, 16); }],
-  ['■ 敵（ポッドの中）', () => { c.fillStyle = '#f08a24'; c.fillRect(LX, ly - 8, 16, 16); }],
-  ['● ドローン（天井から）', () => { c.beginPath(); c.arc(LX + 8, ly, 8, 0, 7); c.fillStyle = '#3aa0ff'; c.fill(); }],
-  ['◌ 天井から降りる敵（罠）', () => { c.beginPath(); c.arc(LX + 8, ly, 8, 0, 7); c.setLineDash([3, 2]); c.strokeStyle = '#8a3cd2'; c.lineWidth = 2; c.stroke(); c.setLineDash([]); }],
+  ['■ 敵（ポッドの中）数字＝図鑑No.', () => { c.fillStyle = '#f08a24'; c.fillRect(LX, ly - 8, 16, 16); }],
+  ['● 敵（天井から降りる）', () => { c.beginPath(); c.arc(LX + 8, ly, 8, 0, 7); c.fillStyle = '#3aa0ff'; c.fill(); }],
+  ['#12 配置の通し番号', () => { c.fillStyle = '#111'; c.fillRect(LX, ly - 7, 22, 13); }],
   ['歯車（強化素材）', () => { c.beginPath(); c.arc(LX + 8, ly, 8, 0, 7); c.fillStyle = '#e0a800'; c.fill(); }],
   ['▮ ゲート（紫）', () => { c.fillStyle = '#9b3cd8'; c.fillRect(LX + 4, ly - 8, 8, 16); }],
   ['G グラップル（アームで引き寄せ）', () => { c.fillStyle = '#ffcc1a'; c.beginPath(); c.moveTo(LX + 8, ly - 9); c.lineTo(LX + 17, ly); c.lineTo(LX + 8, ly + 9); c.lineTo(LX - 1, ly); c.fill(); }],
-  ['① 順路の番号', () => { c.beginPath(); c.arc(LX + 8, ly, 8, 0, 7); c.fillStyle = '#d02050'; c.fill(); }],
+  ['① 順路の番号', () => { c.beginPath(); c.arc(LX + 8, ly, 8, 0, 7); c.fillStyle = '#fff'; c.fill(); c.lineWidth = 2.5; c.strokeStyle = '#d02050'; c.stroke(); }],
   ['電 充電ポイント', () => { c.beginPath(); c.arc(LX + 8, ly, 8, 0, 7); c.fillStyle = '#18b6d6'; c.fill(); }],
   ['+ 修理キット', () => { c.beginPath(); c.arc(LX + 8, ly, 8, 0, 7); c.fillStyle = '#ff6b8a'; c.fill(); }],
 ];
@@ -220,9 +237,57 @@ c.fillStyle = '#d02050'; c.font = 'bold 15px "Noto Sans JP", sans-serif'; c.fill
 c.font = '13px "Noto Sans JP", sans-serif'; c.fillStyle = '#222';
 for (const r of plan.route) { c.fillText(`${r.n}. ${r.label}`, LX, ly); ly += 18; }
 ly += 8;
-c.fillStyle = '#28467a'; c.font = 'bold 15px "Noto Sans JP", sans-serif'; c.fillText('敵の記号', LX, ly); ly += 22;
-c.font = '14px "Noto Sans JP", sans-serif'; c.fillStyle = '#222';
-for (const t of ['D ドローン', 'C クローラー', 'G ガンナー', 'W ウォーカー', 'H ヘビー', 'HW ヘビーウォーカー', 'M ミサイル溜めロボット']) { c.fillText(t, LX, ly); ly += 20; }
+c.fillStyle = '#28467a'; c.font = 'bold 15px "Noto Sans JP", sans-serif'; c.fillText('敵の図鑑番号（この階の数）', LX, ly); ly += 22;
+for (const k of ENEMY_ORDER) {
+  const n = placed.filter((p) => p.kind === k).length;
+  if (k === 'boss' && n === 0) continue;
+  c.globalAlpha = focus !== null && focus !== k ? 0.3 : 1;
+  c.fillStyle = ENEMY_COLOR[k]; c.fillRect(LX, ly - 8, 16, 16);
+  c.fillStyle = '#fff'; c.font = 'bold 11px sans-serif'; c.textAlign = 'center'; c.fillText(String(enemyNo(k)), LX + 8, ly + 1);
+  c.textAlign = 'left'; c.fillStyle = '#222'; c.font = '13px "Noto Sans JP", sans-serif';
+  c.fillText(`${enemyNoLabel(k)} ${ENEMY_INFO[k].name}  ×${n}`, LX + 24, ly + 1);
+  ly += 20;
+}
+c.globalAlpha = 1;
+ly += 10;
+c.fillStyle = '#28467a'; c.font = 'bold 15px "Noto Sans JP", sans-serif'; c.fillText('配置一覧（#・No.・場所・番地）', LX, ly); ly += 20;
+c.font = '12px "Noto Sans JP", sans-serif';
+for (const p of placed) {
+  if (ly > H - 12) { c.fillStyle = '#888'; c.fillText('…（続きは画面下の表）', LX, ly); break; }
+  c.globalAlpha = focus !== null && focus !== p.kind ? 0.3 : 1;
+  c.fillStyle = ENEMY_COLOR[p.kind];
+  c.fillText(`#${p.id}`, LX, ly);
+  c.fillStyle = '#222';
+  c.fillText(`${enemyNoLabel(p.kind)} ${ENEMY_INFO[p.kind].name}${p.mode === 'drop' ? '（天井）' : ''}  ${p.zone}  ${cellOf(p.x, p.z)}`, LX + 34, ly);
+  ly += 16;
+}
+c.globalAlpha = 1;
+}
+draw();
+
+// ---- 画面上の操作：番号ボタンで種類ごとに強調／配置の表
+const bar = document.getElementById('enemyFilter');
+if (bar) {
+  const mk = (label: string, k: EnemyKind | null, color: string) => {
+    const b = document.createElement('button');
+    b.textContent = label;
+    b.style.background = color; b.style.color = '#fff';
+    b.onclick = () => { focus = k; draw(); for (const x of bar.querySelectorAll('button')) x.classList.toggle('on', x === b); };
+    bar.append(b);
+    return b;
+  };
+  mk('全部', null, '#28467a').classList.add('on');
+  for (const k of ENEMY_ORDER) {
+    if (!placed.some((p) => p.kind === k)) continue;
+    mk(`${enemyNo(k)} ${ENEMY_INFO[k].name}`, k, ENEMY_COLOR[k]);
+  }
+}
+const tbl = document.getElementById('placedTable');
+if (tbl) {
+  tbl.innerHTML = '<tr><th>#</th><th>図鑑No.</th><th>敵</th><th>出方</th><th>場所</th><th>番地</th><th>座標(x, z)</th></tr>' +
+    placed.map((p) => `<tr><td>#${p.id}</td><td>${enemyNoLabel(p.kind)}</td><td style="color:${ENEMY_COLOR[p.kind]};font-weight:700">${ENEMY_INFO[p.kind].name}</td>` +
+      `<td>${p.mode === 'drop' ? '天井から' : 'ポッド'}${p.high ? '・高台' : ''}</td><td>${p.zone}</td><td>${cellOf(p.x, p.z)}</td><td>${p.x.toFixed(1)}, ${p.z.toFixed(1)}</td></tr>`).join('');
+}
 
 // 保存
 (document.getElementById('save') as HTMLButtonElement).onclick = () => {

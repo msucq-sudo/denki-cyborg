@@ -84,7 +84,9 @@ export const ABSORB = {
 /** グラップル（吸収アームを足場の「フック」に刺して体を引き寄せる） */
 export const GRAPPLE = {
   /** false: グラップルポイントだけに刺さる。true: 向きが合う壁・天井ならどこでも刺さる（レベルデザイン用の切替） */
-  anySurface: false,
+  anySurface: true,
+  /** anySurface：壁に刺さった点から上の縁までこの高さ以内なら、縁によじ登る（それ以上なら壁にぶら下がる） */
+  ledgeReach: 3.2,
   /** 狙える最大距離（m）。吸収アームの射程より長い */
   range: 22,
   /** 1回の電力消費 */

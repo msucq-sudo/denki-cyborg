@@ -15,6 +15,8 @@ export interface MetalDrop {
   age: number;
   resting: boolean;
   spin: number;
+  /** 吸収アームで掴まれた：距離に関係なくプレイヤーへ飛んでくる */
+  grabbed?: boolean;
 }
 
 // 見た目（共有ジオメトリ・マテリアル）：六角ナット型の金属片＋青い光
@@ -70,7 +72,14 @@ export function updatePickups(world: World, dt: number): void {
   for (const d of world.drops) {
     d.age += dt;
     const dist = d.pos.distanceTo(_pc);
-    if (dist < METAL.magnetRadius && d.age > 0.45) {
+    if (d.grabbed) {
+      // アームで掴まれた：まっすぐ手元へ
+      const dir = _next.copy(_pc).sub(d.pos).normalize();
+      d.vel.copy(dir.multiplyScalar(Math.min(28, dist * 12 + 6)));
+      d.pos.addScaledVector(d.vel, dt);
+      d.resting = false;
+      d.age = Math.max(d.age, 0.5);
+    } else if (dist < METAL.magnetRadius && d.age > 0.45) {
       // 吸い寄せ
       const dir = _next.copy(_pc).sub(d.pos).normalize();
       const k = 1 - dist / METAL.magnetRadius;

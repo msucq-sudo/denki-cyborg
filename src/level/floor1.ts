@@ -6,6 +6,7 @@ import type { Enemy, World } from '../core/types';
 import { addEnergy, drainEnergy } from '../core/energy';
 import { clearSockets, getSockets } from '../core/sockets';
 import { clearGrapplePoints, registerGrapplePoint } from '../core/grapple';
+import { clearGrabbables, getGrabbables, registerGrabbable } from '../core/armGrab';
 import { healPlayer, toast } from '../core/combat';
 import { spawnEnemy } from '../enemies/api';
 import { wakeDormant } from '../enemies/dormant';
@@ -186,6 +187,28 @@ export function buildFloor1(world: World): void {
     onShot: () => activatePower(world, rt, 'shot'),
     onFeed: () => activatePower(world, rt, 'arm'),
   });
+  // 歯車：吸収アームで掴んで遠くからでも取れる
+  clearGrabbables(world);
+  for (const g of vis.gears) {
+    registerGrabbable(world, {
+      pos: new THREE.Vector3(g.x, g.y, g.z), radius: 1.0, enabled: true, obj: g.model,
+      onGrab: () => takeGear(world, rt, g),
+    });
+  }
+}
+
+/** 歯車を取得する（触れた／アームで掴んで引き戻した） */
+function takeGear(world: World, rt: Runtime, g: Runtime['vis']['gears'][number]): void {
+  if (g.taken) return;
+  const state = rt.state;
+  g.taken = true;
+  g.model.visible = false;
+  state.gears++;
+  world.level.data.gears = state.gears;
+  world.inventory.gears++; // 全体の所持品（HUD はこちらを読む）
+  world.events.emit('gearPickup', {});
+  toast(world, `強化素材（歯車）を入手 ×${state.gears}`, 3);
+  for (const gb of getGrabbables(world)) if (gb.obj === g.model) gb.enabled = false;
 }
 
 /**
@@ -590,16 +613,7 @@ export function updateFloor1(world: World, dt: number): void {
     if (g.taken) continue;
     g.model.tick(t + g.x);
     const dx = g.x - p.pos.x, dz = g.z - p.pos.z, dy = g.y - (p.pos.y + 0.9);
-    if (dx * dx + dz * dz < 1.6 * 1.6 && Math.abs(dy) < 2.0 && p.hp > 0) {
-      g.taken = true;
-      g.model.visible = false;
-      state.gears++;
-      world.level.data.gears = state.gears;
-      // 全体の所持品（HUD はこちらを読む）
-      world.inventory.gears++;
-      world.events.emit('gearPickup', {});
-      toast(world, `強化素材（歯車）を入手 ×${state.gears}`, 3);
-    }
+    if (dx * dx + dz * dz < 1.6 * 1.6 && Math.abs(dy) < 2.0 && p.hp > 0) takeGear(world, rt, g);
   }
 
   // ---- 充電ポイント

@@ -7,14 +7,32 @@
 <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+JP:wght@400;700&display=swap" rel="stylesheet">
 <style>
   body { margin: 0; background: #dfe5ec; font-family: 'Noto Sans JP', sans-serif; }
-  .bar { position: sticky; top: 0; padding: 8px 12px; background: #0a1330; color: #e8f3ff; display: flex; gap: 12px; align-items: center; z-index: 1; }
-  button { font: inherit; font-weight: 700; padding: 6px 14px; border: 0; border-radius: 8px; background: #2ee6ff; color: #0a1330; cursor: pointer; }
+  .bar { position: sticky; top: 0; padding: 8px 12px; background: #0a1330; color: #e8f3ff; display: flex; flex-wrap: wrap; gap: 8px 12px; align-items: center; z-index: 1; }
+  .bar a { color: #2ee6ff; font-weight: 700; text-decoration: none; }
+  button { font: inherit; font-weight: 700; padding: 5px 12px; border: 0; border-radius: 8px; background: #2ee6ff; color: #0a1330; cursor: pointer; }
+  #enemyFilter { display: flex; flex-wrap: wrap; gap: 6px; }
+  #enemyFilter button { opacity: .55; font-size: 13px; }
+  #enemyFilter button.on { opacity: 1; outline: 2px solid #ffd83a; }
   canvas { display: block; margin: 12px; box-shadow: 0 2px 10px #0003; }
+  table { border-collapse: collapse; margin: 0 12px 24px; background: #fff; font-size: 13px; }
+  th, td { padding: 4px 10px; border-bottom: 1px solid #dde3ea; text-align: left; white-space: nowrap; }
+  th { background: #0a1330; color: #e8f3ff; }
+  h2 { margin: 8px 12px; font-size: 16px; color: #28467a; }
 </style>
 </head>
 <body>
-<div class="bar">1階の平面図（書き込み用）<button id="save">PNGで保存</button><span style="opacity:.7">保存した画像に赤ペンで書き込んで送ってください</span></div>
+<div class="bar">
+  <b>研究所1階 平面図</b>
+  <button id="save">PNGで保存</button>
+  <span style="opacity:.75">敵の印の数字＝図鑑No.／#＝配置の番号</span>
+  <a href="/bestiary.html">敵図鑑 ↗</a>
+  <a href="/stats.html#敵">データ一覧 ↗</a>
+  <a href="/map.html">3Dマップ ↗</a>
+</div>
+<div class="bar" style="top:44px;background:#12214d">強調：<div id="enemyFilter"></div></div>
 <canvas id="sheet"></canvas>
+<h2>配置されている敵</h2>
+<table id="placedTable"></table>
 <script type="module" src="/src/tools/mapSheet.ts"></script>
 </body>
 </html>

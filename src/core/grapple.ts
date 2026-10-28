@@ -155,13 +155,48 @@ function surfaceNormal(colliders: AABB[], p: THREE.Vector3): THREE.Vector3 | nul
   return bd < eps * 2 ? n : null;
 }
 
-/** anySurface 用：壁／天井に当たった点から一時的なポイントを作る（床は不可）。登録はしない */
+/** 点 p を含む（触れている）一番上が低いコライダー（縁の高さを知るため） */
+function boxAt(colliders: AABB[], p: THREE.Vector3): AABB | null {
+  const eps = 0.08;
+  let best: AABB | null = null;
+  for (const b of colliders) {
+    if (!b.active) continue;
+    if (p.x < b.min.x - eps || p.x > b.max.x + eps || p.y < b.min.y - eps || p.y > b.max.y + eps
+      || p.z < b.min.z - eps || p.z > b.max.z + eps) continue;
+    if (!best || b.max.y < best.max.y) best = b;
+  }
+  return best;
+}
+
+/** 縁の上に人が立てる空きがあるか */
+function roomOnTop(colliders: AABB[], x: number, y: number, z: number): boolean {
+  const head = new THREE.Vector3(x, y + PLAYER.height * 0.5 + 0.05, z);
+  for (const b of colliders) {
+    if (!b.active) continue;
+    if (head.x > b.min.x - PLAYER.radius * 0.5 && head.x < b.max.x + PLAYER.radius * 0.5
+      && head.y > b.min.y && head.y < b.max.y
+      && head.z > b.min.z - PLAYER.radius * 0.5 && head.z < b.max.z + PLAYER.radius * 0.5) return false;
+  }
+  return true;
+}
+
+/**
+ * anySurface 用：壁／天井に当たった点から一時的なポイントを作る（床は不可）。登録はしない。
+ * 壁で、上の縁が GRAPPLE.ledgeReach 以内にあり上に立てる空きがあれば「縁（ledge）」扱いにしてよじ登る
+ */
 export function surfacePoint(world: World, hit: THREE.Vector3): GrapplePoint | null {
   const n = surfaceNormal(world.colliders, hit);
   if (!n || n.y > 0.5) return null;
-  return {
-    pos: hit.clone(), normal: n, radius: 0.1, kind: n.y < -0.5 ? 'ceiling' : 'wall', landAt: null, vis: null,
-  };
+  if (n.y < -0.5) return { pos: hit.clone(), normal: n, radius: 0.1, kind: 'ceiling', landAt: null, vis: null };
+  const b = boxAt(world.colliders, hit);
+  if (b && b.max.y - hit.y <= GRAPPLE.ledgeReach) {
+    const top = new THREE.Vector3(hit.x, b.max.y, hit.z);
+    const inX = top.x - n.x * 0.9, inZ = top.z - n.z * 0.9;
+    if (roomOnTop(world.colliders, inX, top.y, inZ)) {
+      return { pos: top, normal: n, radius: 0.1, kind: 'ledge', landAt: null, vis: null };
+    }
+  }
+  return { pos: hit.clone(), normal: n, radius: 0.1, kind: 'wall', landAt: null, vis: null };
 }
 
 // ---------------------------------------------------------------- 引き寄せ

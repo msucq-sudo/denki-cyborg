@@ -13,6 +13,12 @@ import {
   canGrapple, findAimedGrapple, hitGrapple, isGrappleHolding, startGrapple, surfacePoint, type GrapplePoint,
 } from '../core/grapple';
 import { createArmVisual, type ArmMode, type ArmVisual } from './absorbVisual';
+import { getGrabbables, type ArmGrabbable } from '../core/armGrab';
+
+/** アームでアイテムを掴む当たり半径（メタル） */
+const DROP_GRAB_RADIUS = 0.7;
+/** メタルを掴んだとき、周りこの距離のメタルもまとめて引き寄せる */
+const DROP_GRAB_CLUSTER = 2.5;
 
 /** 吸収アームの追加状態（World ごと） */
 interface Extra {
@@ -32,6 +38,8 @@ interface Extra {
   grapple: GrapplePoint | null;
   /** 今回の射程（グラップルポイントを狙っているときだけ長い） */
   reach: number;
+  /** アームで掴んで引き戻し中のアイテム（歯車など） */
+  carry: ArmGrabbable | null;
 }
 
 const extras = new WeakMap<World, Extra>();
@@ -54,7 +62,7 @@ export function initAbsorb(world: World): void {
   extras.set(world, {
     vis, root: new THREE.Vector3(), anchor: new THREE.Vector3(), hasAnchor: false,
     losLost: 0, overloading: false, noEnergyShown: false, sparkTimer: 0, socket: null, socketT: 0,
-    grapple: null, reach: ABSORB.range,
+    grapple: null, reach: ABSORB.range, carry: null,
   });
 }
 
@@ -131,7 +139,14 @@ export function updateAbsorb(world: World, dt: number): void {
       // グラップルポイントを狙っていれば長い射程で撃つ
       ex.reach = ABSORB.range;
       const aimed = findAimedGrapple(world);
-      if (aimed && canGrapple(world)) {
+      // anySurface：狙った先の壁・天井（グラップル射程内）にも長い射程で撃つ
+      let surfaceAimed = false;
+      if (!aimed && GRAPPLE.anySurface && canGrapple(world)) {
+        tmpB.copy(world.aimOrigin).addScaledVector(world.aimDir, GRAPPLE.range);
+        const t = raycastLevel(world.colliders, world.aimOrigin, tmpB);
+        surfaceAimed = t !== null && !!surfacePoint(world, tmpC.lerpVectors(world.aimOrigin, tmpB, t));
+      }
+      if ((aimed || surfaceAimed) && canGrapple(world)) {
         ex.reach = GRAPPLE.range;
         world.events.emit('grappleFire', {});
       } else {
@@ -171,7 +186,31 @@ export function updateAbsorb(world: World, dt: number): void {
           gt = lt;
         }
       }
-      if (gp && gt <= (lt ?? Infinity) + 1e-6 && gt <= (eh ? eh.t : Infinity) && gt <= st) {
+      // アイテム（歯車など登録物・床のメタル）：一番手前なら掴んで引き戻す
+      let ig: ArmGrabbable | null = null, it = Infinity;
+      for (const g of getGrabbables(world)) {
+        if (!g.enabled) continue;
+        const t = segmentSphere(p0, p1, g.pos, g.radius);
+        if (t !== null && t < it) { it = t; ig = g; }
+      }
+      let dropHit = false;
+      for (const d of world.drops) {
+        const t = segmentSphere(p0, p1, d.pos, DROP_GRAB_RADIUS);
+        if (t !== null && t < it) { it = t; ig = null; dropHit = true; }
+      }
+      const itemFirst = it < Infinity && it <= (lt ?? Infinity) + 1e-6 && it <= (eh ? eh.t : Infinity) && it <= st && it <= gt;
+      if (itemFirst) {
+        a.tip.lerpVectors(p0, p1, it);
+        if (ig) {
+          ig.enabled = false;
+          ex.carry = ig;
+        } else if (dropHit) {
+          // 当たったメタルと、その周りのメタルをまとめてプレイヤーへ飛ばす
+          for (const d of world.drops) if (d.pos.distanceTo(a.tip) < DROP_GRAB_CLUSTER) d.grabbed = true;
+        }
+        world.events.emit('armGrab', { pos: a.tip.clone() });
+        a.phase = 'retracting';
+      } else if (gp && gt <= (lt ?? Infinity) + 1e-6 && gt <= (eh ? eh.t : Infinity) && gt <= st) {
         a.tip.lerpVectors(p0, p1, gt);
         if (startGrapple(world, gp)) {
           a.phase = 'attached';
@@ -218,10 +257,14 @@ export function updateAbsorb(world: World, dt: number): void {
         a.length = 0;
         a.phase = 'cooldown';
         a.cooldown = ABSORB.cooldown;
+        // 掴んできたアイテムを手元で取得
+        if (ex.carry) { const g = ex.carry; ex.carry = null; g.onGrab(); }
       } else {
         a.tip.addScaledVector(toRoot, step / d);
         a.length = d - step;
       }
+      // 掴んだアイテムはアームの先に付いてくる
+      if (ex.carry) { ex.carry.pos.copy(a.tip); ex.carry.obj?.position.copy(a.tip); }
       break;
     }
     case 'cooldown':

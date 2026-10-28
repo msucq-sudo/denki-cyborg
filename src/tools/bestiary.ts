@@ -3,7 +3,7 @@
 import * as THREE from 'three';
 import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js';
 import { ENEMIES, GUN, ABSORB, PLAYER, type EnemyKind } from '../config/balance';
-import { ENEMY_ORDER, ENEMY_INFO } from '../config/enemyInfo';
+import { ENEMY_ORDER, ENEMY_INFO, enemyNo, enemyNoLabel } from '../config/enemyInfo';
 import { buildModel, type Model } from '../enemies/models';
 import '../enemies/kinds';
 import { HEAVY, CRAWLER } from '../enemies/ai';
@@ -180,7 +180,7 @@ function renderCard(kind: EnemyKind) {
   const chargeWeakN = Math.ceil(e.hp / (GUN.chargeMaxDamage * e.weakMultiplier));
   const drainSec = e.hp / ABSORB.drainPerSec;
   const gain = e.hp * ABSORB.conversion + ABSORB.finishBonus;
-  let html = `<h2>${esc(info.name)}</h2><div class="role">${esc(info.role)}</div>`;
+  let html = `<h2><span style="color:#ffd83a;font-size:.7em;margin-right:8px">${enemyNoLabel(kind)}</span>${esc(info.name)}</h2><div class="role">${esc(info.role)}</div>`;
   html += '<h3>基本パラメーター</h3><table>';
   html += row('HP', fmt(e.hp)) + row('移動速度', fmt(e.speed), 'm/s') + row('半径', fmt(e.radius), 'm');
   html += row('攻撃力', fmt(e.damage)) + row('攻撃間隔', fmt(e.attackInterval), '秒');
@@ -209,7 +209,7 @@ function renderCard(kind: EnemyKind) {
 function renderList() {
   $('list').innerHTML = ENEMY_ORDER.map((k) => {
     const i = ENEMY_INFO[k];
-    return `<button data-k="${k}"><b>${esc(i.name)}</b><span>${esc(i.role)} ／ ${esc(i.area)}</span></button>`;
+    return `<button data-k="${k}"><b><span style="color:#ffd83a;margin-right:6px">${enemyNo(k)}</span>${esc(i.name)}</b><span>${esc(i.role)} ／ ${esc(i.area)}</span></button>`;
   }).join('');
   $('list').onclick = (ev) => {
     const b = (ev.target as HTMLElement).closest('button');
