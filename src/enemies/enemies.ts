@@ -122,6 +122,7 @@ export function damageEnemy(world: World, enemy: Enemy, amount: number, opts: Da
     return;
   }
   impulse(world, enemy, dmg, opts.how === 'explosion' ? opts.hitPos : undefined);
+  KIND_MODULES[enemy.kind]?.onHit?.(world, enemy, dmg, opts);
   checkBossPhase(world, enemy);
 }
 
@@ -160,6 +161,26 @@ function downEnemy(world: World, e: Enemy): void {
   world.events.emit('enemyKilled', { kind: e.kind, pos: e.pos.clone(), how: 'absorb' });
   spawnBurst(world, e.pos, 0x66e6ff, 10, 3);
   spawnMetalDrop(world, e.kind, e.pos);
+  KIND_MODULES[e.kind]?.onGone?.(world, e, 'absorb');
+}
+
+/** 味方の時間切れなど：撃破扱いにせず停止させる（崩れ落ちて消える。メタルは落とさない） */
+export function shutdownEnemy(world: World, e: Enemy): void {
+  if (e.status === 'dead' || e.status === 'down') return;
+  e.hp = 0;
+  e.status = 'down';
+  e.deadTimer = DOWN_TIME;
+  e.tethered = false;
+  e.ai.warn = 0;
+  e.ai.state = 'down';
+  clearTelegraphs(e);
+  const model: Model = e.ai.model;
+  for (const m of model.eyeMats) { m.emissiveIntensity = 0; m.emissive.setHex(0x000000); }
+  for (const w of e.weakPoints) w.exposed = false;
+  for (const b of model.bodyMats) b.mat.color.copy(b.base).multiplyScalar(0.45);
+  e.ai.tilt = Math.random() < 0.5 ? 1 : -1;
+  e.ai.collapse = 0;
+  KIND_MODULES[e.kind]?.onGone?.(world, e, 'expire');
 }
 
 function clearTelegraphs(e: Enemy): void {
@@ -179,6 +200,7 @@ function killEnemy(world: World, e: Enemy, how: 'shot' | 'explosion' | 'absorb',
   world.stats.kills++;
   world.events.emit('enemyKilled', { kind: e.kind, pos: e.pos.clone(), how });
   spawnMetalDrop(world, e.kind, e.pos); // 倒すとメタルを落とす
+  KIND_MODULES[e.kind]?.onGone?.(world, e, how);
   if (e.kind === 'boss') {
     e.deadTimer = BOSS_DEATH_TIME;
     e.ai.deathT = 0;
@@ -228,6 +250,7 @@ export function overloadEnemy(world: World, enemy: Enemy, amount: number): Overl
 
   // 爆発
   const pos = enemy.pos.clone();
+  KIND_MODULES[enemy.kind]?.onGone?.(world, enemy, 'explosion');
   const R = OVERLOAD.explosionRadius;
   enemy.status = 'dead';   // 自分を巻き込まないよう先に dead に
   spawnShockwave(world, pos, 0xff9a3d, R, 0.6);
@@ -305,6 +328,12 @@ function updateOne(world: World, e: Enemy, dt: number): void {
 
   if (world.state === 'playing') {
     const c = makeCtx(world, e, dt);
+    if (e.allied) {
+      // ハッキングで味方になった敵
+      KIND_MODULES[e.kind]?.updateAlly?.(c);
+      animate(world, e, dt);
+      return;
+    }
     switch (e.kind) {
       case 'drone': updateDrone(c); break;
       case 'crawler': updateCrawler(c); break;

@@ -101,6 +101,7 @@ for (const k of plan.kits) dot(k.x, k.z, 8, '#ff6b8a', '+', '#fff', 'bold 15px s
 const KIND: Record<EnemyKind, [string, string]> = {
   drone: ['D', '#3aa0ff'], crawler: ['C', '#f08a24'], gunner: ['G', '#d4a800'], walker: ['W', '#2fa86a'],
   heavy: ['H', '#d23c3c'], heavyWalker: ['HW', '#8a3cd2'], missile: ['M', '#444'], boss: ['B', '#000'],
+  redWalker: ['RW', '#e0302a'], beamer: ['BM', '#0a6cc4'], leech: ['L', '#c43ab0'],
 };
 for (const z of plan.zones) {
   const lists: [typeof z.spawns, string][] = [[z.spawns, 'w1']];

@@ -47,6 +47,21 @@ export interface GameEvents {
   lockdownEnd: { zone: string };
   bossStart: {};
   bossPhase: { phase: number };
+  /** ビーマー：溜め開始 / 発射 / 溜め中断 */
+  beamCharge: { pos: THREE.Vector3 };
+  beamFire: { pos: THREE.Vector3 };
+  beamInterrupt: { pos: THREE.Vector3 };
+  /** リーチ：アーム発射 / プレイヤーにつながった / 外れた / 逃げ始めた */
+  leechFire: { pos: THREE.Vector3 };
+  leechAttach: { pos: THREE.Vector3 };
+  leechBreak: {};
+  leechFlee: { pos: THREE.Vector3 };
+  /** ハッキング：開始 / 1入力（ok=正解） / 中断 / 成功 / 味方の時間切れ */
+  hackStart: {};
+  hackInput: { ok: boolean; progress: number };
+  hackCancel: {};
+  hackSuccess: { pos: THREE.Vector3 };
+  allyExpire: { pos: THREE.Vector3 };
   gameStart: {};
   gameOver: {};
   gameClear: {};

@@ -14,7 +14,7 @@ export interface EnemyInfo {
   look: string;
 }
 
-export const ENEMY_ORDER: EnemyKind[] = ['drone', 'crawler', 'gunner', 'walker', 'heavy', 'heavyWalker', 'missile', 'boss'];
+export const ENEMY_ORDER: EnemyKind[] = ['drone', 'crawler', 'gunner', 'walker', 'redWalker', 'leech', 'heavy', 'heavyWalker', 'beamer', 'missile', 'boss'];
 
 export const ENEMY_INFO: Record<EnemyKind, EnemyInfo> = {
   drone: {
@@ -51,6 +51,21 @@ export const ENEMY_INFO: Record<EnemyKind, EnemyInfo> = {
     name: 'ミサイル溜めロボット', role: '強敵・召喚＋溜めミサイル',
     behavior: ['雑魚敵を周りに召喚して守らせる', 'その間にミサイルを溜め、溜まったら一斉発射', '溜まる前に倒すか、溜めを妨害する', 'ミサイルは撃ち落とせる'],
     weakness: '背中・ポッド下のパワーセル（回り込んで狙う）', area: 'ボルト研究室前', look: '白い胴体＋青いキャタピラ、背中に6連ミサイルポッド。溜まるとミサイルが顔を出しゲージが伸びる',
+  },
+  redWalker: {
+    name: '赤ウォーカー', role: 'ハッキング可能',
+    behavior: ['ウォーカーと同じく、ゆっくり近づきながら射撃', '吸収アームをつなぐとハッキング開始。8個のコードを入力すると味方になる', '味方の間はほかの敵を撃つ（20秒）'],
+    weakness: '背中のバッテリー', area: 'ボルト研究室前', look: '（T3-C で決定）ウォーカーの赤い版',
+  },
+  beamer: {
+    name: 'ビーマー', role: '遠距離・溜めビーム',
+    behavior: ['遠くに陣取り、照準線でねらいながら長く溜める', '発射直前に照準を固定して極太ビーム（ここで避ける）', '体力が多い'],
+    weakness: '溜め中だけ開く前面のレンズ（撃つと溜めが止まる）', area: 'ボルト研究室前', look: '（T3-A で決定）',
+  },
+  leech: {
+    name: 'リーチ', role: '小型・電力泥棒',
+    behavior: ['遠くから吸収アームを伸ばし、プレイヤーの電力を吸う（回避で外れる）', 'こちらの吸収アームをつなぐと全力で逃げる', '吸い切ると盗まれた電力が戻ってくる'],
+    weakness: '背中のタンク', area: 'ボルト研究室前', look: '（T3-B で決定）',
   },
   boss: {
     name: 'ジェネレーター', role: 'ボス（サージ収容所）',

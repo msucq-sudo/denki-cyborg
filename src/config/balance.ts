@@ -130,13 +130,15 @@ export const FUNCTIONS = {
   flight: { flyingDrainPerSec: 6, engageVy: 0.5, hoverDamp: 10 },
 };
 
-export type EnemyKind = 'drone' | 'crawler' | 'gunner' | 'heavy' | 'walker' | 'heavyWalker' | 'missile' | 'boss';
+export type EnemyKind = 'drone' | 'crawler' | 'gunner' | 'heavy' | 'walker' | 'redWalker' | 'heavyWalker' | 'missile' | 'beamer' | 'leech' | 'boss';
 
 export const ENEMIES: Record<EnemyKind, {
   hp: number; speed: number; radius: number; damage: number;
   attackInterval: number; projectileSpeed: number; weakMultiplier: number;
   /** 逆流で満タンにするのに必要な電力量 */
   overloadCap: number; sightRange: number;
+  /** 吸収アームで吸う速さの倍率（省略=1） */
+  drainMul?: number;
 }> = {
   drone:   { hp: 30,  speed: 4,   radius: 0.55, damage: 6,  attackInterval: 1.8, projectileSpeed: 18, weakMultiplier: 2, overloadCap: 12, sightRange: 28 },
   crawler: { hp: 40,  speed: 6.5, radius: 0.6,  damage: 10, attackInterval: 1.0, projectileSpeed: 0,  weakMultiplier: 2, overloadCap: 14, sightRange: 24 },
@@ -148,6 +150,12 @@ export const ENEMIES: Record<EnemyKind, {
   heavyWalker: { hp: 220, speed: 2.2, radius: 1.3, damage: 18, attackInterval: 3.0, projectileSpeed: 0, weakMultiplier: 2.5, overloadCap: 42, sightRange: 30 },
   /** ミサイル溜めロボット：護衛を召喚→ミサイルを溜めて発射。damage=ミサイル1発、attackInterval=溜め時間 */
   missile: { hp: 160, speed: 1.8, radius: 1.1,  damage: 16, attackInterval: 7.0, projectileSpeed: 11, weakMultiplier: 2.5, overloadCap: 34, sightRange: 34 },
+  /** 赤ウォーカー：ウォーカーの赤い版。ハッキングできる（吸収アームをつなぐとコード入力）。T3-C で調整 */
+  redWalker: { hp: 60, speed: 1.8, radius: 0.7, damage: 7, attackInterval: 1.8, projectileSpeed: 17, weakMultiplier: 2, overloadCap: 20, sightRange: 30 },
+  /** ビーマー：遠距離で長く溜めて極太ビーム。体力が多い。damage=ビーム1発 */
+  beamer:  { hp: 240, speed: 2,   radius: 0.9,  damage: 30, attackInterval: 4.5, projectileSpeed: 0,  weakMultiplier: 3, overloadCap: 45, sightRange: 42 },
+  /** リーチ（吸収マン）：とても小さい。吸収アームでプレイヤーの電力を吸う。つながれると逃げる */
+  leech:   { hp: 30,  speed: 5,   radius: 0.32, damage: 0,  attackInterval: 3.0, projectileSpeed: 0,  weakMultiplier: 2, overloadCap: 10, sightRange: 26 },
   boss:    { hp: 900, speed: 2.5, radius: 2.4,  damage: 6,  attackInterval: 2.0, projectileSpeed: 16, weakMultiplier: 2.5, overloadCap: 60, sightRange: 60 },
 };
 
@@ -256,4 +264,59 @@ export const CHARACTER = {
     /** 脚の長さの変化に合わせて胴を上下させる量（足が浮かない補正。0..1） */
     groundComp: 0.7,
   },
+};
+
+/** ビーマーの攻撃（溜め→ロック→発射）。T3-A で調整 */
+export const BEAMER = {
+  /** 好む距離 */
+  prefMin: 16, prefMax: 28,
+  /** 溜めの合計時間（照準線がプレイヤーを追う） */
+  chargeTime: 2.6,
+  /** 発射直前に照準を固定する時間（ここで避ける） */
+  lockTime: 0.55,
+  /** 溜め中の照準の追従速度（rad/秒） */
+  trackRate: 1.6,
+  /** ビームの持続・太さ・長さ */
+  fireTime: 0.35, beamWidth: 0.55, beamLength: 60,
+  /** 発射後の硬直 */
+  recover: 1.4,
+  /** 溜め中にレンズへ1回でこれ以上のダメージが入ると溜め中断 */
+  interruptDamage: 18,
+  interruptStun: 1.3,
+};
+
+/** リーチ（吸収マン）の吸収アーム。T3-B で調整 */
+export const LEECH = {
+  /** 好む距離 */
+  prefMin: 8, prefMax: 13,
+  /** アームを撃つ前の予備動作 */
+  windup: 0.6,
+  armRange: 15, armSpeed: 20,
+  /** つながっている間にプレイヤーから吸う電力/秒 */
+  drainPerSec: 7,
+  /** この距離を超える／この秒数たつとアームが外れる */
+  breakDistance: 18, maxAttach: 5,
+  /** プレイヤーにアームをつながれたときの逃げ足 */
+  fleeSpeed: 8.5,
+  /** 浮く高さ（床から） */
+  hoverHeight: 1.1,
+  /** 盗んだ電力をためられる上限（吸い切ると戻ってくる） */
+  stolenCap: 40,
+};
+
+/** ハッキング。KindModule.hackable=true の敵に吸収アームをつなぐとコード入力が始まる。T3-C で調整 */
+export const HACK = {
+  codeLength: 8,
+  /** キーボードの出題キー（ゲームで使っていないキー。KeyboardEvent.code） */
+  keyboardKeys: ['KeyQ', 'KeyT', 'KeyG', 'KeyZ', 'KeyX', 'KeyV', 'KeyB', 'Digit4'],
+  /** コントローラーの出題ボタン（Input が作る仮想キー） */
+  padKeys: ['PadUp', 'PadDown', 'PadLeft', 'PadRight', 'PadA', 'PadB', 'PadX', 'PadY'],
+  /** 入力ミスで失う電力 */
+  failEnergy: 3,
+  /** ハッキング中（つながっている間）の吸収速度の倍率 */
+  drainMul: 0.3,
+  /** つながれている間の敵の速度倍率 */
+  jamSpeedMul: 0.5,
+  /** 味方でいる時間 */
+  allyTime: 20,
 };

@@ -41,6 +41,10 @@ export interface Player {
   /** absorb モジュールが毎フレーム設定 */
   absorbing: boolean;
   overloading: boolean;
+  /** ハッキング中（hack モジュールが毎フレーム設定） */
+  hacking?: boolean;
+  /** リーチの吸収アームにつながれている（leech が毎フレーム設定。HUD 表示用） */
+  leeched?: boolean;
 }
 
 export interface WeakPoint {
@@ -74,6 +78,8 @@ export interface Enemy {
   ai: Record<string, any>;
   /** 倒れてから消えるまで等の演出用 */
   deadTimer: number;
+  /** ハッキングされて味方になった。true の間は撃っても当たらず、吸収できず、部屋のクリア判定にも数えない */
+  allied?: boolean;
 }
 
 export type ProjectileOwner = 'player' | 'enemy';
@@ -173,6 +179,7 @@ export interface World {
   colliders: AABB[];
   level: LevelState;
   absorb: AbsorbState;
+  hack: HackState;
   functions: FunctionsState;
   /** 射撃・吸収の発射位置（肩/銃口）。player モジュールが毎フレーム更新 */
   aimOrigin: THREE.Vector3;
@@ -203,4 +210,22 @@ export interface EffectInstance {
   life: number;
   maxLife: number;
   update?: (e: EffectInstance, dt: number) => void;
+}
+
+/** ハッキングの状態（abilities/hack.ts が所有） */
+export interface HackState {
+  /** コード入力中 */
+  active: boolean;
+  target: Enemy | null;
+  /** 出題コード（キーボード用とパッド用。同じ並びの番号から作る） */
+  codeKeys: string[];
+  codePad: string[];
+  /** 正しく入力できた個数 */
+  progress: number;
+  /** 表示に使う入力機器（最後に触った機器） */
+  device: 'kbm' | 'pad';
+  /** ミス時の赤い点滅の残り時間 */
+  failFlash: number;
+  /** 成功表示の残り時間 */
+  successFlash: number;
 }

@@ -9,7 +9,7 @@ export function weakPointWorld(enemy: Enemy, wp: WeakPoint, out = new THREE.Vect
 
 /** 生きていて攻撃・吸収対象になれる敵か（休眠中は対象外） */
 export function isTargetable(e: Enemy): boolean {
-  return !e.ai.dormant && (e.status === 'active' || e.status === 'stunned');
+  return !e.ai.dormant && !e.allied && (e.status === 'active' || e.status === 'stunned');
 }
 
 export interface EnemyRayHit {

@@ -8,6 +8,7 @@ import { updatePickups } from './core/pickups';
 import { updateEffects } from './core/effects';
 import { initPlayer, updatePlayer, updateGun, setPlayerWeapon } from './player/player';
 import { initAbsorb, updateAbsorb } from './abilities/absorb';
+import { initHack, updateHack } from './abilities/hack';
 import { updateGrapple } from './core/grapple';
 import { initFunctions, updateFunctions } from './abilities/functions';
 import { updateEnemies } from './enemies/api';
@@ -62,6 +63,7 @@ function newWorld(): World {
   LEVELS[levelId].build(w);
   initPlayer(w);
   initAbsorb(w);
+  initHack(w);
   initFunctions(w);
   (globalThis as any).__oldWorld = w;
   exposeDebug(w);
@@ -169,6 +171,7 @@ function step(dt: number): void {
     updateFunctions(world, dt);
     updateGun(world, dt);
     updateAbsorb(world, dt);
+    updateHack(world, dt);
     updateGrapple(world, dt);
     updateEnemies(world, dt);
     updateProjectiles(world, dt);

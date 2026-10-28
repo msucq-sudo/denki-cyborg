@@ -1,5 +1,6 @@
 import * as THREE from 'three';
-import { ABSORB, GRAPPLE, OVERLOAD } from '../config/balance';
+import { ABSORB, ENEMIES, GRAPPLE, HACK, OVERLOAD } from '../config/balance';
+import { KIND_MODULES } from '../enemies/kinds';
 import type { Enemy, World } from '../core/types';
 import { hasLineOfSight, raycastLevel } from '../core/collision';
 import { raycastEnemies, isTargetable } from '../core/enemyUtil';
@@ -320,7 +321,9 @@ function updateAttached(world: World, ex: Extra, dt: number): void {
   }
 
   // ---- 吸収 ----
-  const got = drainEnemy(world, enemy, ABSORB.drainPerSec * dt);
+  // ハッキングできる敵はつないでいる間ゆっくり吸う（コード入力の時間をつくる）
+  const hackMul = KIND_MODULES[enemy.kind]?.hackable ? HACK.drainMul : 1;
+  const got = drainEnemy(world, enemy, ABSORB.drainPerSec * (ENEMIES[enemy.kind].drainMul ?? 1) * hackMul * dt);
   drainAcc += got;
   drainT += dt;
   if (drainAcc > 0 && (drainT >= DRAIN_POP_INTERVAL || enemy.hp <= 0)) {
