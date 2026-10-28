@@ -52,10 +52,15 @@ describe('layout', () => {
   });
   it('spec enemy counts', () => {
     const count = (i: number, kind: string) => ROOM_DEFS[i].waves.flat().filter((g) => g.kind === kind).reduce((a, g) => a + g.count, 0);
-    expect(count(1, 'drone')).toBe(3);
-    expect(count(2, 'crawler')).toBe(4);
+    expect(count(1, 'drone')).toBe(2);
+    expect(count(1, 'redDrone')).toBe(1);
+    expect(count(2, 'crawler')).toBe(3);
     expect(count(3, 'gunner')).toBe(2);
-    expect(count(5, 'heavy')).toBe(2);
+    expect(count(5, 'heavy')).toBe(1);
+    // Phase 3 の新しい雑魚はどれも一度は出る
+    for (const k of ['beamer', 'leech', 'redWalker', 'jumper', 'missileDrone', 'bomber', 'redDrone']) {
+      expect(ROOM_DEFS.reduce((a, _r, i) => a + count(i, k), 0)).toBeGreaterThan(0);
+    }
     expect(count(7, 'boss')).toBe(1);
     expect(ROOM_DEFS[2].waves.length).toBe(2);
     expect(ROOM_DEFS[4].waves.length).toBe(2);

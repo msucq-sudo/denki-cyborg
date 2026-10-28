@@ -45,19 +45,19 @@ export const ROOM_DEFS: RoomDef[] = [
   },
   {
     name: '第1区画：搬入ホール', title: '第1区画  搬入ホール', w: 26, d: 30, h: 9,
-    waves: [[{ kind: 'drone', count: 3 }]],
+    waves: [[{ kind: 'drone', count: 2 }, { kind: 'redDrone', count: 1 }]],
     blocks: [cover(-7, 2), cover(7, 2), cover(0, 8, 4, 1.6, 2), cover(-9, -6, 2, 2.4, 2)],
     pads: [], kits: [{ lx: -11, lz: -13 }], lightColor: 0xd9d0ff,
   },
   {
     name: '第2区画：配電室', title: '第2区画  配電室', w: 30, d: 34, h: 10,
-    waves: [[{ kind: 'crawler', count: 4 }], [{ kind: 'drone', count: 2 }]],
+    waves: [[{ kind: 'crawler', count: 3 }, { kind: 'bomber', count: 1 }], [{ kind: 'drone', count: 1 }, { kind: 'leech', count: 2 }, { kind: 'redWalker', count: 1 }]],
     blocks: [cover(-9, 4), cover(9, 4), cover(0, -2, 5, 1.6, 2), cover(-11, -9), cover(11, -9)],
     pads: [], kits: [{ lx: -11, lz: -13 }, { lx: 12, lz: 14 }], lightColor: 0xffe0d0,
   },
   {
     name: '第3区画：昇降プラットフォーム', title: '第3区画  昇降プラットフォーム', w: 32, d: 38, h: 12,
-    waves: [[{ kind: 'gunner', count: 2, zone: 'platform' }, { kind: 'crawler', count: 3 }]],
+    waves: [[{ kind: 'gunner', count: 2, zone: 'platform' }, { kind: 'crawler', count: 2 }, { kind: 'jumper', count: 1 }]],
     blocks: [
       { lx: 12, lz: -13, sx: 8, sy: 4.8, sz: 12, kind: 'platform' },
       { lx: 12, lz: -6, sx: 8, sy: 3.6, sz: 2, kind: 'step' },
@@ -70,15 +70,15 @@ export const ROOM_DEFS: RoomDef[] = [
   },
   {
     name: '第4区画：重機ハンガー', title: '第4区画  重機ハンガー', w: 30, d: 34, h: 10,
-    waves: [[{ kind: 'heavy', count: 1 }, { kind: 'drone', count: 2 }], [{ kind: 'gunner', count: 2 }]],
+    waves: [[{ kind: 'heavy', count: 1 }, { kind: 'missileDrone', count: 1 }, { kind: 'drone', count: 1 }], [{ kind: 'gunner', count: 1 }, { kind: 'beamer', count: 1 }]],
     blocks: [cover(-9, 3, 2.4, 2.6, 2.4), cover(9, 3, 2.4, 2.6, 2.4), cover(-9, -8, 2.4, 2.6, 2.4), cover(9, -8, 2.4, 2.6, 2.4)],
     pads: [], kits: [{ lx: -12, lz: 14 }, { lx: 12, lz: 14 }], lightColor: 0xffd8e8,
   },
   {
     name: '第5区画：中央制御室', title: '第5区画  中央制御室', w: 40, d: 40, h: 12,
     waves: [
-      [{ kind: 'crawler', count: 3 }, { kind: 'drone', count: 2 }],
-      [{ kind: 'heavy', count: 2 }, { kind: 'gunner', count: 1 }],
+      [{ kind: 'crawler', count: 2 }, { kind: 'drone', count: 1 }, { kind: 'leech', count: 1 }, { kind: 'bomber', count: 1 }, { kind: 'redWalker', count: 1 }],
+      [{ kind: 'heavy', count: 1 }, { kind: 'beamer', count: 1 }, { kind: 'jumper', count: 1 }, { kind: 'missileDrone', count: 1 }],
     ],
     blocks: [cover(-12, 6), cover(12, 6), cover(0, 0, 4, 1.8, 4), cover(-14, -6), cover(14, -6), cover(-6, -12, 3, 1.6, 2), cover(6, -12, 3, 1.6, 2)],
     pads: [{ lx: 0, lz: 13 }], kits: [{ lx: -16, lz: 14 }, { lx: 16, lz: 14 }], lightColor: 0xe8e0ff,
@@ -151,7 +151,7 @@ export function computeLayout(defs: RoomDef[] = ROOM_DEFS): RoomLayout[] {
 
 export interface SpawnPoint { kind: EnemyKind; x: number; y: number; z: number }
 
-const AIR: EnemyKind[] = ['drone', 'boss'];
+const AIR: EnemyKind[] = ['drone', 'boss', 'leech', 'missileDrone', 'redDrone'];
 
 /** あるウェーブの出現位置（部屋の奥側中心） */
 export function spawnPoints(room: RoomLayout, wave: Wave): SpawnPoint[] {

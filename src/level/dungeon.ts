@@ -422,10 +422,22 @@ function enterRoom(world: World, rt: Runtime, j: number): void {
       schedule(rt, j, 10, '電力は自然には回復しない。無駄撃ちに注意');
       schedule(rt, j, 13.4, '床の光るパッドは充電ポイント。上に乗ると電力が回復する');
       break;
-    case 1: schedule(rt, j, 3.2, 'ドローンは下のコアが弱点。Eキーで電力を吸い取れる'); break;
-    case 2: schedule(rt, j, 3.2, 'クローラーは背中の電池が弱点。回避はC'); break;
-    case 3: schedule(rt, j, 3.2, '高台は飛行（3キー）で。階段状の足場からも登れる'); break;
-    case 4: schedule(rt, j, 3.2, 'ヘビーの弱点は背中。スカウター（1キー）で弱点が見える'); break;
+    case 1:
+      schedule(rt, j, 3.2, 'ドローンは下のコアが弱点。Eキーで電力を吸い取れる');
+      schedule(rt, j, 6.8, '赤い敵は吸収アームでつなぐとハッキングできる。表示されたコードを順番に入力');
+      break;
+    case 2:
+      schedule(rt, j, 3.2, 'クローラーは背中の電池が弱点。回避はC');
+      schedule(rt, j, 6.8, 'ボンバーの電気の球は、足元の赤い輪から出れば軽く済む');
+      break;
+    case 3:
+      schedule(rt, j, 3.2, '高台は飛行（3キー）で。階段状の足場からも登れる');
+      schedule(rt, j, 6.8, 'ジャンパーは着地して頭が開いた時しか効かない');
+      break;
+    case 4:
+      schedule(rt, j, 3.2, 'ヘビーの弱点は背中。スカウター（1キー）で弱点が見える');
+      schedule(rt, j, 6.8, 'ミサイルは撃つか、吸収アームを当てれば消せる');
+      break;
     case 6: schedule(rt, j, 3.2, 'この先、強力な反応'); break;
     case 7: rt.bossSpawnTimer = 1.5; break;
   }
