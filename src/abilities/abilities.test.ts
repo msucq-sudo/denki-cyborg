@@ -4,7 +4,9 @@ import { createWorld } from '../core/world';
 import { EventBus } from '../core/events';
 import { makeAABB } from '../core/collision';
 import type { Enemy, World } from '../core/types';
-import { ABSORB, OVERLOAD, FUNCTIONS } from '../config/balance';
+import { ABSORB, OVERLOAD, FUNCTIONS, GRAPPLE } from '../config/balance';
+import { currentGrapple, isGrappling } from '../core/grapple';
+import { registerGrabbable } from '../core/armGrab';
 
 const api = vi.hoisted(() => ({
   drainEnemy: vi.fn(),
@@ -91,12 +93,37 @@ describe('absorb arm', () => {
     expect(world.absorb.phase).toBe('idle');
   });
 
-  it('stops at a wall', () => {
-    world.colliders.push(makeAABB(new THREE.Vector3(-5, 0, -6), new THREE.Vector3(5, 5, -5.5)));
+  it('stops at a wall (grapple on any surface OFF)', () => {
+    const prev = GRAPPLE.anySurface;
+    GRAPPLE.anySurface = false;
+    try {
+      world.colliders.push(makeAABB(new THREE.Vector3(-5, 0, -6), new THREE.Vector3(5, 5, -5.5)));
+      fire();
+      step(1 / 60, 20);
+      expect(['retracting', 'cooldown']).toContain(world.absorb.phase);
+      expect(world.absorb.tip.z).toBeGreaterThan(-6);
+    } finally { GRAPPLE.anySurface = prev; }
+  });
+
+  it('grapples onto a plain wall with any surface ON, and climbs a low ledge', () => {
+    GRAPPLE.anySurface = true;
+    // 高さ2.5mの箱（上に立てる）
+    world.colliders.push(makeAABB(new THREE.Vector3(-5, 0, -8), new THREE.Vector3(5, 2.5, -5.5)));
     fire();
     step(1 / 60, 20);
-    expect(['retracting', 'cooldown']).toContain(world.absorb.phase);
-    expect(world.absorb.tip.z).toBeGreaterThan(-6);
+    // 壁に刺さってグラップル開始（電力を払う）。上の縁が低いので「よじ登る縁」扱い
+    expect(isGrappling(world)).toBe(true);
+    expect(currentGrapple(world)?.kind).toBe('ledge');
+    expect(currentGrapple(world)?.pos.y).toBeCloseTo(2.5, 3);
+  });
+
+  it('arm grabs a registered item and pulls it back; metal hit by the arm flies to the player', () => {
+    const onGrab = vi.fn();
+    const item = registerGrabbable(world, { pos: new THREE.Vector3(0, 1.5, -8), radius: 1, enabled: true, obj: null, onGrab });
+    fire();
+    step(1 / 60, 90);
+    expect(onGrab).toHaveBeenCalledTimes(1);
+    expect(item.enabled).toBe(false);
   });
 
   it('attaches, drains, converts to energy, completes with bonus', () => {

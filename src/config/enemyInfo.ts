@@ -14,7 +14,23 @@ export interface EnemyInfo {
   look: string;
 }
 
-export const ENEMY_ORDER: EnemyKind[] = ['drone', 'crawler', 'gunner', 'walker', 'redWalker', 'leech', 'heavy', 'heavyWalker', 'beamer', 'jumper', 'missileDrone', 'bomber', 'redDrone', 'missile', 'boss'];
+// 既存の図鑑番号（No.01〜08）は変えない。Phase 3 の新しい雑魚は No.09 から後ろに足す
+export const ENEMY_ORDER: EnemyKind[] = [
+  'drone', 'crawler', 'gunner', 'walker', 'heavy', 'heavyWalker', 'missile', 'boss',
+  'beamer', 'leech', 'redWalker', 'jumper', 'missileDrone', 'bomber', 'redDrone',
+];
+
+/** 図鑑番号（ENEMY_ORDER の順に 1 から）。マップ・図鑑・データ一覧で共通 */
+export function enemyNo(kind: EnemyKind): number { return ENEMY_ORDER.indexOf(kind) + 1; }
+/** 'No.01' 形式 */
+export function enemyNoLabel(kind: EnemyKind): string { return `No.${String(enemyNo(kind)).padStart(2, '0')}`; }
+/** マップの印の色（種類ごと） */
+export const ENEMY_COLOR: Record<EnemyKind, string> = {
+  drone: '#3aa0ff', crawler: '#f08a24', gunner: '#c79a00', walker: '#2fa86a',
+  heavy: '#d23c3c', heavyWalker: '#8a3cd2', missile: '#444c5c', boss: '#000000',
+  beamer: '#0a6cc4', leech: '#c43ab0', redWalker: '#e0302a', jumper: '#2a6a8a',
+  missileDrone: '#5a5aa0', bomber: '#c8a020', redDrone: '#e04848',
+};
 
 export const ENEMY_INFO: Record<EnemyKind, EnemyInfo> = {
   drone: {

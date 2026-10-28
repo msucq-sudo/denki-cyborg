@@ -46,6 +46,18 @@ test('auto-aim is locked until unlocked', async () => {
   expect(w.unlocks.autoAim).toBe(false);
 });
 
+test('metal grabbed by the arm flies to the player from far away', () => {
+  const w = mkWorld();
+  w.player.pos.set(0, 0, 25);
+  const c = spawnEnemy(w, 'gunner', V(0, 0.7, 0));
+  damageEnemy(w, c, 999, { how: 'shot' });
+  for (let i = 0; i < 60; i++) updatePickups(w, 1 / 30);
+  expect(w.inventory.metal).toBe(0);
+  for (const d of w.drops) d.grabbed = true;
+  for (let i = 0; i < 90; i++) updatePickups(w, 1 / 30);
+  expect(w.inventory.metal).toBe(METAL.drop.gunner);
+});
+
 test('walking near the metal pulls it in and adds it to the inventory', () => {
   const w = mkWorld();
   w.player.pos.set(0, 0, 40);

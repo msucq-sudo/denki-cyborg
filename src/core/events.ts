@@ -113,6 +113,8 @@ export interface GameEvents {
   grappleFire: {};
   grappleAttach: { pos: THREE.Vector3 };
   grappleArrive: { pos: THREE.Vector3 };
+  /** 吸収アームでアイテム（歯車・メタル）を掴んだ */
+  armGrab: { pos: THREE.Vector3 };
   /** 無線通信（スパーク等）。duration 秒で自動で消える（省略時は文字数から） */
   comm: { speaker: string; text: string; duration?: number };
 }

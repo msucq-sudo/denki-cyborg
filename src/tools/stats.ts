@@ -1,6 +1,6 @@
 // データ一覧：数値はすべて balance.ts などの定数から実行時に読む（複製しない）
 import * as B from '../config/balance';
-import { ENEMY_ORDER, ENEMY_INFO } from '../config/enemyInfo';
+import { ENEMY_ORDER, ENEMY_INFO, enemyNo } from '../config/enemyInfo';
 import { WEAPONS } from '../player/weapons';
 import { HEAVY, CRAWLER } from '../enemies/ai';
 import { WALKER } from '../enemies/kinds/walker';
@@ -185,6 +185,7 @@ const kindConsts: Partial<Record<EnemyKind, [string, object][]>> = {
 };
 const r1 = (n: number) => Math.round(n * 100) / 100;
 const cols: { key: string; label: string; get: (k: EnemyKind) => number | string; der?: boolean; text?: boolean }[] = [
+  { key: 'no', label: 'No.', get: (k) => enemyNo(k) },
   { key: 'name', label: '名前', get: (k) => ENEMY_INFO[k].name, text: true },
   { key: 'hp', label: 'HP', get: (k) => ENEMIES[k].hp },
   { key: 'speed', label: '速度', get: (k) => ENEMIES[k].speed },

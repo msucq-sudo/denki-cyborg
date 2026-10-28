@@ -29,6 +29,7 @@ const SFX_POLICY: Record<string, SfxPolicy> = {
   heartbeat: { minInterval: 0.4 },
   footstep: { minInterval: 0.12, maxVoices: 2 },
   metalPickup: { minInterval: 0.05, maxVoices: 3 },
+  armGrab: { minInterval: 0.1, maxVoices: 2 },
   enemyNotice: { minInterval: 0.6, maxVoices: 1 },
   walkerShot: { minInterval: 0.08, maxVoices: 3 },
   missileLaunch: { minInterval: 0.05, maxVoices: 6 },
@@ -759,6 +760,12 @@ function subscribeNew(events: EventBus): void {
   }));
   sub(events, 'interactPrompt', () => play('interactPrompt', 0.05, (x, t) => {
     tone(x, t, { type: 'sine', f: 1500, dur: 0.04, gain: 0.04 });
+  }));
+  // アームでアイテムを掴んだ：カチッ＋短い巻き取り
+  sub(events, 'armGrab', () => play('armGrab', 0.3, (x, t) => {
+    noise(x, t, { dur: 0.04, gain: 0.12, filter: { type: 'bandpass', f: 3200, q: 3 } });
+    tone(x, t, { type: 'square', f: 900, dur: 0.05, gain: 0.04, filter: { type: 'lowpass', f: 2500 } });
+    tone(x, t, { type: 'sawtooth', f: 500, f2: 260, at: 0.05, dur: 0.22, gain: 0.04, filter: { type: 'lowpass', f: 1600 } });
   }));
   // メタルを拾った：金属片のチャリン（量が多いほど明るく）
   sub(events, 'metalPickup', (p) => play('metalPickup', 0.25, (x, t) => {
