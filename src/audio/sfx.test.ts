@@ -71,6 +71,11 @@ const NEW: Array<[keyof GameEvents, any, string]> = [
   ['enemyAction', { kind: 'bomber', pos: v, action: 'bombBlast' }, 'bombBlast'],
   ['enemyAttack', { kind: 'jumper', pos: v }, 'jumperThrust'],
   ['enemyAttack', { kind: 'bomber', pos: v }, 'bomberThrow'],
+  // 強化画面
+  ['uiMove', {}, 'uiMove'],
+  ['uiConfirm', {}, 'uiConfirm'],
+  ['uiDenied', {}, 'uiDenied'],
+  ['upgrade', { id: 'body', level: 3 }, 'upgrade'],
 ];
 
 describe('sfx 新規イベントのハンドラ', () => {

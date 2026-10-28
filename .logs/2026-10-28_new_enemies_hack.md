@@ -18,3 +18,10 @@
 - 親の統合：SE（効果音ボードにも追加）、アルファ版ダンジョンへの配置とヒント、README、ドローンのアニメの重複を共通化
 - 検証：tsc OK、Vitest 256件パス、本番ビルド成功、敵図鑑の全員並びでエラー0
 - 注意：並列でヘッドレス Chromium を動かすと非常に重い（load 40）。page.screenshot が Google Fonts 待ちで止まる → 各スクリプトでフォントを遮断
+
+# 強化画面（Phase 4）
+- 依頼：2階のベッドで寝ると強化画面。左に GUN/BODY/ARM/SKILL、右に自分の3Dモデル（GUN では銃を構える）。歯車で強化。GUN/BODY/ARM はレベルを上げるだけ、SKILL は選んで上げる。参考はプラグマタの STATUS UPDATE
+- 親：契約（progression/upgrades.ts、world.upgrades、階の移動で引き継ぎ）
+- T4-A（Sonnet 5.5）：数値確定（Lv1 は balance.ts の定数から）、effects.ts 経由でゲームに反映、stats.html に強化タブ
+- T4-B（Sonnet 5.5）：強化画面（メインのレンダラーで別シーン描画、実際のプレイヤーモデルとポーズを流用）、SE、?gears=N、__game.openUpgrade()
+- 確認：tsc OK、Vitest 全件パス、ビルド成功、upgrade_check.mjs（寝る→開く→強化→不足→閉じる→起床→操作できる）

@@ -1,6 +1,7 @@
 import type { World } from '../core/types';
 import type { EventBus, GameEvents } from '../core/events';
-import { CHARACTER, ENEMIES, LOCKDOWN, PLAYER } from '../config/balance';
+import { CHARACTER, ENEMIES, LOCKDOWN } from '../config/balance';
+import { moveSpeed } from '../progression/effects';
 import { SfxGate, clamp01, stepPulse, type SfxPolicy } from './gate';
 import { tone, noise, createLoop, type Eng, type Loop, type LoopName } from './synth';
 
@@ -51,6 +52,10 @@ const SFX_POLICY: Record<string, SfxPolicy> = {
   flightFail: { minInterval: 0.5 },
   wakeWarn: { minInterval: 0.15, maxVoices: 3 },
   emerge: { minInterval: 0.1, maxVoices: 3 },
+  uiMove: { minInterval: 0.03, maxVoices: 2 },
+  uiConfirm: { minInterval: 0.06, maxVoices: 2 },
+  uiDenied: { minInterval: 0.15, maxVoices: 2 },
+  upgrade: { minInterval: 0.1, maxVoices: 2 },
 };
 
 /* ------------------------------------------------------------------ */
@@ -480,6 +485,7 @@ function subscribe(events: EventBus): void {
   subscribeNew(events);
   subscribeWake(events);
   subscribePhase3(events);
+  subscribeUpgrade(events);
 }
 
 /* ------------------------------------------------------------------ */
@@ -561,7 +567,7 @@ export function updateAudio(world: World, dt: number): void {
     // 足音（重量級：ドスドス）。地上を歩いた距離で鳴らす（半歩ごと＝ストライド/2）
     const sp = Math.hypot(p.vel.x, p.vel.z);
     if (p.onGround && !p.flying && sp > 0.8) {
-      const run = sp > PLAYER.moveSpeed * 1.15;
+      const run = sp > moveSpeed(world) * 1.15;
       const half = (run ? CHARACTER.anim.strideRun : CHARACTER.anim.strideWalk) / 2;
       footAcc += sp * dt;
       if (footAcc >= half) { footAcc -= half; playFootstep(run); }
@@ -982,4 +988,36 @@ function subscribePhase3(events: EventBus): void {
       noise(x, t, { dur: 0.03, gain: 0.08 * a, filter: { type: 'highpass', f: 5000 } });
     });
   });
+}
+
+/* ------------------------------------------------------------------ */
+/* 強化画面                                                            */
+/* ------------------------------------------------------------------ */
+
+function subscribeUpgrade(events: EventBus): void {
+  // カーソル移動：小さなチック
+  sub(events, 'uiMove', () => play('uiMove', 0.04, (x, t) => {
+    tone(x, t, { type: 'sine', f: 1250, f2: 1050, dur: 0.035, gain: 0.07, attack: 0.002 });
+  }));
+  // 決定・項目の切り替え：2音の短い上昇
+  sub(events, 'uiConfirm', () => play('uiConfirm', 0.16, (x, t) => {
+    tone(x, t, { type: 'triangle', f: 760, dur: 0.07, gain: 0.1, attack: 0.002 });
+    tone(x, t, { type: 'triangle', f: 1140, at: 0.055, dur: 0.1, gain: 0.1, attack: 0.002 });
+  }));
+  // 受け付けない（歯車不足・最大レベル）：低いブブッ
+  sub(events, 'uiDenied', () => play('uiDenied', 0.28, (x, t) => {
+    tone(x, t, { type: 'square', f: 150, f2: 120, dur: 0.1, gain: 0.07, filter: { type: 'lowpass', f: 700 } });
+    tone(x, t, { type: 'square', f: 150, f2: 110, at: 0.13, dur: 0.12, gain: 0.07, filter: { type: 'lowpass', f: 700 } });
+  }));
+  // 強化できた：歯車のラチェット音＋明るい上昇アルペジオ（レベルが高いほど少し高い）
+  sub(events, 'upgrade', (p) => play('upgrade', 0.9, (x, t) => {
+    const k = 1 + 0.045 * Math.max(0, p.level - 2);
+    for (let i = 0; i < 4; i++) {
+      noise(x, t, { at: i * 0.045, dur: 0.025, gain: 0.1, filter: { type: 'bandpass', f: 3000 + i * 500, q: 4 } });
+      tone(x, t, { type: 'square', f: 420 + i * 70, at: i * 0.045, dur: 0.03, gain: 0.03, filter: { type: 'lowpass', f: 2200 } });
+    }
+    [523, 659, 784, 1046].forEach((f, i) => tone(x, t, { type: 'triangle', f: f * k, at: 0.2 + i * 0.065, dur: 0.24, gain: 0.12 }));
+    tone(x, t, { type: 'sine', f: 2093 * k, at: 0.46, dur: 0.4, gain: 0.06 });
+    tone(x, t, { type: 'sine', f: 180, f2: 360, at: 0.18, dur: 0.25, gain: 0.1 });
+  }));
 }

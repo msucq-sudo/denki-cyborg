@@ -24,10 +24,10 @@ export interface UpgradeStage {
   dispose(): void;
 }
 
-const BASE_YAW = { neutral: Math.PI - 0.5, aim: Math.PI - 0.95 };
-const LOOK_Y = 0.98;
+const BASE_YAW = { neutral: Math.PI - 0.38, aim: Math.PI - 0.85 };
+const LOOK_Y = 0.9;
 /** 全身（約1.9m）が縦に収まる割合 */
-const FIT = 0.86;
+const FIT = 0.7;
 const FOV = 28;
 
 function radialTexture(stops: [number, string][], size = 256): THREE.CanvasTexture {
@@ -135,6 +135,7 @@ export function createUpgradeStage(): UpgradeStage {
     aimDir: new THREE.Vector3(0, 0, -1),
     stats: { shots: 0 },
     functions: { scouter: true },
+    upgrades: {}, // pose.ts が移動速度の強化を読む（見せるだけなので全部レベル1）
   } as unknown as World;
   const anim: AnimState = createAnimState(fake);
 
