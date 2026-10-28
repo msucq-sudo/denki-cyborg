@@ -103,6 +103,10 @@ export interface GameEvents {
   sleepComplete: {};
   /** 強化でレベルが上がった */
   upgrade: { id: string; level: number };
+  /** 強化画面のメニュー操作（SE用）：カーソル移動 / 決定・項目の切り替え / 受け付けられない（歯車不足・最大レベル） */
+  uiMove: {};
+  uiConfirm: {};
+  uiDenied: {};
   /** ベッドから起き上がった */
   wakeUp: {};
   /** ゾーンの敵の波が出現（wave: 1 or 2） */
