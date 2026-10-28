@@ -165,20 +165,44 @@ export class Builder {
   }
 }
 
-function buildDrone(): Model {
+/** ドローン系の配色（赤ドローンなどが差し替える） */
+export interface DronePalette {
+  white: number; blue: number; dark: number; pale: number; silver: number;
+  /** ベルト・ランプの発光色。省略すると標準の青 */
+  glow?: number;
+}
+
+/** 標準のドローン（白と青） */
+export const DRONE_PALETTE: DronePalette = { white: COLORS.white, blue: COLORS.blue, dark: COLORS.navy, pale: COLORS.paleBlue, silver: COLORS.silver };
+
+/**
+ * 色違いのドローンを組み立てる。lamps には色を変えられるランプ・ベルトの材質を集める。
+ * decorate は仕上げ前に呼ばれ、パーツの追加や目の色変更ができる
+ */
+export function buildDroneWith(
+  pal: DronePalette = DRONE_PALETTE,
+  opts: { lamps?: THREE.MeshStandardMaterial[]; decorate?(b: Builder): void } = {},
+): Model {
   const b = new Builder();
-  const white = b.body(COLORS.white, 0.5, true), blue = b.body(COLORS.blue, 0.5, true), dark = b.body(COLORS.navy, 0.7, true);
-  const pale = b.body(COLORS.paleBlue, 0.5, true), silver = b.body(COLORS.silver, 0.5, true);
+  const white = b.body(pal.white, 0.5, true), blue = b.body(pal.blue, 0.5, true), dark = b.body(pal.dark, 0.7, true);
+  const pale = b.body(pal.pale, 0.5, true), silver = b.body(pal.silver, 0.5, true);
+  // 発光材質：標準は青。glow 指定があればその色にして、後から色を変えられるよう lamps に集める
+  const glowMat = (intensity: number): THREE.MeshStandardMaterial => {
+    if (pal.glow === undefined) return b.glow(intensity);
+    const m = new THREE.MeshStandardMaterial({ color: 0xffffff, emissive: pal.glow, emissiveIntensity: intensity, roughness: 0.4 });
+    opts.lamps?.push(m);
+    return m;
+  };
   // 六角の胴体 + 上下のテーパー装甲
   b.prism(0.42, 0.32, 6, white);
   b.mesh(taperGeo(0.24, 0.42, 0.14, 6), pale, b.vis, 0, 0.23, 0);
   b.mesh(taperGeo(0.42, 0.24, 0.16, 6), silver, b.vis, 0, -0.24, 0);
   // 光るベルト + パネルライン
-  b.mesh(polyCyl(0.435, 0.024, 6), b.glow(), b.vis, 0, -0.03, 0).castShadow = false;
+  b.mesh(polyCyl(0.435, 0.024, 6), glowMat(1.2), b.vis, 0, -0.03, 0).castShadow = false;
   for (const sx of [-1, 1]) b.mesh(boxGeo(0.02, 0.3, 0.5), dark, b.vis, sx * 0.375, 0, 0);
   // アンテナ
   b.prism(0.014, 0.24, 4, dark, b.vis, 0.12, 0.45, -0.05);
-  b.lamp(0.045, 0.045, 0.045, b.vis, 0.12, 0.58, -0.05, 1.8);
+  { const l = b.mesh(boxGeo(0.045, 0.045, 0.045), glowMat(1.8), b.vis, 0.12, 0.58, -0.05); l.castShadow = false; }
   // 回るリング（六角）+ プロペラ
   const ring = new THREE.Group();
   b.vis.add(ring);
@@ -217,8 +241,11 @@ function buildDrone(): Model {
     leg.rotation.z = 0.35;
   }
   b.weak(0, -0.45, 0, 0.22, [1, 1, 1], 0.16);
+  opts.decorate?.(b);
   return b.done();
 }
+
+function buildDrone(): Model { return buildDroneWith(); }
 
 function buildCrawler(): Model {
   const b = new Builder();

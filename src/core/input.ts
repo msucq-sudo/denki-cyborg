@@ -20,9 +20,17 @@ export class Input {
   enabled = true;
   /** true の間はゲームの操作（移動・視点・射撃…）を無効にする。演出中のロック用。rawPressed だけは通る */
   locked = false;
+  /**
+   * true の間（ハッキング中）、パッドの十字キーと ABXY をゲーム操作（ジャンプ・逆流・インタラクト・機能）に割り当てない。
+   * 生の仮想キー（PadUp/PadDown/PadLeft/PadRight/PadA/PadB/PadX/PadY）だけが届く。
+   */
+  padCapture = false;
+  /** 最後に触った入力機器（ハッキングの表示切り替え用） */
+  lastDevice: 'kbm' | 'pad' = 'kbm';
 
   constructor(private target: HTMLElement) {
     window.addEventListener('keydown', (e) => {
+      this.lastDevice = 'kbm';
       if (['Space', 'Tab', 'ArrowUp', 'ArrowDown'].includes(e.code)) e.preventDefault();
       if (!this.down.has(e.code)) this.pressedSet.add(e.code);
       this.down.add(e.code);
@@ -32,6 +40,7 @@ export class Input {
       this.releasedSet.add(e.code);
     });
     target.addEventListener('mousedown', (e) => {
+      this.lastDevice = 'kbm';
       if (!this.mouseDown.has(e.button)) this.mousePressedSet.add(e.button);
       this.mouseDown.add(e.button);
     });
@@ -73,16 +82,19 @@ export class Input {
       if (ax(1) > T) keys.add('KeyS');
       if (ax(0) < -T) keys.add('KeyA');
       if (ax(0) > T) keys.add('KeyD');
-      if (b(0)) { keys.add('Space'); keys.add('PadA'); }
+      // 十字キーと ABXY は常に生の仮想キーも出す（ハッキングのコード入力用）。padCapture 中はゲーム操作に割り当てない
+      const RAW: [number, string][] = [[12, 'PadUp'], [13, 'PadDown'], [14, 'PadLeft'], [15, 'PadRight'], [0, 'PadA'], [1, 'PadB'], [2, 'PadX'], [3, 'PadY']];
+      for (const [i, k] of RAW) if (b(i)) keys.add(k);
+      const cap = this.padCapture;
+      if (b(0) && !cap) keys.add('Space');
       // B(1)=インタラクト専用（PadB。2階のベッドなど）。回避は RB(5) だけ
-      if (b(1)) keys.add('PadB');
       if (b(5)) keys.add('KeyC');
-      if (b(2)) keys.add('KeyF');
+      if (b(2) && !cap) keys.add('KeyF');
       // Y(3)=インタラクト（R：スイッチなど）。ジェットパックは A 長押し
-      if (b(3)) keys.add('KeyR');
+      if (b(3) && !cap) keys.add('KeyR');
       if (b(4)) keys.add('KeyE');
-      if (b(14)) keys.add('Digit1');
-      if (b(12)) keys.add('Digit2');
+      if (b(14) && !cap) keys.add('Digit1');
+      if (b(12) && !cap) keys.add('Digit2');
       if (b(9)) keys.add('KeyP');
       if (b(10)) keys.add('ShiftLeft');
       if (b(7) || (pad.buttons[7]?.value ?? 0) > 0.3) mouse.add(0);
@@ -94,6 +106,7 @@ export class Input {
         const n = (m - 0.15) / 0.85;
         return Math.sign(v) * n * n;
       };
+      if (keys.size > 0 || mouse.size > 0 || Math.abs(ax(2)) > 0.3 || Math.abs(ax(3)) > 0.3) this.lastDevice = 'pad';
       if (!this.locked) {
         this.mouseDX += look(ax(2)) * PAD_LOOK_PX_PER_SEC * dt;
         this.mouseDY += look(ax(3)) * PAD_LOOK_PX_PER_SEC * dt;

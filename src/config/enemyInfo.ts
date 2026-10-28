@@ -14,7 +14,11 @@ export interface EnemyInfo {
   look: string;
 }
 
-export const ENEMY_ORDER: EnemyKind[] = ['drone', 'crawler', 'gunner', 'walker', 'heavy', 'heavyWalker', 'missile', 'boss'];
+// 既存の図鑑番号（No.01〜08）は変えない。Phase 3 の新しい雑魚は No.09 から後ろに足す
+export const ENEMY_ORDER: EnemyKind[] = [
+  'drone', 'crawler', 'gunner', 'walker', 'heavy', 'heavyWalker', 'missile', 'boss',
+  'beamer', 'leech', 'redWalker', 'jumper', 'missileDrone', 'bomber', 'redDrone',
+];
 
 /** 図鑑番号（ENEMY_ORDER の順に 1 から）。マップ・図鑑・データ一覧で共通 */
 export function enemyNo(kind: EnemyKind): number { return ENEMY_ORDER.indexOf(kind) + 1; }
@@ -24,6 +28,8 @@ export function enemyNoLabel(kind: EnemyKind): string { return `No.${String(enem
 export const ENEMY_COLOR: Record<EnemyKind, string> = {
   drone: '#3aa0ff', crawler: '#f08a24', gunner: '#c79a00', walker: '#2fa86a',
   heavy: '#d23c3c', heavyWalker: '#8a3cd2', missile: '#444c5c', boss: '#000000',
+  beamer: '#0a6cc4', leech: '#c43ab0', redWalker: '#e0302a', jumper: '#2a6a8a',
+  missileDrone: '#5a5aa0', bomber: '#c8a020', redDrone: '#e04848',
 };
 
 export const ENEMY_INFO: Record<EnemyKind, EnemyInfo> = {
@@ -61,6 +67,41 @@ export const ENEMY_INFO: Record<EnemyKind, EnemyInfo> = {
     name: 'ミサイル溜めロボット', role: '強敵・召喚＋溜めミサイル',
     behavior: ['雑魚敵を周りに召喚して守らせる', 'その間にミサイルを溜め、溜まったら一斉発射', '溜まる前に倒すか、溜めを妨害する', 'ミサイルは撃ち落とせる'],
     weakness: '背中・ポッド下のパワーセル（回り込んで狙う）', area: 'ボルト研究室前', look: '白い胴体＋青いキャタピラ、背中に6連ミサイルポッド。溜まるとミサイルが顔を出しゲージが伸びる',
+  },
+  redWalker: {
+    name: '赤ウォーカー', role: 'ハッキング可能',
+    behavior: ['ウォーカーと同じく、ゆっくり近づきながら射撃', '吸収アームをつなぐとハッキング開始。8個のコードを入力すると味方になる', '味方の間はほかの敵を撃つ（20秒）'],
+    weakness: '背中のバッテリー', area: 'ボルト研究室前', look: 'ウォーカーの赤い版。赤い胴体に白銀の差し色。背中に皿型アンテナと接続ポートがあり、青緑に点滅する（ハッキングできる印）。味方になると青く光る',
+  },
+  beamer: {
+    name: 'ビーマー', role: '遠距離・溜めビーム',
+    behavior: ['遠くに陣取り、照準線でねらいながら長く溜める', '発射直前に照準を固定して極太ビーム（ここで避ける）', '体力が多い'],
+    weakness: '溜め中だけ開く前面のレンズ（撃つと溜めが止まる）', area: 'ボルト研究室前', look: '白と青の三脚に載った背の高い砲台。長い砲身の先に大きなレンズがあり、溜めるとシャッターが開いて光が集まり、細い照準線がこちらを追ってくる',
+  },
+  leech: {
+    name: 'リーチ', role: '小型・電力泥棒',
+    behavior: ['遠くから吸収アームを伸ばし、プレイヤーの電力を吸う（回避で外れる）', 'こちらの吸収アームをつなぐと全力で逃げる', '吸い切ると盗まれた電力が戻ってくる'],
+    weakness: '背中のタンク', area: 'ボルト研究室前', look: '白と青のまるい小さな体に大きな目。前に紫のバネ腕の吸い口、背中にたまった電力が見える透明タンク（ここが弱点）',
+  },
+  jumper: {
+    name: 'ジャンパー', role: '重装・跳躍',
+    behavior: ['ジャンプしながらゆっくり近づく', '着地の瞬間に突き（近いと痛い）', '大きな頭の核は着地のときだけ開く。開いている間しか攻撃も吸収も効かない'],
+    weakness: '頭の核（開いているときだけ）', area: 'ボルト研究室前', look: '白と青の小さな胴体に、花びら状の装甲で閉じた巨大な頭。二本脚で屈んで跳ぶ。胸の前に槍を下げ、着地で頭が開くと中の黄色い核が光る',
+  },
+  missileDrone: {
+    name: 'ミサイルドローン', role: '浮遊・ミサイル4連',
+    behavior: ['距離を取って浮遊', 'ミサイルを4発まとめて放つ（追いかけてくる）', 'ミサイルは銃で撃つか、吸収アームを当てると一発で消える'],
+    weakness: '下のコア', area: 'ボルト研究室前', look: 'ドローンより一回り大きい白と青の機体。左右に2本ずつ、計4本のミサイル発射筒（先端が見える）。下にコア',
+  },
+  bomber: {
+    name: 'ボンバー', role: '小型・電気爆弾',
+    behavior: ['電気の球を山なりに投げてくる', '球は着弾で爆発。中心ほど大ダメージ、端なら少なめ'],
+    weakness: '背中の電池', area: 'ボルト研究室前', look: '白と青の丸っこい小型。投げ腕に電気の球を握る',
+  },
+  redDrone: {
+    name: '赤ドローン', role: 'ハッキング可能',
+    behavior: ['ドローンと同じく周回して射撃', '吸収アームをつなぐとハッキング開始（動きも射撃もにぶる）。8個のコードを入力すると味方になる', '味方の間はプレイヤーのまわりを飛び、ほかの敵を撃つ（20秒）'],
+    weakness: '下のコア', area: 'ボルト研究室前', look: 'ドローンの赤い版。赤い六角の胴体に白銀の差し色。上面に皿型アンテナと接続ポートがあり、青緑に点滅する（ハッキングできる印）。味方になると青く光る',
   },
   boss: {
     name: 'ジェネレーター', role: 'ボス（サージ収容所）',

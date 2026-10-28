@@ -41,6 +41,10 @@ export interface Player {
   /** absorb モジュールが毎フレーム設定 */
   absorbing: boolean;
   overloading: boolean;
+  /** ハッキング中（hack モジュールが毎フレーム設定） */
+  hacking?: boolean;
+  /** リーチの吸収アームにつながれている（leech が毎フレーム設定。HUD 表示用） */
+  leeched?: boolean;
 }
 
 export interface WeakPoint {
@@ -74,6 +78,10 @@ export interface Enemy {
   ai: Record<string, any>;
   /** 倒れてから消えるまで等の演出用 */
   deadTimer: number;
+  /** ハッキングされて味方になった。true の間は撃っても当たらず、吸収できず、部屋のクリア判定にも数えない */
+  allied?: boolean;
+  /** 守られている（ジャンパーの閉じた頭など）。true の間は弾が当たってもダメージ0（はじく）、吸収アームも刺さらない */
+  shielded?: boolean;
 }
 
 export type ProjectileOwner = 'player' | 'enemy';
@@ -98,7 +106,17 @@ export interface Projectile {
   /** ホーミング：delay 秒後から旋回（rad/s）。speed があればその速さへ加減速 */
   homing?: { turnRate: number; target: 'player'; delay?: number; speed?: number; accel?: number };
   /** 命中時の小爆発（見た目のみ） */
-  blast?: { radius: number; color: number };
+  blast?: {
+    radius: number; color: number;
+    /** プレイヤーへの範囲ダメージ（爆発の中心での値）。省略なら見た目だけ。中心から離れるほど減る */
+    damage?: number;
+    /** 範囲の端でのダメージ倍率（0..1、既定 0.25）。範囲の外は 0 */
+    minMul?: number;
+    /** 寿命が尽きたときも爆発する（信管） */
+    onExpire?: boolean;
+    /** 飛んでいる間、着弾予測地点に警告の輪を出す */
+    warnRing?: boolean;
+  };
   /** メッシュを速度方向へ向ける（+Z が先端） */
   orient?: boolean;
   /** 軌跡の火花の色 */
@@ -173,6 +191,7 @@ export interface World {
   colliders: AABB[];
   level: LevelState;
   absorb: AbsorbState;
+  hack: HackState;
   functions: FunctionsState;
   /** 射撃・吸収の発射位置（肩/銃口）。player モジュールが毎フレーム更新 */
   aimOrigin: THREE.Vector3;
@@ -203,4 +222,22 @@ export interface EffectInstance {
   life: number;
   maxLife: number;
   update?: (e: EffectInstance, dt: number) => void;
+}
+
+/** ハッキングの状態（abilities/hack.ts が所有） */
+export interface HackState {
+  /** コード入力中 */
+  active: boolean;
+  target: Enemy | null;
+  /** 出題コード（キーボード用とパッド用。同じ並びの番号から作る） */
+  codeKeys: string[];
+  codePad: string[];
+  /** 正しく入力できた個数 */
+  progress: number;
+  /** 表示に使う入力機器（最後に触った機器） */
+  device: 'kbm' | 'pad';
+  /** ミス時の赤い点滅の残り時間 */
+  failFlash: number;
+  /** 成功表示の残り時間 */
+  successFlash: number;
 }

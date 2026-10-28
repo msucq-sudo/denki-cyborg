@@ -230,6 +230,83 @@ html, body { margin: 0; height: 100%; overflow: hidden; background: #0d1420; }
 .ab-ov .bar { flex: 1; }
 .ab-hint { margin-top: 7px; font-size: 12px; text-align: center; opacity: 0.85; }
 
+/* ハッキング：コード入力（中央下。クロスヘアにかぶらない位置） */
+.hack {
+  position: fixed; bottom: 14px; left: 50%; transform: translateX(-50%);
+  width: min(460px, 94vw); padding: 8px 14px 8px; text-align: center;
+  background: var(--hud-glass); border: 1px solid var(--hud-glass-edge); border-radius: 12px;
+  -webkit-backdrop-filter: blur(8px); backdrop-filter: blur(8px);
+  box-shadow: var(--hud-shadow);
+}
+.hack.fail { animation: hackFail 0.4s ease-in-out; }
+@keyframes hackFail {
+  0%, 100% { transform: translateX(-50%); }
+  15% { transform: translateX(calc(-50% - 9px)); background: rgba(120, 12, 24, 0.85); border-color: #ff5a6a; }
+  35% { transform: translateX(calc(-50% + 9px)); background: rgba(120, 12, 24, 0.85); border-color: #ff5a6a; }
+  55% { transform: translateX(calc(-50% - 6px)); }
+  75% { transform: translateX(calc(-50% + 4px)); }
+}
+.hk-head { display: flex; justify-content: space-between; align-items: baseline; gap: 10px; margin-bottom: 7px; }
+.hk-title { font-size: 14px; font-weight: 800; letter-spacing: 0.14em; color: var(--hud-cyan); text-shadow: 0 0 8px rgba(46, 230, 255, 0.55); }
+.hk-count { font-size: 13px; font-weight: 800; font-variant-numeric: tabular-nums; color: #bff8ff; }
+.hk-code { display: flex; justify-content: center; gap: 6px; }
+.hk-glyph {
+  width: 46px; height: 50px; display: flex; align-items: center; justify-content: center;
+  border-radius: 10px; background: rgba(4, 12, 22, 0.55); border: 1px solid rgba(143, 166, 207, 0.35);
+  opacity: 0.6; transition: opacity 0.1s, transform 0.1s, box-shadow 0.1s, border-color 0.1s;
+}
+.hk-glyph.cur { opacity: 1; transform: translateY(-4px) scale(1.1); border-color: var(--hud-yellow); box-shadow: 0 0 14px rgba(255, 216, 58, 0.7); }
+.hk-glyph.done { opacity: 1; border-color: #6dffb0; box-shadow: 0 0 10px rgba(109, 255, 176, 0.55); background: rgba(20, 90, 60, 0.55); }
+.hk-glyph.done .hk-face { filter: brightness(0.75) saturate(0.7); }
+.hk-face {
+  width: 34px; height: 34px; display: flex; align-items: center; justify-content: center;
+  font-weight: 900; font-size: 20px; line-height: 1;
+}
+/* キーボード：キーキャップ */
+.hk-face.kb {
+  border-radius: 7px; background: linear-gradient(#fbfeff, #cfeef7); color: #1d3a4a;
+  box-shadow: 0 3px 0 #7fbccb;
+}
+/* パッド：十字キー（暗い角丸） */
+.hk-face.dir { border-radius: 8px; background: linear-gradient(#4a5568, #2b3340); color: #fff; font-size: 24px; box-shadow: 0 3px 0 #161b22; }
+/* パッド：ABXY（Xbox の色） */
+.hk-face.pbtn { border-radius: 50%; color: #fff; text-shadow: 0 1px 2px rgba(0, 0, 0, 0.5); box-shadow: 0 3px 0 rgba(0, 0, 0, 0.45); }
+.hk-face.pb-a { background: #3fb950; }
+.hk-face.pb-b { background: #e5484d; }
+.hk-face.pb-x { background: #3b82f6; }
+.hk-face.pb-y { background: #f5c518; color: #3a2d00; text-shadow: none; }
+.hk-hint { margin-top: 8px; font-size: 12px; opacity: 0.85; }
+/* ハッキング中は吸収パネルを上へずらして重ならないように */
+.play.hacking .absorb { bottom: 138px; }
+
+.hack-ok {
+  position: fixed; bottom: 150px; left: 50%; transform: translateX(-50%);
+  padding: 12px 26px; border-radius: 999px; font-size: 20px; font-weight: 800; white-space: nowrap;
+  background: rgba(20, 90, 80, 0.72); border: 1px solid #6dffe0; color: #e6fff8;
+  -webkit-backdrop-filter: blur(6px); backdrop-filter: blur(6px);
+  text-shadow: 0 0 10px rgba(80, 255, 220, 0.8); box-shadow: 0 0 18px rgba(80, 255, 220, 0.45);
+}
+.hack-ok.pop { animation: hackOkIn 0.35s ease-out; }
+@keyframes hackOkIn {
+  from { transform: translateX(-50%) scale(1.5); opacity: 0; }
+  to { transform: translateX(-50%) scale(1); opacity: 1; }
+}
+
+/* 味方の残り時間（左、体力と電気の上） */
+.ally-box {
+  position: fixed; left: 16px; bottom: 172px; width: min(240px, 40vw); padding: 7px 12px 8px;
+  background: var(--hud-glass); border: 1px solid rgba(109, 255, 224, 0.6); border-radius: 12px;
+  -webkit-backdrop-filter: blur(8px); backdrop-filter: blur(8px); box-shadow: var(--hud-shadow);
+}
+.ally-head { display: flex; justify-content: space-between; align-items: baseline; gap: 8px; font-size: 12px; font-weight: 800; margin-bottom: 5px; }
+.ally-name { color: #9dffe8; }
+.ally-time { font-variant-numeric: tabular-nums; }
+.ally-box .bar { height: 8px; }
+.ally-box .fill { background: linear-gradient(90deg, #35c9a8, #b8ffee); }
+.ally-box.low { border-color: #ffb45c; }
+.ally-box.low .ally-time { color: #ffb45c; animation: blink 0.5s steps(2, start) infinite; }
+.ally-box.low .fill { background: linear-gradient(90deg, #ff9a3c, #ffd27a); }
+
 .energy-hint {
   position: fixed; left: 50%; top: 62%; transform: translateX(-50%);
   padding: 10px 22px; border-radius: 999px; font-size: 18px; font-weight: 800; white-space: nowrap;
@@ -414,6 +491,12 @@ html, body { margin: 0; height: 100%; overflow: hidden; background: #0d1420; }
   .tr { top: 12px; right: 12px; }
   .comm { top: 120px; left: 12px; }
   .absorb { bottom: 150px; }
+  .hack { bottom: 12px; }
+  .hack-ok { bottom: 150px; }
+  .play.hacking .absorb { bottom: 150px; }
+  .hk-glyph { width: 36px; height: 44px; }
+  .hk-face { width: 28px; height: 28px; font-size: 17px; }
+  .ally-box { bottom: 150px; left: 12px; }
 }
 
 /* ダメージ数字 */

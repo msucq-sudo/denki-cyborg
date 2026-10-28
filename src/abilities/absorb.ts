@@ -1,5 +1,6 @@
 import * as THREE from 'three';
-import { ABSORB, GRAPPLE, OVERLOAD } from '../config/balance';
+import { ABSORB, ENEMIES, GRAPPLE, HACK, OVERLOAD } from '../config/balance';
+import { KIND_MODULES } from '../enemies/kinds';
 import type { Enemy, World } from '../core/types';
 import { hasLineOfSight, raycastLevel } from '../core/collision';
 import { raycastEnemies, isTargetable } from '../core/enemyUtil';
@@ -8,6 +9,7 @@ import { spawnBurst } from '../core/effects';
 import { drainEnemy, overloadEnemy } from '../enemies/api';
 import { getAbsorbArmRoot } from '../player/player';
 import { getSockets, type PowerSocket } from '../core/sockets';
+import { shootDown } from '../core/projectiles';
 import { segmentSphere } from '../core/collision';
 import {
   canGrapple, findAimedGrapple, hitGrapple, isGrappleHolding, startGrapple, surfacePoint, type GrapplePoint,
@@ -44,6 +46,8 @@ interface Extra {
 
 const extras = new WeakMap<World, Extra>();
 const LOS_GRACE = 0.25;
+/** アームでミサイル等を壊すときの当たり判定の余裕 */
+const ARM_SHOOT_PAD = 0.3;
 const TIP_RADIUS = 0.2;
 const RETRACT_DONE = 0.4;
 const SHOULDER_SIDE = 0.32;
@@ -167,6 +171,11 @@ export function updateAbsorb(world: World, dt: number): void {
       const remain = Math.max(0, ex.reach - a.length);
       const move = Math.min(step, remain);
       const p1 = tmpB.copy(a.tip).addScaledVector(a.dir, move);
+      // 撃ち落とせる敵弾（ミサイルなど）はアームの先端が触れた瞬間に壊れる。アームはそのまま伸び続ける
+      for (const q of world.projectiles) {
+        if (q.dead || !q.shootable || q.owner !== 'enemy') continue;
+        if (segmentSphere(p0, p1, q.pos, q.radius + TIP_RADIUS + ARM_SHOOT_PAD) !== null) shootDown(world, q);
+      }
       const eh = raycastEnemies(world.enemies, p0, p1, TIP_RADIUS);
       const lt = raycastLevel(world.colliders, p0, p1);
       // 電源ソケット（装置）：最も近い命中を探す
@@ -225,6 +234,12 @@ export function updateAbsorb(world: World, dt: number): void {
         ex.socketT = 0.45;
         world.events.emit('absorbAttach', { pos: a.tip.clone() });
         sk.onFeed();
+      } else if (eh && (lt === null || eh.t <= lt) && eh.enemy.shielded) {
+        // 守られている（ジャンパーの閉じた頭など）：はじかれて戻る
+        a.tip.copy(eh.point);
+        a.phase = 'retracting';
+        spawnBurst(world, eh.point, 0xd8e8ff, 8, 3);
+        world.events.emit('shieldBlock', { pos: eh.point.clone() });
       } else if (eh && (lt === null || eh.t <= lt)) {
         attach(world, ex, eh.enemy, eh.point);
       } else if (lt !== null) {
@@ -297,6 +312,13 @@ function updateAttached(world: World, ex: Extra, dt: number): void {
     startRetract(world, ex);
     return;
   }
+  if (enemy.shielded) {
+    // 守りに入った（ジャンパーの頭が閉じた等）：はじかれて外れる
+    world.events.emit('absorbBreak', {});
+    world.events.emit('shieldBlock', { pos: a.tip.clone() });
+    startRetract(world, ex);
+    return;
+  }
 
   // 先端を敵に追従
   if (ex.hasAnchor) {
@@ -363,7 +385,9 @@ function updateAttached(world: World, ex: Extra, dt: number): void {
   }
 
   // ---- 吸収 ----
-  const got = drainEnemy(world, enemy, ABSORB.drainPerSec * dt);
+  // ハッキングできる敵はつないでいる間ゆっくり吸う（コード入力の時間をつくる）
+  const hackMul = KIND_MODULES[enemy.kind]?.hackable ? HACK.drainMul : 1;
+  const got = drainEnemy(world, enemy, ABSORB.drainPerSec * (ENEMIES[enemy.kind].drainMul ?? 1) * hackMul * dt);
   drainAcc += got;
   drainT += dt;
   if (drainAcc > 0 && (drainT >= DRAIN_POP_INTERVAL || enemy.hp <= 0)) {

@@ -52,6 +52,25 @@ const NEW: Array<[keyof GameEvents, any, string]> = [
   ['doorClose', { pos: v }, 'doorClose'],
   ['enemyWakeWarn', { pos: v, mode: 'pod' }, 'wakeWarn'],
   ['enemyEmerge', { kind: 'walker', pos: v, mode: 'drop' }, 'emerge'],
+  // Phase 3
+  ['beamCharge', { pos: v }, 'beamCharge'],
+  ['beamFire', { pos: v }, 'beamFire'],
+  ['beamInterrupt', { pos: v }, 'beamInterrupt'],
+  ['leechFire', { pos: v }, 'leechFire'],
+  ['leechAttach', { pos: v }, 'leechAttach'],
+  ['leechBreak', {}, 'leechBreak'],
+  ['leechFlee', { pos: v }, 'leechFlee'],
+  ['hackStart', {}, 'hackStart'],
+  ['hackInput', { ok: true, progress: 3 }, 'hackOk'],
+  ['hackInput', { ok: false, progress: 0 }, 'hackFail'],
+  ['hackCancel', {}, 'hackCancel'],
+  ['hackSuccess', { pos: v }, 'hackSuccess'],
+  ['allyExpire', { pos: v }, 'allyExpire'],
+  ['shieldBlock', { pos: v }, 'shieldBlock'],
+  ['enemyAction', { kind: 'jumper', pos: v, action: 'jumperLand' }, 'jumperLand'],
+  ['enemyAction', { kind: 'bomber', pos: v, action: 'bombBlast' }, 'bombBlast'],
+  ['enemyAttack', { kind: 'jumper', pos: v }, 'jumperThrust'],
+  ['enemyAttack', { kind: 'bomber', pos: v }, 'bomberThrow'],
 ];
 
 describe('sfx 新規イベントのハンドラ', () => {

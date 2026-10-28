@@ -32,6 +32,10 @@ export function createWorld(input: Input, events: EventBus, aspect: number): Wor
     projectiles: [],
     colliders: [],
     level: { rooms: [], currentRoom: -1, bossSpawned: false, bossDefeated: false, data: {} },
+    hack: {
+      active: false, target: null, codeKeys: [], codePad: [], progress: 0,
+      device: 'kbm', failFlash: 0, successFlash: 0,
+    },
     absorb: {
       phase: 'idle', tip: new THREE.Vector3(), dir: new THREE.Vector3(0, 0, -1), length: 0,
       target: null, cooldown: 0, totalAbsorbed: 0, visual: null,

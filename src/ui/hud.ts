@@ -1,7 +1,7 @@
 import type * as THREE from 'three';
 import type { Enemy, Toast, World } from '../core/types';
 import type { EventBus } from '../core/events';
-import { ABSORB, DODGE, ENEMIES, GUN } from '../config/balance';
+import { ABSORB, DODGE, ENEMIES, GUN, HACK } from '../config/balance';
 import type { EnemyKind } from '../config/balance';
 import { ENEMY_INFO } from '../config/enemyInfo';
 import { clamp, formatRate, formatTime, pct, projectToScreen, stepRate } from './format';
@@ -102,6 +102,7 @@ const KEY_ROWS: KeyRow[] = [
   { id: 'rmb', keys: 'E', pad: 'LB', label: '吸収アーム（発射 / 解除）' },
   { id: 'aim', keys: '右クリック', pad: 'LT', label: '照準（長押しでズーム）' },
   { id: 'f', keys: 'F', pad: 'X', label: '吸収中 長押しで逆流' },
+  { id: 'hack', keys: '表示のキー', pad: '十字・ABXY', label: '吸収中 ハッキング（赤い敵）' },
   { id: 'shift', keys: 'C', pad: 'RB', label: '回避' },
   { id: 'interact', keys: 'R', pad: 'B（装置の近く）', label: '調べる / 2階：ベッドで休む' },
   { id: 'dash', keys: 'Shift', pad: 'L押込', label: 'ダッシュ（移動中のみ低消費）' },
@@ -123,6 +124,19 @@ function buildKeyList(register?: Record<string, HTMLElement>): HTMLElement {
     if (register) register[row.id] = li;
   }
   return ul;
+}
+
+/** ハッキングのコード表示：キーボードのキーキャップ（Q/T/G…）と、パッドの十字キー・ABXY */
+interface GlyphFace { text: string; cls: string }
+function glyphFace(key: string, pad: boolean): GlyphFace {
+  if (!pad) return { text: key.replace(/^Key|^Digit/, ''), cls: 'kb' };
+  switch (key) {
+    case 'PadUp': return { text: '↑', cls: 'dir' };
+    case 'PadDown': return { text: '↓', cls: 'dir' };
+    case 'PadLeft': return { text: '←', cls: 'dir' };
+    case 'PadRight': return { text: '→', cls: 'dir' };
+    default: return { text: key.replace('Pad', ''), cls: `pbtn pb-${key.replace('Pad', '').toLowerCase()}` };
+  }
 }
 
 function buildStats(): { node: HTMLElement; set(w: World): void } {
@@ -242,6 +256,37 @@ export function createHUD(root: HTMLElement, cb: HudCallbacks): Hud {
   absBox.append(absHead, absBar, absOvRow, absHint);
 
   const energyHint = el('div', 'energy-hint off', 'Eで敵から吸収！');
+
+  // ハッキング：コードを順番に入力。入力済みは点灯、次の1個を強調
+  const hackBox = el('div', 'hack off');
+  const hackHead = el('div', 'hk-head');
+  const hackCount = el('span', 'hk-count');
+  hackHead.append(el('span', 'hk-title', 'ハッキング中'), hackCount);
+  const hackRow = el('div', 'hk-code');
+  const hackGlyphs: { root: HTMLElement; face: HTMLElement; key: string }[] = [];
+  for (let i = 0; i < HACK.codeLength; i++) {
+    const root = el('div', 'hk-glyph');
+    const face = el('span', 'hk-face');
+    root.append(face);
+    hackRow.append(root);
+    hackGlyphs.push({ root, face, key: '' });
+  }
+  const hackHint = el('div', 'hk-hint');
+  hackBox.append(hackHead, hackRow, hackHint);
+  hackBox.addEventListener('animationend', (e) => {
+    if (e.target === hackBox) hackBox.classList.remove('fail');
+  });
+  const hackOk = el('div', 'hack-ok off', 'ハッキング成功！味方になった');
+  // 味方の残り時間（味方がいる間だけ）
+  const allyBox = el('div', 'ally-box off');
+  const allyHead = el('div', 'ally-head');
+  const allyName = el('span', 'ally-name');
+  const allyTime = el('span', 'ally-time');
+  allyHead.append(allyName, allyTime);
+  const allyBar = el('div', 'bar');
+  const allyFill = el('div', 'fill');
+  allyBar.append(allyFill);
+  allyBox.append(allyHead, allyBar);
 
   // 左下：体力と電気（スカウター連動）
   const bleft = el('div', 'panel bleft sc-only');
@@ -366,7 +411,7 @@ export function createHUD(root: HTMLElement, cb: HudCallbacks): Hud {
 
   playRoot.append(
     vignette, scouterFx, crosshair, lockon, hitmark, dmgBox, bossBox, objBox,
-    controls, toastBox, absBox, energyHint, bleft, funcs, wpn, topRight, comm,
+    controls, toastBox, absBox, hackBox, hackOk, allyBox, energyHint, bleft, funcs, wpn, topRight, comm,
   );
 
   // ----- タイトル -----
@@ -465,6 +510,8 @@ export function createHUD(root: HTMLElement, cb: HudCallbacks): Hud {
     bus.on('enemyHit', (p) => popNumber(p.pos, p.damage, p.weak ? 'weak' : p.damage >= 20 ? 'big' : ''));
     bus.on('enemyDrained', (p) => popNumber(p.pos, p.amount, 'drain'));
     bus.on('noEnergy', () => flash(gauge, 'shake'));
+    bus.on('hackInput', (p) => { if (!p.ok) flash(hackBox, 'fail'); });
+    bus.on('hackSuccess', () => flash(hackOk, 'pop'));
     bus.on('comm', (p) => {
       commQueue.push({ speaker: p.speaker, text: p.text, duration: p.duration ?? Math.max(3.5, 1.5 + p.text.length * 0.12) });
     });
@@ -748,6 +795,42 @@ export function createHUD(root: HTMLElement, cb: HudCallbacks): Hud {
       setText(absHint, over ? '' : 'F長押しで逆流');
     }
 
+    // ハッキング：コード入力パネル・成功表示・味方の残り時間
+    const hk = world.hack;
+    const hacking = st === 'playing' && hk.active && hk.codeKeys.length > 0;
+    setCls(hackBox, 'off', !hacking);
+    setCls(playRoot, 'hacking', hacking);
+    if (hacking) {
+      const pad = hk.device === 'pad';
+      const codes = pad ? hk.codePad : hk.codeKeys;
+      setCls(hackBox, 'pad', pad);
+      setText(hackCount, `${hk.progress} / ${codes.length}`);
+      setText(hackHint, pad ? '十字キー・A B X Y を順番に押す（ミスで最初から）' : '表示のキーを順番に押す（ミスで最初から）');
+      hackGlyphs.forEach((g, i) => {
+        const key = codes[i] ?? '';
+        const tag = `${pad ? 'p' : 'k'}:${key}`;
+        if (g.key !== tag) {
+          g.key = tag;
+          const f = glyphFace(key, pad);
+          g.face.className = `hk-face ${f.cls}`;
+          g.face.textContent = key ? f.text : '';
+        }
+        setCls(g.root, 'done', i < hk.progress);
+        setCls(g.root, 'cur', i === hk.progress);
+      });
+    }
+    setCls(hackOk, 'off', !(st === 'playing' && hk.successFlash > 0 && !hk.active));
+    const allies = st === 'playing' ? world.enemies.filter((e) => e.allied && e.status === 'active') : [];
+    setCls(allyBox, 'off', allies.length === 0);
+    if (allies.length > 0) {
+      const left = Math.min(...allies.map((e) => Math.max(0, e.ai.allyT ?? 0)));
+      const first = allies.reduce((a, b) => ((a.ai.allyT ?? 0) <= (b.ai.allyT ?? 0) ? a : b));
+      setText(allyName, `味方：${KIND_NAME[first.kind]}${allies.length > 1 ? ` ほか${allies.length - 1}` : ''}`);
+      setText(allyTime, `あと ${left.toFixed(1)} 秒`);
+      setW(allyFill, pct(left, first.ai.allyMax ?? HACK.allyTime));
+      setCls(allyBox, 'low', left < 5);
+    }
+
     // 電力切れで吸収もしていない時の案内
     setCls(energyHint, 'off', !(empty && !absorbActive));
 
@@ -799,7 +882,8 @@ export function createHUD(root: HTMLElement, cb: HudCallbacks): Hud {
     }
 
     // 状況に応じた操作キーのハイライト
-    setCls(keyEls.f, 'hl', attached);
+    setCls(keyEls.f, 'hl', attached && !hk.active);
+    setCls(keyEls.hack, 'hl', hk.active);
     setCls(keyEls.rmb, 'hl', empty && !absorbActive);
     setCls(keyEls.jet, 'hl', p.flying);
     setCls(keyEls.shift, 'dim', p.energy < DODGE.cost);
