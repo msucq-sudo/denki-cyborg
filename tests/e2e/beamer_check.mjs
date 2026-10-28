@@ -12,7 +12,7 @@ await new Promise((res) => { server.stdout.on('data', (d) => { if (String(d).inc
 const winExe = `${process.env.LOCALAPPDATA}/ms-playwright/chromium_headless_shell-1194/chrome-win/headless_shell.exe`;
 const exe = process.env.CHROME_EXE ?? (fs.existsSync(winExe) ? winExe : '/opt/pw-browsers/chromium_headless_shell-1194/chrome-linux/headless_shell');
 const browser = await chromium.launch({ executablePath: exe, args: ['--use-gl=angle', '--use-angle=swiftshader', '--enable-unsafe-swiftshader'] });
-const page = await browser.newPage({ viewport: { width: 800, height: 450 } });
+const page = await browser.newPage({ viewport: { width: 640, height: 360 } });
 const errors = [];
 page.on('console', (m) => { if (m.type() === 'error' && !m.text().includes('ERR_TUNNEL')) errors.push(m.text()); });
 page.on('pageerror', (e) => errors.push(String(e)));
@@ -50,10 +50,10 @@ try {
   });
   await page.evaluate(() => window.__game.start());
   const S = (dt, n) => page.evaluate(([dt, n]) => window.__game.step(dt, n), [dt, n]);
-  // 条件が成り立つまで 1/60 秒ずつ進める
+  // 条件が成り立つまで 1/30 秒ずつ進める（描画後のヘッドレスは step が遅いので粗めに）
   const until = (fn, max = 1200) => page.evaluate(([fn, max]) => {
     const f = new Function('e', 'w', `return (${fn});`);
-    for (let i = 0; i < max; i++) { if (f(window.E, window.__game.world)) return i; window.__game.step(1 / 60, 1); }
+    for (let i = 0; i < max; i++) { if (f(window.E, window.__game.world)) return i; window.__game.step(1 / 30, 1); }
     return -1;
   }, [fn, max]);
   const info = () => page.evaluate(() => {
@@ -90,21 +90,20 @@ try {
 
   // ---- 1周：溜め → ロック → 発射
   await stage();
-  await S(1 / 60, 5);
+  await S(1 / 30, 5);
   let s = await info();
   check('待機中：レンズは露出していない', s.state === 'idle' && s.exposed === false, s);
-  await shot('idle');
   check('溜めが始まる', (await until('e.ai.state === "charge" && e.ai.st > 1.0')) >= 0, await info());
   s = await info();
   check('溜め中：レンズ露出・beamCharge 発行', s.exposed && s.ev.beamCharge === 1, s);
   await shot('charge');
   check('照準がロックされる', (await until('e.ai.locked')) >= 0, await info());
-  await S(1 / 60, 8);
+  await S(1 / 30, 8);
   await shot('lock');
   check('発射する', (await until('e.ai.state === "fire"')) >= 0, await info());
-  await S(1 / 60, 6);
+  await S(1 / 30, 6);
   await shot('fire');
-  await S(1 / 60, 40);
+  await S(1 / 30, 40);
   s = await info();
   check('ダメージは1回(30)・beamFire/enemyAttack 1回', s.php === 70 && s.ev.beamFire === 1 && s.ev.enemyAttack === 1 && s.ev.playerHit === 1, s);
   check('発射後：レンズは閉じる', s.exposed === false, s);
@@ -121,11 +120,11 @@ try {
   await stage();
   await until('e.ai.state === "charge" && e.ai.st > 0.8');
   await page.evaluate(() => { window.api.damageEnemy(window.__game.world, window.E, 12, { weak: true, how: 'shot' }); });
-  await S(1 / 60, 6);
+  await S(1 / 30, 6);
   s = await info();
   check('弱点への一撃で中断・スタン', s.st === 'stunned' && s.state === 'idle' && s.ev.beamInterrupt === 1 && s.ev.beamFire === 0, s);
   await shot('interrupt');
-  await S(1 / 60, 200);
+  await S(1 / 30, 60);
   s = await info();
   check('スタン後に復帰する', s.st === 'active', s);
 } finally {

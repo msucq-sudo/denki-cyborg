@@ -92,6 +92,22 @@ try {
     }, back).then((url) => fs.writeFileSync(`tests/e2e/out/leech_${name}.png`, Buffer.from(url.split(',')[1], 'base64')));
     console.log('shot', name);
   };
+  /** クロスヘアがリーチに乗るまで yaw/pitch を探す（肩越しカメラなので真正面では外れる）。乗れば true */
+  const aimOn = () => page.evaluate(() => {
+    const g = window.__game, w = g.world, e = window.E, p = w.player;
+    const dx = e.pos.x - p.pos.x, dz = e.pos.z - p.pos.z, dy = e.pos.y - (p.pos.y + 1.6);
+    const yaw0 = Math.atan2(-dx, -dz), pitch0 = Math.atan2(dy, Math.hypot(dx, dz));
+    for (let k = 0; k <= 30; k++) {
+      for (const sgn of k === 0 ? [0] : [1, -1]) {
+        for (const dp of [0, 0.03, -0.03]) {
+          p.yaw = yaw0 + sgn * k * 0.01; p.pitch = pitch0 + dp;
+          g.step(1 / 60, 1);
+          if (w.aimTarget === e) return true;
+        }
+      }
+    }
+    return false;
+  });
   /** プレイヤーをリーチへ向ける */
   const aim = () => page.evaluate(() => {
     const w = window.__game.world, e = window.E, p = w.player;
@@ -127,7 +143,7 @@ try {
   for (let i = 0; i < 400 && s.arm !== 'attached'; i++) { await aim(); await S(1 / 60, 3); s = await info(); }
   let tethered = false;
   for (let tries = 0; tries < 8 && !tethered; tries++) {
-    await aim();
+    await aimOn();
     await page.evaluate(() => { window.__game.world.player.energy = Math.max(window.__game.world.player.energy, 30); window.__game.input.simulateKey('KeyE', true); });
     await S(1 / 60, 2);
     await page.evaluate(() => window.__game.input.simulateKey('KeyE', false));
