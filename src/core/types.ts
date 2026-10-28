@@ -106,7 +106,17 @@ export interface Projectile {
   /** ホーミング：delay 秒後から旋回（rad/s）。speed があればその速さへ加減速 */
   homing?: { turnRate: number; target: 'player'; delay?: number; speed?: number; accel?: number };
   /** 命中時の小爆発（見た目のみ） */
-  blast?: { radius: number; color: number };
+  blast?: {
+    radius: number; color: number;
+    /** プレイヤーへの範囲ダメージ（爆発の中心での値）。省略なら見た目だけ。中心から離れるほど減る */
+    damage?: number;
+    /** 範囲の端でのダメージ倍率（0..1、既定 0.25）。範囲の外は 0 */
+    minMul?: number;
+    /** 寿命が尽きたときも爆発する（信管） */
+    onExpire?: boolean;
+    /** 飛んでいる間、着弾予測地点に警告の輪を出す */
+    warnRing?: boolean;
+  };
   /** メッシュを速度方向へ向ける（+Z が先端） */
   orient?: boolean;
   /** 軌跡の火花の色 */

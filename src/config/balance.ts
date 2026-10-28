@@ -153,15 +153,15 @@ export const ENEMIES: Record<EnemyKind, {
   /** 赤ウォーカー：ウォーカーの赤い版。ハッキングできる（吸収アームをつなぐとコード入力）。T3-C で調整 */
   redWalker: { hp: 60, speed: 1.8, radius: 0.7, damage: 7, attackInterval: 1.8, projectileSpeed: 17, weakMultiplier: 2, overloadCap: 20, sightRange: 30 },
   /** ビーマー：遠距離で長く溜めて極太ビーム。体力が多い。damage=ビーム1発 */
-  beamer:  { hp: 240, speed: 2,   radius: 1.0,  damage: 30, attackInterval: 3.5, projectileSpeed: 0,  weakMultiplier: 3, overloadCap: 45, sightRange: 42 },
+  beamer:  { hp: 240, speed: 2,   radius: 1.1,  damage: 30, attackInterval: 3.5, projectileSpeed: 0,  weakMultiplier: 3, overloadCap: 45, sightRange: 42 },
   /** リーチ（吸収マン）：とても小さい。吸収アームでプレイヤーの電力を吸う。つながれると逃げる */
   leech:   { hp: 30,  speed: 5,   radius: 0.32, damage: 0,  attackInterval: 3.0, projectileSpeed: 0,  weakMultiplier: 2, overloadCap: 10, sightRange: 26 },
-  /** ジャンパー：大きな頭の二足歩行。ジャンプでゆっくり移動し、着地の瞬間に突き。頭（核）が開いている間しか攻撃も吸収も効かない。T3-D で調整 */
-  jumper:  { hp: 120, speed: 2.4, radius: 0.95, damage: 16, attackInterval: 2.6, projectileSpeed: 0,  weakMultiplier: 2.5, overloadCap: 30, sightRange: 30 },
+  /** ジャンパー：大きな頭の二足歩行。ジャンプでゆっくり移動し、着地の瞬間に突き。頭（核）が開いている間しか攻撃も吸収も効かない。speed=1回の跳躍の水平速度の上限、attackInterval=着地から次の跳躍までの周期。T3-D で調整 */
+  jumper:  { hp: 120, speed: 3.2, radius: 0.95, damage: 16, attackInterval: 2.5, projectileSpeed: 0,  weakMultiplier: 2.5, overloadCap: 30, sightRange: 30 },
   /** ミサイルドローン：4発のミサイルを放つドローン。ミサイルは撃つかアームを当てると消せる。damage=ミサイル1発。T3-E で調整 */
-  missileDrone: { hp: 45, speed: 3.5, radius: 0.65, damage: 9, attackInterval: 4.5, projectileSpeed: 10, weakMultiplier: 2, overloadCap: 14, sightRange: 32 },
+  missileDrone: { hp: 45, speed: 3.5, radius: 0.7, damage: 9, attackInterval: 4.5, projectileSpeed: 9, weakMultiplier: 2, overloadCap: 14, sightRange: 32 },
   /** ボンバー：小さく丸い。電気の球を投げ、着弾で爆発（中心ほど大ダメージ）。damage=爆心ダメージ。T3-F で調整 */
-  bomber:  { hp: 35,  speed: 3.2, radius: 0.45, damage: 22, attackInterval: 2.8, projectileSpeed: 12, weakMultiplier: 2, overloadCap: 12, sightRange: 26 },
+  bomber:  { hp: 35,  speed: 3.2, radius: 0.45, damage: 22, attackInterval: 2.4, projectileSpeed: 12, weakMultiplier: 2, overloadCap: 12, sightRange: 26 },
   /** 赤ドローン：ドローンの赤い版。ハッキングできる。T3-C で調整 */
   redDrone: { hp: 40, speed: 4,   radius: 0.55, damage: 6,  attackInterval: 1.8, projectileSpeed: 18, weakMultiplier: 2, overloadCap: 14, sightRange: 28 },
   boss:    { hp: 900, speed: 2.5, radius: 2.4,  damage: 6,  attackInterval: 2.0, projectileSpeed: 16, weakMultiplier: 2.5, overloadCap: 60, sightRange: 60 },
