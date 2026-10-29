@@ -59,7 +59,7 @@ interface Joint { g: THREE.Group; rest: THREE.Vector3; parts: Map<Key, THREE.Buf
 
 // ---- ジオメトリ小物 -------------------------------------------------------
 /** 多角形（XY）を Z 方向に押し出した角ばった装甲板（Z中心） */
-function poly(pts: [number, number][], depth: number, bevel = 0.012): THREE.BufferGeometry {
+export function poly(pts: [number, number][], depth: number, bevel = 0.012): THREE.BufferGeometry {
   const sh = new THREE.Shape();
   pts.forEach(([x, y], i) => (i ? sh.lineTo(x, y) : sh.moveTo(x, y)));
   const g = new THREE.ExtrudeGeometry(sh, { depth, bevelEnabled: bevel > 0, bevelThickness: bevel, bevelSize: bevel, bevelSegments: 1, steps: 1 });
@@ -67,7 +67,7 @@ function poly(pts: [number, number][], depth: number, bevel = 0.012): THREE.Buff
   return g;
 }
 /** 角を面取りした箱 */
-function cbox(w: number, h: number, d: number, c: number, bevel = 0.01): THREE.BufferGeometry {
+export function cbox(w: number, h: number, d: number, c: number, bevel = 0.01): THREE.BufferGeometry {
   const x = w / 2, y = h / 2;
   return poly([[-x + c, -y], [x - c, -y], [x, -y + c], [x, y - c], [x - c, y], [-x + c, y], [-x, y - c], [-x, -y + c]], d, bevel);
 }
@@ -82,7 +82,7 @@ class Helix extends THREE.Curve<THREE.Vector3> {
   }
 }
 
-function makeToonGradient(): THREE.DataTexture {
+export function makeToonGradient(): THREE.DataTexture {
   const data = new Uint8Array(C.toonTones.map((v) => Math.round(v * 255)));
   const t = new THREE.DataTexture(data, data.length, 1, THREE.RedFormat);
   t.minFilter = t.magFilter = THREE.NearestFilter;
@@ -92,7 +92,7 @@ function makeToonGradient(): THREE.DataTexture {
 }
 
 /** アウトライン：裏面を法線方向へ押し出し。stretch を渡すとバネのシェーダー伸びにも追従 */
-function outlineMaterial(thick: number, stretch?: { value: number }): THREE.MeshBasicMaterial {
+export function outlineMaterial(thick: number, stretch?: { value: number }): THREE.MeshBasicMaterial {
   const m = new THREE.MeshBasicMaterial({ color: C.colors.outline, side: THREE.BackSide });
   m.onBeforeCompile = (sh) => {
     let vs = sh.vertexShader;

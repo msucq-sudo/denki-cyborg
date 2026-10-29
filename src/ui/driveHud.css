@@ -1,0 +1,107 @@
+/* サージ収容所への道の運転 HUD（driveHud.ts）。配色は通常 HUD（style.css の --hud-*）に合わせる */
+
+/* 運転中は、運転と関係ない通常 HUD（照準・電力ゲージ・武器など）を隠す。トーストと無線は残す */
+#hud.driving .play > *:not(.toasts):not(.comm) { display: none !important; }
+
+.dv {
+  position: fixed; inset: 0; z-index: 15; pointer-events: none; overflow: hidden;
+  font-family: 'Noto Sans JP', 'M PLUS Rounded 1c', 'IPAGothic', system-ui, sans-serif; color: #e8f3ff;
+  --dv-cyan: #2ee6ff; --dv-yellow: #ffd83a; --dv-coral: #ff6b8a; --dv-good: #6dffb0;
+  --dv-glass: rgba(8, 16, 42, 0.72); --dv-edge: rgba(46, 230, 255, 0.55);
+  user-select: none; -webkit-user-select: none;
+}
+.dv.off, .dv .off { display: none !important; }
+.dv *, .dv *::before, .dv *::after { box-sizing: border-box; }
+.dv kbd {
+  display: inline-block; min-width: 1.6em; padding: 1px 7px; margin: 0 1px; border-radius: 6px; text-align: center;
+  background: rgba(255, 255, 255, 0.14); border: 1px solid rgba(255, 255, 255, 0.35); font: inherit; font-weight: 800; font-size: 0.92em;
+}
+
+/* 速度で画面の縁が光る */
+.dv-vig {
+  position: absolute; inset: 0; opacity: 0;
+  background: radial-gradient(ellipse at center, rgba(46, 230, 255, 0) 55%, rgba(46, 230, 255, 0.28) 100%);
+  transition: opacity 0.2s linear;
+}
+.dv-flash { position: absolute; inset: 0; opacity: 0; }
+.dv-flash.go { animation: dvFlash 0.35s ease-out both; }
+.dv-flash.perfect { background: radial-gradient(ellipse at center, rgba(120, 255, 255, 0) 40%, rgba(120, 255, 255, 0.55) 100%); }
+.dv-flash.good { background: radial-gradient(ellipse at center, rgba(255, 216, 58, 0) 50%, rgba(255, 216, 58, 0.38) 100%); }
+@keyframes dvFlash { from { opacity: 1; } to { opacity: 0; } }
+
+/* 上：判定地点までの距離 */
+.dv-top {
+  position: absolute; top: 14px; left: 50%; transform: translateX(-50%);
+  width: min(460px, 70vw); text-align: center;
+  padding: 8px 16px 10px; border-radius: 12px; background: var(--dv-glass); border: 1px solid var(--dv-edge);
+}
+.dv-top-text { font-size: 14px; font-weight: 700; letter-spacing: 0.06em; color: #bfd6ff; }
+.dv-top-text b { font-size: 22px; color: #fff; font-variant-numeric: tabular-nums; margin: 0 3px; }
+.dv-prog { height: 6px; margin: 6px 0 5px; border-radius: 3px; background: rgba(255, 255, 255, 0.14); overflow: hidden; }
+.dv-prog i { display: block; height: 100%; width: 0; background: linear-gradient(90deg, #2ee6ff, #7affd6); }
+.dv-top-goal { font-size: 13px; font-weight: 800; color: var(--dv-yellow); }
+.dv-top-goal.ok { color: var(--dv-good); }
+
+/* 右下：速度計 */
+.dv-speed {
+  position: absolute; right: 24px; bottom: 26px; width: min(330px, 44vw); text-align: right;
+  padding: 10px 18px 12px; border-radius: 14px; background: var(--dv-glass); border: 1px solid var(--dv-edge);
+}
+.dv-kmh b {
+  font-size: clamp(54px, 9vw, 88px); line-height: 1; font-weight: 800; font-style: italic;
+  font-variant-numeric: tabular-nums; color: #fff; text-shadow: 0 0 16px rgba(46, 230, 255, 0.7);
+}
+.dv-kmh small { font-size: 18px; font-weight: 800; color: var(--dv-cyan); margin-left: 8px; letter-spacing: 0.08em; }
+.dv-sbar { position: relative; height: 12px; margin: 8px 0 4px; border-radius: 6px; background: rgba(255, 255, 255, 0.16); }
+.dv-sbar i { position: absolute; left: 0; top: 0; bottom: 0; width: 0; border-radius: 6px; background: linear-gradient(90deg, #1fb8d6, #2ee6ff); box-shadow: 0 0 10px rgba(46, 230, 255, 0.7); }
+.dv-t300 { position: absolute; top: -6px; bottom: -6px; width: 3px; margin-left: -1px; background: var(--dv-yellow); border-radius: 2px; box-shadow: 0 0 8px var(--dv-yellow); }
+.dv-t300 span { position: absolute; bottom: 100%; left: 50%; transform: translateX(-50%); margin-bottom: 1px; font-size: 12px; font-weight: 800; color: var(--dv-yellow); text-decoration: none; }
+.dv-sgoal { font-size: 12px; font-weight: 700; color: #bfd6ff; }
+.dv-speed.near .dv-sbar i { background: linear-gradient(90deg, #ffb52e, #ffd83a); box-shadow: 0 0 10px rgba(255, 216, 58, 0.8); }
+.dv-speed.ok { border-color: var(--dv-good); box-shadow: 0 0 22px rgba(109, 255, 176, 0.5); }
+.dv-speed.ok .dv-sbar i { background: linear-gradient(90deg, #3fe09a, #6dffb0); box-shadow: 0 0 12px rgba(109, 255, 176, 0.9); }
+.dv-speed.ok .dv-kmh b { color: #d8ffe8; text-shadow: 0 0 18px rgba(109, 255, 176, 0.85); }
+.dv-speed.ok .dv-sgoal { color: var(--dv-good); }
+
+/* 下：タイミングバー */
+.dv-timing { position: absolute; left: 50%; bottom: 26px; transform: translateX(-50%); width: min(560px, 52vw); text-align: center; }
+.dv-fb { height: 52px; font-size: 40px; line-height: 52px; font-weight: 800; font-style: italic; letter-spacing: 0.06em; opacity: 0; text-shadow: 0 0 14px currentColor, 0 2px 4px rgba(0, 0, 0, 0.7); }
+.dv-fb.perfect { color: #7ffcff; }
+.dv-fb.good { color: var(--dv-yellow); font-size: 32px; }
+.dv-fb.miss { color: var(--dv-coral); font-size: 30px; }
+.dv-fb.pop { animation: dvPop 0.85s ease-out both; }
+@keyframes dvPop { 0% { opacity: 0; transform: scale(0.6); } 12% { opacity: 1; transform: scale(1.25); } 30% { transform: scale(1); } 80% { opacity: 1; } 100% { opacity: 0; transform: translateY(-8px); } }
+.dv-bar {
+  position: relative; height: 34px; border-radius: 8px; background: rgba(8, 16, 42, 0.82); border: 2px solid var(--dv-edge);
+  box-shadow: 0 0 16px rgba(46, 230, 255, 0.25); overflow: hidden; transition: filter 0.12s;
+}
+.dv-bar.cool { filter: brightness(0.55) saturate(0.7); }
+.dv-good { position: absolute; top: 0; bottom: 0; background: rgba(255, 216, 58, 0.5); }
+.dv-perf { position: absolute; top: 0; bottom: 0; background: rgba(109, 255, 230, 0.85); box-shadow: 0 0 14px rgba(109, 255, 230, 0.9); }
+.dv-cur { position: absolute; top: -2px; bottom: -2px; width: 6px; margin-left: -3px; border-radius: 3px; background: #fff; box-shadow: 0 0 10px #fff, 0 0 18px var(--dv-cyan); }
+.dv-hint { margin-top: 8px; font-size: 14px; font-weight: 700; color: #cfe0ff; text-shadow: 0 1px 3px rgba(0, 0, 0, 0.8); }
+
+/* 左：「← 左折」 */
+.dv-turn {
+  position: absolute; left: 4vw; top: 34vh; display: flex; align-items: center; flex-wrap: wrap; gap: 4px 14px;
+  padding: 12px 26px 12px 20px; border-radius: 16px; background: rgba(8, 16, 42, 0.78); border: 2px solid var(--dv-yellow);
+  box-shadow: 0 0 26px rgba(255, 216, 58, 0.45); animation: dvTurn 0.7s ease-in-out infinite alternate;
+}
+.dv-turn-arrow { font-size: 68px; line-height: 1; font-weight: 800; color: var(--dv-yellow); text-shadow: 0 0 16px rgba(255, 216, 58, 0.9); }
+.dv-turn-text { font-size: 46px; font-weight: 800; letter-spacing: 0.08em; color: #fff; text-shadow: 0 0 12px rgba(255, 216, 58, 0.8); }
+.dv-turn-sub { flex-basis: 100%; font-size: 14px; font-weight: 700; color: #cfe0ff; }
+.dv-turn.recover { border-color: var(--dv-coral); box-shadow: 0 0 26px rgba(255, 107, 138, 0.5); }
+.dv-turn.recover .dv-turn-arrow { color: var(--dv-coral); }
+@keyframes dvTurn { from { transform: translateX(0); } to { transform: translateX(-10px); } }
+
+/* 右：はね飛ばした数 */
+.dv-hits {
+  position: absolute; right: 26px; top: 28vh; font-size: 30px; font-weight: 800; font-style: italic; letter-spacing: 0.05em;
+  color: #fff; text-shadow: 0 0 12px rgba(255, 107, 138, 0.9), 0 2px 4px rgba(0, 0, 0, 0.7);
+}
+
+@media (max-width: 800px) {
+  .dv-speed { right: 10px; bottom: 90px; }
+  .dv-timing { width: 90vw; bottom: 12px; }
+  .dv-turn-arrow { font-size: 44px; } .dv-turn-text { font-size: 30px; }
+}

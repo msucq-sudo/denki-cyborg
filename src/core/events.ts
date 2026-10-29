@@ -106,6 +106,8 @@ export interface GameEvents {
   driveBoost: { quality: 'perfect' | 'good' | 'miss'; kmh: number };
   driveHitEnemy: { pos: THREE.Vector3 };
   driveCrash: { pos: THREE.Vector3 };
+  /** T字路の壁・柵に軽くぶつかった（跳ね返って立て直す。失敗ではない） */
+  driveBump: { pos: THREE.Vector3; kmh: number };
   driveCheckpoint: { ok: boolean; kmh: number };
   /** 演出：柵を突き破る／壁に激突／ヘビーが車を受け止める／スローモーションの開始・終了 */
   fenceBreak: { pos: THREE.Vector3 };

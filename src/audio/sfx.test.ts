@@ -1,6 +1,6 @@
 import { describe, it, expect, beforeAll } from 'vitest';
 import { EventBus, type GameEvents } from '../core/events';
-import { initAudio } from './sfx';
+import { initAudio, updateAudio } from './sfx';
 
 /** 何を呼んでも受け付ける偽の WebAudio ノード */
 function fakeNode(): any {
@@ -76,6 +76,21 @@ const NEW: Array<[keyof GameEvents, any, string]> = [
   ['uiConfirm', {}, 'uiConfirm'],
   ['uiDenied', {}, 'uiDenied'],
   ['upgrade', { id: 'body', level: 3 }, 'upgrade'],
+  // サージ収容所への道（運転・演出）
+  ['driveStart', {}, 'driveStart'],
+  ['driveBoost', { quality: 'perfect', kmh: 120 }, 'boostPerfect'],
+  ['driveBoost', { quality: 'good', kmh: 120 }, 'boostGood'],
+  ['driveBoost', { quality: 'miss', kmh: 120 }, 'boostMiss'],
+  ['driveHitEnemy', { pos: v }, 'driveHit'],
+  ['driveBump', { pos: v, kmh: 60 }, 'driveBump'],
+  ['driveCrash', { pos: v }, 'driveCrash'],
+  ['driveCheckpoint', { ok: true, kmh: 310 }, 'driveCheckpoint'],
+  ['driveCheckpoint', { ok: false, kmh: 250 }, 'driveCheckpoint'],
+  ['fenceBreak', { pos: v }, 'fenceBreak'],
+  ['carWallCrash', { pos: v }, 'carWallCrash'],
+  ['carCaught', { pos: v }, 'carCaught'],
+  ['slowmo', { on: true }, 'slowmo'],
+  ['slowmo', { on: false }, 'slowmo'],
 ];
 
 describe('sfx 新規イベントのハンドラ', () => {
@@ -92,5 +107,43 @@ describe('sfx 新規イベントのハンドラ', () => {
     bus.emit(ev, payload);
     expect(dbg.lastError).toBeNull();
     expect(dbg.played[name] ?? 0).toBe(before + 1);
+  });
+});
+
+describe('車のエンジン音（継続音）', () => {
+  /** updateAudio が読む項目だけの偽のワールド */
+  const fakeWorld = (phase: string | null, speed = 0) => ({
+    state: 'playing',
+    player: { pos: { x: 0, y: 0, z: 0 }, vel: { x: 0, z: 0 }, overloading: false, flying: false, charging: false, charge: 0, energy: 50, maxEnergy: 100, hp: 100, maxHp: 100, onGround: true },
+    absorb: { phase: 'idle', target: null },
+    upgrades: {},
+    level: { data: phase ? { drive: { phase, speed } } : {} },
+  }) as never;
+
+  it('運転中・演出中だけ鳴り、停車中・衝突後・終了後は止まる', () => {
+    (globalThis as any).AudioContext = FakeAC;
+    initAudio(new EventBus());
+    const dbg = (globalThis as any).__audioDebug;
+    updateAudio(fakeWorld('parked'), 0.016);
+    expect(dbg.loops.engine).toBe(false);
+    updateAudio(fakeWorld('driving', 40), 0.016);
+    expect(dbg.loops.engine).toBe(true);
+    updateAudio(fakeWorld('cutscene', 90), 0.016);
+    expect(dbg.loops.engine).toBe(true);
+    updateAudio(fakeWorld('crashed', 0), 0.016);
+    expect(dbg.loops.engine).toBe(false);
+    updateAudio(fakeWorld('driving', 40), 0.016);
+    updateAudio(fakeWorld('done', 0), 0.016);
+    expect(dbg.loops.engine).toBe(false);
+    expect(dbg.lastError).toBeNull();
+  });
+
+  it('ワールドが playing でなくなったら止める', () => {
+    initAudio(new EventBus());
+    const dbg = (globalThis as any).__audioDebug;
+    updateAudio(fakeWorld('driving', 40), 0.016);
+    expect(dbg.loops.engine).toBe(true);
+    updateAudio({ ...(fakeWorld('driving', 40) as object), state: 'gameover' } as never, 0.016);
+    expect(dbg.loops.engine).toBe(false);
   });
 });
