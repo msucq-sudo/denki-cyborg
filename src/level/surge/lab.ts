@@ -269,11 +269,11 @@ export function buildLab(): LabParts {
   // 階段
   for (let i = 0; i < N; i++) {
     const za = S.bottomZ + i * tread, zb = za + tread, top = (i + 1) * rise;
-    B.panel.box(0, top / 2, (za + zb) / 2, hw * 2, top, tread, K.light, { tu: T });
+    B.panel.box(0, top / 2, (za + zb) / 2, hw * 2, top, tread, i % 2 ? K.light : K.mid, { tu: T });
     colliders.push(col(-hw, hw, -0.2, top, za, zb, 'stairs'));
     // 段鼻（ハザード＋光）
     B.hazard.box(0, top - 0.02, za + 0.09, hw * 2 - 0.1, 0.05, 0.18, 0xffffff, { tu: 1 });
-    if (i % 2 === 0) B.glow.box(0, top - 0.04, zb - 0.015, hw * 2 - 0.3, 0.025, 0.03, K.cyan, false);
+    B.glow.box(0, top - 0.04, zb - 0.015, hw * 2 - 0.3, 0.03, 0.03, i === N - 1 ? K.yellow : K.cyan, false);
   }
   // 上の踊り場
   B.floor.box(0, S.topY - 0.2, (S.topStepZ + zB) / 2, hw * 2, 0.4, zB - S.topStepZ, 0xffffff, { tu: T });
@@ -333,7 +333,8 @@ export function buildLab(): LabParts {
   B.solid.box(0, S.topY + 4.7, zB - 0.12, 4.0, 0.3, 0.2, K.dnavy, false);
   B.glow.box(0, S.topY + 4.9, zB - 0.25, 3.4, 0.08, 0.04, K.green, false);
   mkSign('2F サイボーグ改造室', 'cyan', 3.6, 0.9, 0, S.topY + 5.8, zB - 0.12, Math.PI);
-  mkSign('B1 ガレージ ↓', 'amber', 3.4, 0.85, 0, S.topY + 3.0, S.bottomZ + 1, 0);
+  mkSign('B1 ガレージ ↓', 'amber', 3.4, 0.85, 0, 11.5, zS + 0.06, 0);
+  B.glow.box(0, 10.6, zS + 0.04, 3.8, 0.06, 0.04, K.cyan, false);
   // 下の出入口の上（ガレージ側の壁の上）にも飾り帯
   B.glow.box(0, 6.2, zS + 0.05, hw * 2, 0.08, 0.04, K.cyan, false);
 

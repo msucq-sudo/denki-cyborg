@@ -74,7 +74,14 @@ const load = () => page.evaluate(() => {
     }
     tris += n; draws++;
   });
-  return { visibleTris: Math.round(tris), visibleDraws: draws, sceneTris: Math.round(allTris), sceneMeshes: allMeshes, colliders: w.colliders.length };
+  // ステージ（研究所・街・収容所）だけの数（車・敵・障害物は含めない）
+  let stageMeshes = 0, stageTris = 0;
+  for (const n of ['surgeLab', 'surgeCity', 'surgeCompound']) w.scene.getObjectByName(n)?.traverse((o) => {
+    if (!o.isMesh && !o.isPoints) return;
+    stageMeshes++;
+    stageTris += (o.geometry.index ? o.geometry.index.count : o.geometry.getAttribute('position').count) / 3;
+  });
+  return { visibleTris: Math.round(tris), visibleDraws: draws, sceneTris: Math.round(allTris), sceneMeshes: allMeshes, stageMeshes, stageTris: Math.round(stageTris), colliders: w.colliders.length };
 });
 
 try {
@@ -100,7 +107,7 @@ try {
   await shot('04_garage_from_door');
   await cam('05_garage_overview', [-10.5, 5.6, 12.5], [2, 1.5, -4], 80);
   await cam('06_garage_overview_east', [10.5, 5.2, 12.5], [-3, 1.5, -5], 80);
-  await place(3.2, 0.05, -3.8, 0.55, 0.0);
+  await place(5.2, 0.05, -6.2, 0.55, 0.0);
   await shot('07_garage_socket');
   const pr = await page.evaluate(() => {
     const p = document.querySelector('div[style*="64%"]');
@@ -126,7 +133,7 @@ try {
     return { open: s.open, powered: s.powered, shutterActive: w.level.data.surge.shutter.active, obj: w.level.data.objective };
   });
   check('電力でシャッターが開く', sh.powered && sh.open === 1 && !sh.shutterActive, sh);
-  await place(2.5, 0.05, 6, 0.9, 0.1);
+  await place(2.6, 0.05, 3.6, 0.9, 0.1);
   const pr2 = await page.evaluate(() => {
     const p = document.querySelector('div[style*="64%"]');
     return p && p.style.display !== 'none' ? p.textContent : null;

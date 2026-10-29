@@ -79,7 +79,7 @@ export function buildSurge(world: World): void {
   // ---- 空気：夕方の火星。赤茶の霧で遠くをかすませる
   scene.background = new THREE.Color(FOG_COLOR);
   scene.fog = new THREE.FogExp2(FOG_COLOR, 0.00072);
-  const hemi = new THREE.HemisphereLight(0xf2b090, 0x6b4638, 1.15);
+  const hemi = new THREE.HemisphereLight(0xf2b090, 0x6b4638, 1.4);
   scene.add(hemi);
   const sun = new THREE.DirectionalLight(0xffc68f, 3.0);
   sun.castShadow = true;
@@ -151,8 +151,9 @@ export function buildSurge(world: World): void {
   } else {
     world.player.pos.set(STAIRS.topX, STAIRS.topY + 0.05, STAIRS.topZ);
     world.player.yaw = 0;
+    world.player.pitch = -0.28;   // 階段が見えるように少し見下ろす（正が上向き）
   }
-  world.player.pitch = 0;
+  if (startAt === 'drive') world.player.pitch = 0;
   world.player.vel.set(0, 0, 0);
 }
 

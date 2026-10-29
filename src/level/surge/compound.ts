@@ -4,7 +4,7 @@ import type { AABB } from '../../core/types';
 import { hazardTex } from '../floor1/visuals';
 import { Batch, rng } from './batch';
 import { COMPOUND, ROAD } from './layout';
-import { beamTex, compoundWallTex, fenceTex, groundTex, signTex } from './textures';
+import { beamTex, compoundWallTex, fenceTex, sidewalkTex, signTex } from './textures';
 
 const v3 = (x: number, y: number, z: number) => new THREE.Vector3(x, y, z);
 const col = (x0: number, x1: number, y0: number, y1: number, z0: number, z1: number, tag: string): AABB => ({ min: v3(x0, y0, z0), max: v3(x1, y1, z1), active: true, tag });
@@ -168,13 +168,12 @@ export function buildCompound(): CompoundParts {
 
   // ================================================================ 庭（柵と建物の壁の間）
   {
-    const gT = groundTex();
-    if (gT) gT.repeat.set(1, 1);
+    const gT = sidewalkTex();
     const g = new THREE.PlaneGeometry(fx - wx, zS - zN);
     g.rotateX(-Math.PI / 2);
     const uv = g.getAttribute('uv') as THREE.BufferAttribute;
-    for (let i = 0; i < uv.count; i++) uv.setXY(i, uv.getX(i) * ((fx - wx) / 14), uv.getY(i) * ((zS - zN) / 14));
-    const yard = new THREE.Mesh(g, new THREE.MeshStandardMaterial({ color: 0x8a7a76, ...(gT ? { map: gT } : {}), roughness: 0.95, polygonOffset: true, polygonOffsetFactor: 4, polygonOffsetUnits: 4 }));
+    for (let i = 0; i < uv.count; i++) uv.setXY(i, uv.getX(i) * ((fx - wx) / 4), uv.getY(i) * ((zS - zN) / 4));
+    const yard = new THREE.Mesh(g, new THREE.MeshStandardMaterial({ color: 0xc9b8b0, ...(gT ? { map: gT } : {}), roughness: 0.95, polygonOffset: true, polygonOffsetFactor: 4, polygonOffsetUnits: 4 }));
     yard.position.set((fx + wx) / 2, -0.05, (zN + zS) / 2);
     yard.receiveShadow = true;
     root.add(yard);
