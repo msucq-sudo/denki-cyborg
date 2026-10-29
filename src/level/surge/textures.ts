@@ -103,9 +103,8 @@ export function facadeTex(style: 'office' | 'glass'): { map?: THREE.Texture; emi
   for (let j = 0; j < N; j++) for (let i = 0; i < N; i++) {
     const p = r();
     const warm = ['#ffd890', '#ffc870', '#ffe9b8'];
-    const cool = ['#9ff0ff', '#cfe8ff', '#7fdcff'];
-    if (p < (style === 'office' ? 0.30 : 0.22)) lit.push({ x: i, y: j, col: (style === 'office' ? warm : cool)[Math.floor(r() * 3)] });
-    else if (p < 0.31 && style === 'glass') lit.push({ x: i, y: j, col: '#ff9ad8' });
+    const cool = ['#6fc8e0', '#9fc4e8', '#5fb0d8'];
+    if (p < (style === 'office' ? 0.30 : 0.15)) lit.push({ x: i, y: j, col: (style === 'office' ? warm : cool)[Math.floor(r() * 3)] });
   }
   const map = mk(S, S, (g) => {
     if (style === 'office') {

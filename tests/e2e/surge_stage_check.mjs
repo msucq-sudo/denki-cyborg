@@ -14,7 +14,7 @@ const server = await createServer({ server: { port, strictPort: true, hmr: false
 await server.listen();
 const exe = process.env.CHROME_EXE ?? '/opt/pw-browsers/chromium_headless_shell-1243/chrome-headless-shell-linux64/chrome-headless-shell';
 const browser = await chromium.launch({ executablePath: exe, args: ['--use-gl=angle', '--use-angle=swiftshader', '--enable-unsafe-swiftshader', '--ignore-gpu-blocklist'] });
-const page = await browser.newPage({ viewport: { width: 1280, height: 720 } });
+const page = await browser.newPage({ viewport: { width: Number(process.env.VW ?? 1024), height: Number(process.env.VH ?? 576) } });
 // Google Fonts を待つとスクショが固まる
 await page.route(/fonts\.(googleapis|gstatic)\.com/, (r) => r.abort());
 const errors = [];
