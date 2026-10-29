@@ -361,11 +361,16 @@ function buildHeavy(): Model {
   }
   b.lamp(1.4, 0.05, 0.04, b.vis, 0, -0.05, 0.87, 1.2);
   // 足（大きな箱足 + くさびのつま先）
+  const legs: THREE.Mesh[][] = [];
   for (const sx of [-1, 1]) {
-    b.block(0.76, 0.56, 1.1, deep, b.vis, sx * 0.72, -0.9, 0.05, 0.1);
-    b.mesh(wedgeGeo(0.7, 0.3, 0.3), blue, b.vis, sx * 0.72, -1.05, 0.72);
-    b.prism(0.12, 0.3, 6, silver, b.vis, sx * 0.72, -0.55, 0);
+    legs.push([
+      b.block(0.76, 0.56, 1.1, deep, b.vis, sx * 0.72, -0.9, 0.05, 0.1),
+      b.mesh(wedgeGeo(0.7, 0.3, 0.3), blue, b.vis, sx * 0.72, -1.05, 0.72),
+      b.prism(0.12, 0.3, 6, silver, b.vis, sx * 0.72, -0.55, 0),
+    ]);
   }
+  // 演出（cinematic/）の歩き用：左右の足のパーツ
+  b.parts.legs = legs;
   // 腕（肩で回る）：肩関節 + 肩パッド + ピストン + 拳
   const arms: THREE.Group[] = [];
   for (const sx of [-1, 1]) {

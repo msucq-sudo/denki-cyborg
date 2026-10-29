@@ -225,4 +225,68 @@ describe('floor2 runtime', () => {
     w.player.pos.set(0, 0, 15.6); run(w, 1.2); // かごに戻ると1階へ
     expect(w.level.data.nextFloor).toBe(1);
   });
+
+  describe('west exit to the Surge road', () => {
+    const exW = plan.exits.find((e) => e.id === 'exitW')!;
+    const exE = plan.exits.find((e) => e.id === 'exitE')!;
+    /** 出口の中心から外向きに d m 進んだ点 */
+    const at = (e: typeof exW, d: number): [number, number] => [e.x + e.dirX * d, e.z + e.dirZ * d];
+    /** 衝突つきで出口の外向きへ歩く */
+    function push(w: World, e: typeof exW, from: number, sec = 3): number {
+      const [x0, z0] = at(e, from);
+      const pos = new THREE.Vector3(x0, 0, z0), vel = new THREE.Vector3();
+      for (let i = 0; i < sec * 60; i++) {
+        vel.set(e.dirX * 6, -2, e.dirZ * 6);
+        moveCharacter(w.colliders, pos, vel, 1 / 60, PLAYER.radius, PLAYER.height);
+      }
+      return (pos.x - e.x) * e.dirX + (pos.z - e.z) * e.dirZ;
+    }
+
+    it('is usable only for the west exit; the east exit stays sealed', () => {
+      expect(exW.usable).toBe(true);
+      expect(exE.usable).toBe(false);
+    });
+
+    it('stays shut (with a hint) until the player has slept once', () => {
+      const { w, f } = mk();
+      w.player.pos.set(...(([x, z]) => [x, 0, z] as [number, number, number])(at(exW, 3)));
+      run(w, 2);
+      expect(f.state.exitOpen).toBe(0);
+      expect(push(w, exW, 3)).toBeLessThan(exW.depth);
+      expect(w.level.data.nextLevel).toBeUndefined();
+    });
+
+    it('after sleeping, the shutter opens when approached (doorOpen), and walking into the doorway sets nextLevel = surge', () => {
+      const { w, f } = mk();
+      const opened = events(w, 'doorOpen');
+      f.state.sleeps = 1;
+      w.player.pos.set(0, 0, 4);
+      run(w, 0.3);
+      expect(f.state.exitOpen).toBe(0);        // まだ遠い
+      expect(w.level.data.objective).toContain('西の出口');
+      const [x, z] = at(exW, 2);
+      w.player.pos.set(x, 0, z);
+      run(w, 2);
+      expect(f.state.exitOpen).toBe(1);
+      expect(opened.length).toBe(1);
+      expect(w.level.data.nextLevel).toBeUndefined();
+      // 出入口の手前まで来たら次のステージへ
+      const [x2, z2] = at(exW, exW.depth + 0.8);
+      w.player.pos.set(x2, 0, z2);
+      run(w, 0.2);
+      expect(w.level.data.nextLevel).toEqual({ level: 'surge' });
+      // 突き当たりで止まる（奥へは行けない）
+      expect(push(w, exW, exW.depth - 1, 4)).toBeLessThan(exW.depth + exW.ext + 0.3);
+    });
+
+    it('the east exit never opens', () => {
+      const { w, f } = mk();
+      f.state.sleeps = 1;
+      const [x, z] = at(exE, 2);
+      w.player.pos.set(x, 0, z);
+      run(w, 3);
+      expect(push(w, exE, 3)).toBeLessThan(exE.depth);
+      expect(w.level.data.nextLevel).toBeUndefined();
+    });
+  });
 });

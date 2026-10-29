@@ -440,12 +440,14 @@ export function createHUD(root: HTMLElement, cb: HudCallbacks): Hud {
   scrPause.append(pPanel);
 
   // ----- ゲームオーバー / クリア -----
+  // 死亡画面：「YOU DIED」。暗い赤の縁取りの中でゆっくり浮かび上がる。リトライ／終了（タイトルへ）
   const scrOver = el('section', 'screen screen-over');
-  const oPanel = el('div', 'panel-big');
+  const oPanel = el('div', 'over-panel');
   const overStats = buildStats();
-  oPanel.append(el('h2', 'screen-h', '機能停止…'), overStats.node);
-  const oRow = el('div', 'btn-row');
-  oPanel.append(oRow);
+  overStats.node.classList.add('stats-sm');
+  oPanel.append(el('h2', 'over-title', 'YOU DIED'), el('p', 'over-sub', '機能停止…'), overStats.node);
+  const oRow = el('div', 'btn-row over-row');
+  oPanel.append(oRow, el('p', 'over-keys', 'Enter / A：リトライ　・　Esc / B：終了'));
   scrOver.append(oPanel);
 
   const scrClear = el('section', 'screen screen-clear');
@@ -477,10 +479,9 @@ export function createHUD(root: HTMLElement, cb: HudCallbacks): Hud {
     btn('再開', 'btn-primary', () => cb.onResume()),
     btn('タイトルへ', '', () => cb.onTitle()),
   );
-  oRow.append(
-    btn('リトライ', 'btn-primary', () => cb.onRetry()),
-    btn('タイトルへ', '', () => cb.onTitle()),
-  );
+  const overRetry = btn('リトライ', 'btn-primary', () => cb.onRetry());
+  const overQuit = btn('終了', '', () => cb.onTitle());
+  oRow.append(overRetry, overQuit);
   cRow.append(
     btn('もう一度', 'btn-primary', () => cb.onRetry()),
     btn('タイトルへ', '', () => cb.onTitle()),
@@ -549,12 +550,18 @@ export function createHUD(root: HTMLElement, cb: HudCallbacks): Hud {
     const st = world.state;
     if (st === screenState) return;
     screenState = st;
+    document.body.classList.toggle('death-on', st === 'gameover');
     setCls(scrTitle, 'show', st === 'title');
     setCls(playRoot, 'show', st === 'playing' || st === 'paused');
     setCls(scrPause, 'show', st === 'paused');
     setCls(scrOver, 'show', st === 'gameover');
     setCls(scrClear, 'show', st === 'clear');
-    if (st === 'gameover') overStats.set(world);
+    if (st === 'gameover') {
+      overStats.set(world);
+      overT = 0;
+      // 画面が出きってから、キーボードで選べるようにリトライにフォーカス
+      setTimeout(() => { if (screenState === 'gameover') overRetry.focus(); }, 900);
+    }
     if (st === 'clear') clearStats.set(world);
   }
 
@@ -708,10 +715,23 @@ export function createHUD(root: HTMLElement, cb: HudCallbacks): Hud {
     applyScreens(world);
   }
 
+  /** 死亡画面のキー操作：←→で選ぶ（Enter/Space は選んだボタン）、R=リトライ、Esc／パッドB=終了。出た直後の誤操作を避けるため少し待つ */
+  let overT = 0;
+  function overInput(world: World, dt: number): void {
+    overT += dt;
+    if (overT < 0.9) return;
+    const inp = world.input;
+    if (inp.rawPressed('Escape') || inp.rawPressed('PadB')) { click(() => cb.onTitle()); return; }
+    if (inp.rawPressed('KeyR')) { click(() => cb.onRetry()); return; }
+    if (inp.rawPressed('ArrowLeft') || inp.rawPressed('KeyA') || inp.rawPressed('PadLeft')) overRetry.focus();
+    if (inp.rawPressed('ArrowRight') || inp.rawPressed('KeyD') || inp.rawPressed('PadRight')) overQuit.focus();
+  }
+
   function update(world: World, dt: number): void {
     attach(world);
     applyScreens(world);
     const st = world.state;
+    if (st === 'gameover') { overInput(world, dt); return; }
     if (st !== 'playing' && st !== 'paused') return;
 
     updateDmgNums(world, dt);

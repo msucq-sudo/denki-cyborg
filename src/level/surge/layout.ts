@@ -9,14 +9,23 @@
 
 export const STAIRS = {
   /** 2階から来たときのスタート地点（上の踊り場） */
-  topX: 0, topY: 10, topZ: 40,
-  /** 階段の下（ガレージの南の入口） */
+  topX: 0, topY: 10, topZ: 43,
+  /** 階段の下（ガレージの南の入口。ここから北が平ら） */
   bottomZ: 16,
-  width: 4,
+  /** 階段ホールの内側の幅（x=±width/2） */
+  width: 10,
+  /** 段数（1段の高さ = topY/steps ≒ 0.29 m。プレイヤーが歩いて登れる高さ） */
+  steps: 35,
+  /** 階段の最上段の端（ここから北が上の踊り場）と、踊り場の奥の壁 */
+  topStepZ: 40, backZ: 46.5,
+  /** 階段ホールの天井の高さ（階段の面から） */
+  headroom: 5,
 };
 
 export const GARAGE = {
   x0: -12, x1: 12, z0: -10, z1: 14, h: 7,
+  /** 壁の厚み／南の入口（階段ホールへ）の幅と高さ */
+  wallT: 1, doorW: 8, doorH: 5,
   /** 停まっている車（北向き。yaw=0 が -Z 向き） */
   carX: 0, carZ: 2,
   /** 北のシャッター（道へ出る） */
@@ -27,6 +36,8 @@ export const GARAGE = {
 
 export const ROAD = {
   width: 16,
+  /** 歩道の幅（見えない壁は歩道の外縁。道の中心から width/2 + sidewalk） */
+  sidewalk: 5,
   /** ガレージから北へ T字路まで */
   junctionZ: -90,
   /** T字路の東側：柵（ここから先には行けない） */
