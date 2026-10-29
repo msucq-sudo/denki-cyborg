@@ -274,7 +274,8 @@ function step(dt: number): void {
     updatePlayer(world, 0);
     if (input.pressed('PadA') || input.pressed('KeyP')) startGame();
   } else if (world.state === 'gameover' || world.state === 'clear') {
-    if (input.pressed('PadA')) { world = newWorld(); startGame(); }
+    // リトライ（設定されていればリトライ地点から。例：サージの道は車に乗ったところ）
+    if (input.pressed('PadA')) retry();
   }
   updateEffects(world, dt);
   hud.update(world, dt);

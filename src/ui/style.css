@@ -721,7 +721,10 @@ html, body { margin: 0; height: 100%; overflow: hidden; background: #0d1420; }
   backdrop-filter: grayscale(0.85) brightness(0.55) blur(2px);
   transition: opacity 1.8s ease, visibility 1.8s;
 }
-.over-panel { width: min(1000px, 96vw); max-height: 94vh; overflow: auto; padding: 8px 12px; text-align: center; }
+.over-panel {
+  width: min(1000px, 96vw); max-height: 94vh; overflow: auto; padding: 28px 12px 24px; text-align: center;
+  background: radial-gradient(ellipse at 50% 55%, rgba(10, 0, 3, 0.62) 0%, rgba(10, 0, 3, 0.35) 55%, rgba(10, 0, 3, 0) 78%);
+}
 .over-title {
   margin: 0; font-weight: 700; line-height: 1.05; white-space: nowrap;
   font-family: 'Cinzel', 'Trajan Pro', 'Times New Roman', 'Noto Serif JP', 'Yu Mincho', serif;

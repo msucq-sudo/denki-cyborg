@@ -174,6 +174,48 @@ try {
   check('失敗: ヘビー片付け', leftover === 0);
 
   }
+  // ================= 本物の運転 → 判定地点 → 演出（車担当の drive.ts 経由） =================
+  if (want('integration')) {
+    for (const [kind, ms, okKmh] of [['success', 96, true], ['fail', 52, false]]) {
+      await page.goto(`http://localhost:${port}/?level=surge&start=drive&manual`, { waitUntil: 'load' });
+      await page.waitForFunction(() => !!window.__game, null, { timeout: 120000 });
+      await page.addStyleTag({ content: '*, *::before, *::after { -webkit-backdrop-filter: none !important; backdrop-filter: none !important; }' });
+      await page.evaluate(() => { window.__game.start(); window.__game.step(1 / 60, 30); });
+      const before = await page.evaluate(([ms]) => {
+        const g = window.__game, w = g.current, d = w.level.data.drive;
+        d.pos.set(-1300, 0, -90); d.yaw = Math.PI / 2; d.mode = 'west'; d.speed = ms; d.junctionDone = true;
+        window.__ev = [];
+        for (const n of ['driveCheckpoint', 'fenceBreak', 'carWallCrash', 'carCaught', 'slowmo']) g.events.on(n, (p) => window.__ev.push(n + (p && 'ok' in p ? `:${p.ok}` : p && 'on' in p ? `:${p.on}` : '')));
+        return { phase: d.phase, hp: w.player.hp };
+      }, [ms]);
+      check(`統合(${kind}): 運転中から始める`, before.phase === 'driving', before);
+      // 判定地点（x=-1380）を越えるまで進める
+      const cp = await page.evaluate(() => {
+        const g = window.__game, d = g.current.level.data.drive;
+        let n = 0;
+        while (d.phase === 'driving' && n++ < 600) g.step(1 / 60, 1);
+        return { phase: d.phase, result: d.result, kmh: d.checkpointKmh, hasCut: !!d.cutscene };
+      });
+      check(`統合(${kind}): 判定地点で演出が始まる`, cp.phase === 'cutscene' && cp.result === kind && cp.hasCut, cp);
+      // 演出を g.step（本編と同じ経路）で進める。途中で1枚
+      await page.evaluate(() => { const g = window.__game; g.step(1 / 60, 60 * 5); });
+      await shot(`integ_${kind}_mid`, 500);
+      const hudMid = await page.evaluate(() => ({ hud: document.getElementById('hud').className, dv: getComputedStyle(document.querySelector('.dv')).display, cs: !!document.querySelector('.cs-root') }));
+      check(`統合(${kind}): 演出中は本編 HUD・運転 HUD が隠れる`, hudMid.hud.includes('cutscene') && hudMid.dv === 'none' && hudMid.cs, hudMid);
+      const fin = await page.evaluate(() => {
+        const g = window.__game, w = g.current, d = w.level.data.drive;
+        let n = 0;
+        while (d.phase === 'cutscene' && n++ < 60 * 30) g.step(1 / 60, 1);
+        g.step(1 / 60, 90);
+        return { phase: d.phase, hp: w.player.hp, state: w.state, ev: window.__ev };
+      });
+      console.log(JSON.stringify(fin));
+      check(`統合(${kind}): 演出のあと phase=done`, fin.phase === 'done', fin.phase);
+      if (okKmh) check('統合(success): 柵・壁のイベントが出る', fin.ev.includes('fenceBreak') && fin.ev.includes('carWallCrash'), fin.ev);
+      else check('統合(fail): carCaught が出て、死亡画面へ', fin.ev.includes('carCaught') && fin.hp <= 0 && fin.state === 'gameover', fin);
+      await shot(`integ_${kind}_end`, 600);
+    }
+  }
   // ================= 死亡画面 =================
   if (want('death')) {
   await page.evaluate(() => { const g = window.__game, w = g.current; w.player.hp = 0; g.step(1 / 60, 3); });
