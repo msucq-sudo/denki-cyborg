@@ -213,6 +213,8 @@ export interface World {
   unlocks: { autoAim: boolean };
   /** 強化素材の所持数（歯車＝探索で拾う／メタル＝敵が落とす） */
   inventory: { gears: number; metal: number };
+  /** 強化のレベル（項目 id → レベル。無ければ1）。progression/upgrades.ts が使う */
+  upgrades: Record<string, number>;
   /** 床に落ちているメタル（pickups.ts が管理） */
   drops: import('./pickups').MetalDrop[];
 }

@@ -152,6 +152,11 @@ const GROUPS: Array<{ title: string; items: Item[] }> = [
     title: 'UI',
     items: [
       e('UIクリック', 'uiClick', {}),
+      e('強化画面：カーソル移動', 'uiMove', {}),
+      e('強化画面：決定・項目の切り替え', 'uiConfirm', {}),
+      e('強化画面：受け付けない(歯車不足・最大)', 'uiDenied', {}),
+      e('強化できた(Lv2)', 'upgrade', { id: 'body', level: 2 }),
+      e('強化できた(Lv5)', 'upgrade', { id: 'body', level: 5 }),
       e('ゲーム開始', 'gameStart', {}),
       e('ゲームオーバー', 'gameOver', {}),
       e('ゲームクリア', 'gameClear', {}),

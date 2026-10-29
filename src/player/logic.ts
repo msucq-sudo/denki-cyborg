@@ -34,10 +34,10 @@ export function applyLook(yaw: number, pitch: number, dx: number, dy: number, se
   return { yaw: yaw - dx * sens, pitch: p };
 }
 
-/** 溜め量(0..1)から溜め撃ちのダメージ */
-export function chargeDamage(charge: number): number {
+/** 溜め量(0..1)から溜め撃ちのダメージ。maxDamage=最大溜めのダメージ（強化で変わる） */
+export function chargeDamage(charge: number, maxDamage: number = GUN.chargeMaxDamage): number {
   const c = Math.max(0, Math.min(1, charge));
-  return GUN.chargeMinDamage + (GUN.chargeMaxDamage - GUN.chargeMinDamage) * c;
+  return GUN.chargeMinDamage + (maxDamage - GUN.chargeMinDamage) * c;
 }
 
 /** 溜め弾の見た目/当たり判定サイズ */

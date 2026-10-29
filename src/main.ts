@@ -14,9 +14,10 @@ import { initFunctions, updateFunctions } from './abilities/functions';
 import { updateEnemies } from './enemies/api';
 import { buildDungeon, updateLevel } from './level/dungeon';
 import { buildFloor1, buildFloor1Revisit, updateFloor1, FLOOR1_EXPOSURE } from './level/floor1';
-import { buildFloor2, updateFloor2, FLOOR2_EXPOSURE } from './level/floor2';
+import { buildFloor2, updateFloor2, floor2Hooks, wakeFromRest, FLOOR2_EXPOSURE } from './level/floor2';
 import { CAMERA, CHARACTER } from './config/balance';
 import { createHUD } from './ui/hud';
+import { createUpgradeScreen } from './ui/upgradeScreen';
 import { initAudio, resumeAudio, updateAudio } from './audio/sfx';
 import './ui/style.css';
 
@@ -45,6 +46,16 @@ const events = new EventBus();
 const input = new Input(renderer.domElement);
 initAudio(events);
 
+// 強化画面（2階のベッドで眠り終わると開く）。画面は1つだけ作って使い回す
+const upgradeScreen = createUpgradeScreen(input, events);
+floor2Hooks.onSleepComplete = (w) => {
+  if (w !== world) return false;
+  upgradeScreen.open(w, { onClose: () => wakeFromRest(w) });
+  return true;
+};
+// ?gears=N で歯車 N 個から始める（強化画面の確認用）
+const gearsParam = Number(new URLSearchParams(location.search).get('gears'));
+
 let world: World = newWorld();
 let hadLock = false;
 
@@ -61,6 +72,7 @@ function newWorld(): World {
   if ((globalThis as any).__oldWorld) disposeWorld((globalThis as any).__oldWorld);
   const w = createWorld(input, events, window.innerWidth / window.innerHeight);
   LEVELS[levelId].build(w);
+  if (Number.isFinite(gearsParam) && gearsParam > 0) w.inventory.gears = Math.floor(gearsParam);
   initPlayer(w);
   initAbsorb(w);
   initHack(w);
@@ -83,7 +95,7 @@ function changeFloor(to: 1 | 2): void {
   const prev = world;
   const from = levelId === 'floor2' ? 2 : 1;
   const keep = {
-    hp: prev.player.hp, energy: prev.player.energy, inventory: { ...prev.inventory }, functions: { ...prev.functions },
+    hp: prev.player.hp, energy: prev.player.energy, inventory: { ...prev.inventory }, upgrades: { ...prev.upgrades }, functions: { ...prev.functions },
     stats: { ...prev.stats },
   };
   levelId = to === 2 ? 'floor2' : 'floor1';
@@ -92,6 +104,7 @@ function changeFloor(to: 1 | 2): void {
   world = newWorld();
   Object.assign(world.player, { hp: keep.hp, energy: keep.energy });
   world.inventory = keep.inventory;
+  world.upgrades = keep.upgrades;
   world.functions = keep.functions;
   Object.assign(world.stats, keep.stats);
   world.state = 'playing';
@@ -139,7 +152,7 @@ function pause(): void {
 
 document.addEventListener('pointerlockchange', () => {
   if (document.pointerLockElement) hadLock = true;
-  else if (hadLock && world.state === 'playing') pause();
+  else if (hadLock && world.state === 'playing' && !upgradeScreen.isOpen) pause();
 });
 renderer.domElement.addEventListener('click', () => {
   if (world.state === 'playing' && !document.pointerLockElement) input.requestLock();
@@ -157,8 +170,14 @@ const manual = new URLSearchParams(location.search).has('manual');
 function frame(): void {
   const dt = Math.min(clock.getDelta(), 1 / 20);
   step(dt);
-  renderer.render(world.scene, world.camera);
+  drawScene();
   if (!manual) requestAnimationFrame(frame);
+}
+
+/** 強化画面が開いている間は、本編のシーンの代わりに画面の3Dモデルを描く */
+function drawScene(): void {
+  if (upgradeScreen.isOpen) upgradeScreen.render(renderer);
+  else renderer.render(world.scene, world.camera);
 }
 
 /** 1ステップ進める（テストからも呼べる） */
@@ -222,6 +241,7 @@ function step(dt: number): void {
   }
   updateEffects(world, dt);
   hud.update(world, dt);
+  upgradeScreen.update(world, dt);
   updateAudio(world, dt);
   input.endFrame();
 }
@@ -236,7 +256,10 @@ function exposeDebug(w: World): void {
     camera: CAMERA,
     character: CHARACTER, // 見た目調整のデバッグ用（実行時に数値を触れる）
     setWeapon: (id: string) => setPlayerWeapon(world, id),
-    render: () => renderer.render(world.scene, world.camera),
+    render: () => drawScene(),
+    /** 強化画面を開く（確認用。ベッドを使わずに開ける。閉じても起き上がりの処理は無い） */
+    openUpgrade: () => upgradeScreen.open(world),
+    upgradeScreen,
     get current() { return world; },
     THREE,
   };

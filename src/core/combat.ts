@@ -1,6 +1,7 @@
 import * as THREE from 'three';
 import { PLAYER } from '../config/balance';
 import type { World } from './types';
+import { damageTakenMul } from '../progression/effects';
 
 /** プレイヤーの体の中心（被弾判定用の球の中心） */
 export function playerCenter(world: World, out = new THREE.Vector3()): THREE.Vector3 {
@@ -12,9 +13,11 @@ export const PLAYER_HIT_RADIUS = 0.55;
 export function damagePlayer(world: World, amount: number): void {
   const p = world.player;
   if (world.state !== 'playing' || p.invuln > 0 || p.hp <= 0) return;
-  p.hp = Math.max(0, p.hp - amount);
+  // ボディ強化の被ダメージ軽減
+  const dealt = amount * damageTakenMul(world);
+  p.hp = Math.max(0, p.hp - dealt);
   p.invuln = PLAYER.hitInvuln;
-  world.events.emit('playerHit', { amount });
+  world.events.emit('playerHit', { amount: dealt });
 }
 
 export function healPlayer(world: World, amount: number): void {

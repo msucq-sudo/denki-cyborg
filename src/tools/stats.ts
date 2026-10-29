@@ -7,6 +7,7 @@ import { WALKER } from '../enemies/kinds/walker';
 import { HEAVY_WALKER } from '../enemies/kinds/heavyWalker';
 import { MISSILE_BOT } from '../enemies/kinds/missileBot';
 import type { EnemyKind } from '../config/balance';
+import { ALL_TRACKS, maxLevel, type Category, type StatLine, type Track } from '../progression/upgrades';
 
 const { PLAYER, CAMERA, GUN, DODGE, DASH, ABSORB, OVERLOAD, FUNCTIONS, ENEMIES, ENEMY_NOTICE, METAL, LOCKDOWN, LEVEL, BOSS, CHARACTER } = B;
 const ESC: Record<string, string> = { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' };
@@ -26,6 +27,25 @@ const objRows = (o: object, prefix: string): Row[] =>
     typeof v === 'object' && v !== null && !Array.isArray(v)
       ? [k, Object.entries(v).map(([a, b]) => `${a}=${val(b)}`).join(' / '), `${prefix}.${k}`]
       : [k, val(v), `${prefix}.${k}`]);
+
+// ---- 強化（src/progression/upgrades.ts）：各項目のレベルごとの値と歯車コスト ----
+const CATEGORY_NAME: Record<Category, string> = { gun: 'GUN（武器ごと）', body: 'BODY', arm: 'ARM', skill: 'SKILL（選んで上げる）' };
+const statCell = (l: StatLine, v: number) => `${v.toFixed(l.digits ?? 0)}${l.unit ?? ''}`;
+function upgradeSection(cat: Category): string {
+  const tracks = ALL_TRACKS.filter((t) => t.category === cat);
+  const body = tracks.map((t: Track) => {
+    const n = maxLevel(t);
+    const lvHead = Array.from({ length: n }, (_, i) => `<th class="num">Lv${i + 1}</th>`).join('');
+    const total = t.costs.reduce((a, b) => a + b, 0);
+    const cost = Array.from({ length: n }, (_, i) => `<td class="num">${i < n - 1 ? `→Lv${i + 2}：⚙${t.costs[i]}` : '最大'}</td>`).join('');
+    const tt = esc((t.id + t.name + t.desc).toLowerCase());
+    const rows = t.stats.map((l) => `<tr class="row" data-t="${tt}${esc(l.label)}"><td>${esc(l.label)}${l.lowerIsBetter ? ' <span class="src">小さいほど良い</span>' : ''}</td>${l.values.map((v, i) => `<td class="num v${i === 0 ? ' base' : ''}">${statCell(l, v)}</td>`).join('')}</tr>`).join('');
+    return `<tr class="row trk" data-t="${tt}"><th>${esc(t.name)} <span class="src">${esc(t.id)}</span></th>${lvHead}</tr>`
+      + `<tr class="row" data-t="${tt}"><td class="d" colspan="${n + 1}">${esc(t.desc)}（合計 ⚙${total}）</td></tr>${rows}`
+      + `<tr class="row" data-t="${tt}"><td>必要な歯車</td>${cost}</tr>`;
+  }).join('');
+  return `<section><h2>${esc(CATEGORY_NAME[cat])}<span class="src">ALL_TRACKS (src/progression/upgrades.ts)</span></h2><table class="upg">${body}</table></section>`;
+}
 
 const WNAME: Record<string, string> = { pistol: 'ピストル', shotgun: 'ショットガン', assault: 'アサルト', rifle_dummy: 'ライフル（ダミー）' };
 const tabs: Record<string, () => string> = {
@@ -162,6 +182,12 @@ const tabs: Record<string, () => string> = {
   敵: () => `<section><h2>敵一覧<span class="src">ENEMIES / ENEMY_INFO / METAL.drop</span></h2>
     <p class="note">列見出しクリックで並び替え、行クリックで詳細。黄色の列は派生値（ピストル単発 ${GUN.tapDamage} ダメージ・電力 ${GUN.tapCost}/発 で計算）。</p>
     <table id="etable"></table></section>`,
+
+  強化: () => {
+    const total = ALL_TRACKS.reduce((a, t) => a + t.costs.reduce((x, y) => x + y, 0), 0);
+    return (['gun', 'body', 'arm', 'skill'] as Category[]).map(upgradeSection).join('') +
+      `<section><h2>歯車のめやす<span class="src">src/progression/upgrades.ts</span></h2><table><tr class="row" data-t="歯車 コスト"><td>研究所1階の歯車は 7 個。全項目を最大まで上げるには ⚙${total} 必要です。Lv1 の値は balance.ts の定数と同じ（太字でない列が基準）。</td></tr></table></section>`;
+  },
 
   強化素材: () => {
     const drops = ENEMY_ORDER.map((k) => [ENEMY_INFO[k].name, `${METAL.drop[k]} 個`, `METAL.drop.${k}`] as Row);

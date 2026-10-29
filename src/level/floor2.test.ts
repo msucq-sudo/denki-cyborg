@@ -5,7 +5,7 @@ import type { World } from '../core/types';
 import { createWorld } from '../core/world';
 import { moveCharacter } from '../core/collision';
 import { PLAYER } from '../config/balance';
-import { buildFloor2, floor2Hooks, getFloor2, SLEEP, updateFloor2 } from './floor2';
+import { buildFloor2, floor2Hooks, getFloor2, SLEEP, updateFloor2, wakeFromRest } from './floor2';
 import { generateFloor2, R } from './floor2/plan';
 
 const plan = generateFloor2();
@@ -189,6 +189,28 @@ describe('floor2 runtime', () => {
     expect(f.state.phase).toBe('rest');
     run(w, SLEEP.autoWake + SLEEP.wake + 0.5);
     expect(f.state.phase).toBe('free');
+  });
+
+  it('hook returning true holds the rest: no auto wake, B/R ignored, until wakeFromRest', () => {
+    const { w, press, f } = mk();
+    const hook = floor2Hooks.onSleepComplete;
+    floor2Hooks.onSleepComplete = () => true;
+    try {
+      w.player.pos.set(0, 0, 2.4);
+      run(w, 0.2);
+      press('KeyR');
+      run(w, SLEEP.walk + SLEEP.lie + SLEEP.sleep + 0.5);
+      expect(f.state.phase).toBe('rest');
+      expect(f.state.held).toBe(true);
+      press('KeyR');
+      run(w, SLEEP.autoWake + 1);
+      expect(f.state.phase).toBe('rest');
+      wakeFromRest(w);
+      expect(f.state.phase).toBe('wake');
+      expect(f.state.held).toBe(false);
+      run(w, SLEEP.wake + 0.1);
+      expect(f.state.phase).toBe('free');
+    } finally { floor2Hooks.onSleepComplete = hook; }
   });
 
   it('elevator: doors open after arrival; riding back asks for floor 1, but only after leaving the car once', () => {

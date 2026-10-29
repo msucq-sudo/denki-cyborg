@@ -1,7 +1,8 @@
 import type * as THREE from 'three';
 import type { Enemy, Toast, World } from '../core/types';
 import type { EventBus } from '../core/events';
-import { ABSORB, DODGE, ENEMIES, GUN, HACK } from '../config/balance';
+import { ENEMIES, HACK } from '../config/balance';
+import { absorbEnergyPerSec, dodgeCost, gunTapCost } from '../progression/effects';
 import type { EnemyKind } from '../config/balance';
 import { ENEMY_INFO } from '../config/enemyInfo';
 import { clamp, formatRate, formatTime, pct, projectToScreen, stepRate } from './format';
@@ -20,7 +21,6 @@ const KIND_NAME = Object.fromEntries(
   Object.entries(ENEMY_INFO).map(([k, v]) => [k, v.name]),
 ) as Record<EnemyKind, string>;
 
-const ABSORB_RATE = ABSORB.drainPerSec * ABSORB.conversion;
 const ABSORBING_PHASES: string[] = ['extending', 'attached', 'retracting'];
 const EMPTY_EPS = 0.0001;
 const RATE_TAU = 0.4;
@@ -785,7 +785,7 @@ export function createHUD(root: HTMLElement, cb: HudCallbacks): Hud {
       const over = p.overloading;
       setCls(absBox, 'overloading', over);
       setText(absName, KIND_NAME[target.kind]);
-      setText(absStatus, over ? '逆流中' : `吸収中 ＋${ABSORB_RATE.toFixed(1)}/秒`);
+      setText(absStatus, over ? '逆流中' : `吸収中 ＋${absorbEnergyPerSec(world).toFixed(1)}/秒`);
       setW(absHpFill, pct(target.hp, target.maxHp));
       setCls(absOvRow, 'off', !over);
       if (over) {
@@ -886,8 +886,8 @@ export function createHUD(root: HTMLElement, cb: HudCallbacks): Hud {
     setCls(keyEls.hack, 'hl', hk.active);
     setCls(keyEls.rmb, 'hl', empty && !absorbActive);
     setCls(keyEls.jet, 'hl', p.flying);
-    setCls(keyEls.shift, 'dim', p.energy < DODGE.cost);
-    setCls(keyEls.lmb, 'dim', p.energy < GUN.tapCost);
+    setCls(keyEls.shift, 'dim', p.energy < dodgeCost(world));
+    setCls(keyEls.lmb, 'dim', p.energy < gunTapCost(world));
     setCls(keyEls.k1, 'dim', false); // スカウターは電力不要
     setCls(keyEls.k2, 'off', !world.unlocks.autoAim); // 未解放の機能は操作一覧にも出さない
     setCls(keyEls.k2, 'dim', empty);

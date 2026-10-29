@@ -1,5 +1,6 @@
 import * as THREE from 'three';
-import { ABSORB, ENEMIES, GRAPPLE, HACK, OVERLOAD } from '../config/balance';
+import { ABSORB, ENEMIES, GRAPPLE, HACK } from '../config/balance';
+import { absorbConversion, absorbDrainPerSec, overloadEnergyPerSec } from '../progression/effects';
 import { KIND_MODULES } from '../enemies/kinds';
 import type { Enemy, World } from '../core/types';
 import { hasLineOfSight, raycastLevel } from '../core/collision';
@@ -361,7 +362,7 @@ function updateAttached(world: World, ex: Extra, dt: number): void {
         p.overloading = true;
         world.events.emit('overloadStart', {});
       }
-      const want = OVERLOAD.energyPerSec * dt;
+      const want = overloadEnergyPerSec(world) * dt;
       const sent = drainEnergy(world, want) * want;
       if (sent > 0) {
         const res = overloadEnemy(world, enemy, sent);
@@ -387,7 +388,7 @@ function updateAttached(world: World, ex: Extra, dt: number): void {
   // ---- 吸収 ----
   // ハッキングできる敵はつないでいる間ゆっくり吸う（コード入力の時間をつくる）
   const hackMul = KIND_MODULES[enemy.kind]?.hackable ? HACK.drainMul : 1;
-  const got = drainEnemy(world, enemy, ABSORB.drainPerSec * (ENEMIES[enemy.kind].drainMul ?? 1) * hackMul * dt);
+  const got = drainEnemy(world, enemy, absorbDrainPerSec(world) * (ENEMIES[enemy.kind].drainMul ?? 1) * hackMul * dt);
   drainAcc += got;
   drainT += dt;
   if (drainAcc > 0 && (drainT >= DRAIN_POP_INTERVAL || enemy.hp <= 0)) {
@@ -395,7 +396,7 @@ function updateAttached(world: World, ex: Extra, dt: number): void {
     drainAcc = 0; drainT = 0;
   }
   if (got > 0) {
-    const added = addEnergy(world, got * ABSORB.conversion);
+    const added = addEnergy(world, got * absorbConversion(world));
     a.totalAbsorbed += added;
     world.stats.energyAbsorbed += added;
   }

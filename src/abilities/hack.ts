@@ -2,6 +2,7 @@
 // 全部正しく入れると敵が味方になる（e.allied）。間違えると最初からやり直し＋電力を失う。
 // 状態はすべて world.hack / e.ai に置く（モジュール変数は持たない）
 import { HACK } from '../config/balance';
+import { hackAllyTime, hackFailEnergy } from '../progression/effects';
 import type { Enemy, World } from '../core/types';
 import { isTargetable } from '../core/enemyUtil';
 import { drainEnergy } from '../core/energy';
@@ -122,7 +123,7 @@ export function updateHack(world: World, dt: number): void {
       world.events.emit('hackInput', { ok: r.ok, progress: r.progress });
       if (!r.ok) {
         h.failFlash = HACK_FAIL_FLASH;
-        drainEnergy(world, HACK.failEnergy);
+        drainEnergy(world, hackFailEnergy(world));
         spawnBurst(world, h.target.pos, 0xff5a3a, 8, 4, 0.3);
       } else {
         spawnBurst(world, h.target.pos, 0x66e6ff, 3, 2.5, 0.25);
@@ -171,8 +172,9 @@ function succeedHack(world: World, e: Enemy): void {
   const h = world.hack;
   e.allied = true;
   e.tethered = false;
-  e.ai.allyT = HACK.allyTime;
-  e.ai.allyMax = HACK.allyTime;
+  const allyTime = hackAllyTime(world);
+  e.ai.allyT = allyTime;
+  e.ai.allyMax = allyTime;
   e.ai.windup = 0;
   e.ai.warn = 0;
   e.ai.alert = 0;

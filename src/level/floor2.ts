@@ -2,7 +2,7 @@
 // 使い方: URL に ?level=floor2（1階のエレベーターに乗っても来られる）
 // 円形の小部屋。中央に改造ベッド、壁沿いに PC・サーバー、南にエレベーター、北の左右 35° に2つの出口（今は封鎖）。
 // ベッドの近くで パッド B（キーボード R）→ ベッドに横になる → 眠りの演出 → onSleepComplete フック
-// （後で強化画面を差し込む）→ もう一度 B / R（または自動）で起き上がる。
+// （強化画面を開く。main.ts が差し込む）→ 画面を閉じる（wakeFromRest）か、もう一度 B / R（または自動）で起き上がる。
 import * as THREE from 'three';
 import type { World } from '../core/types';
 import { toast } from '../core/combat';
@@ -14,9 +14,12 @@ import { buildFloor2Visuals, type Floor2Visuals } from './floor2/visuals';
 export const FLOOR2_EXPOSURE = 1.15;
 /** 眠りの演出の各区間（秒） */
 export const SLEEP = { walk: 0.7, lie: 1.5, sleep: 1.6, wake: 1.3, autoWake: 7 };
-/** 眠りの演出が終わった時に呼ばれる。後で強化（アップグレード）画面を開く処理に差し替える */
-export const floor2Hooks: { onSleepComplete: (world: World) => void } = {
-  onSleepComplete: (world) => { toast(world, '（強化画面は準備中です）', 4); },
+/**
+ * 眠りの演出が終わった時に呼ばれる（main.ts が強化画面を開く処理に差し替える）。
+ * true を返すと「起きるのを保留」する：自動で起きず B / R でも起きない。画面を閉じたら wakeFromRest(world) を呼ぶ
+ */
+export const floor2Hooks: { onSleepComplete: (world: World) => boolean | void } = {
+  onSleepComplete: (world) => { toast(world, '（強化画面は準備中です）', 4); return false; },
 };
 
 type Phase = 'free' | 'walk' | 'lie' | 'sleep' | 'rest' | 'wake';
@@ -31,6 +34,8 @@ export interface Floor2State {
   leftCar: boolean;
   /** 近くで B / R が使えるか */
   nearBed: boolean;
+  /** 強化画面を開いている間は起きない（floor2Hooks.onSleepComplete が true を返した） */
+  held: boolean;
 }
 interface Runtime {
   plan: Plan;
@@ -122,7 +127,7 @@ export function buildFloor2(world: World): void {
   world.level.data.interactNear = false;
   world.level.data.nextFloor = 0;
 
-  const state: Floor2State = { phase: 'free', t: 0, sleeps: 0, doorOpen: 0, leftCar: false, nearBed: false };
+  const state: Floor2State = { phase: 'free', t: 0, sleeps: 0, doorOpen: 0, leftCar: false, nearBed: false, held: false };
   world.level.data.floor2 = state;
   world.player.pos.set(plan.start.x, 0, plan.start.z);
   world.player.yaw = plan.start.yaw;
@@ -143,6 +148,14 @@ function lerpAngle(a: number, b: number, k: number): number {
   let d = (b - a) % (Math.PI * 2);
   if (d > Math.PI) d -= Math.PI * 2; else if (d < -Math.PI) d += Math.PI * 2;
   return a + d * k;
+}
+
+/** 強化画面を閉じた：保留をやめてベッドから起きる */
+export function wakeFromRest(world: World): void {
+  const rt = runtimes.get(world);
+  if (!rt || rt.state.phase !== 'rest') return;
+  rt.state.held = false;
+  beginWake(world, rt);
 }
 
 /** ベッドから起きる（演出中ならいつでも呼べる：lie / sleep / rest） */
@@ -197,7 +210,7 @@ function applySleepPose(world: World, rt: Runtime): void {
   if (rt.dim) {
     const dimK = ph === 'lie' ? smooth(state.t / SLEEP.lie) * 0.55
       : ph === 'sleep' ? 0.55 + 0.3 * smooth(state.t / SLEEP.sleep)
-        : ph === 'rest' ? 0.85
+        : ph === 'rest' ? (state.held ? 0 : 0.85) // 強化画面の間は暗転しない（画面側のカーテンが覆う）
           : ph === 'wake' ? 0.85 * (1 - smooth(state.t / SLEEP.wake)) : 0;
     rt.dim.style.opacity = String(dimK);
   }
@@ -230,12 +243,12 @@ function updateSleep(world: World, rt: Runtime, dt: number): void {
       if (state.t >= SLEEP.sleep) {
         state.phase = 'rest'; state.t = 0; state.sleeps++;
         world.events.emit('sleepComplete', {});
-        floor2Hooks.onSleepComplete(world);
+        state.held = floor2Hooks.onSleepComplete(world) === true;
       }
       break;
     case 'rest':
       p.pos.set(b.standX, 0, b.standZ);
-      if (input.rawPressed('PadB') || input.rawPressed('KeyR') || state.t >= SLEEP.autoWake) beginWake(world, rt);
+      if (!state.held && (input.rawPressed('PadB') || input.rawPressed('KeyR') || state.t >= SLEEP.autoWake)) beginWake(world, rt);
       break;
     case 'wake':
       p.pos.set(b.standX, 0, b.standZ);
@@ -287,7 +300,7 @@ export function updateFloor2(world: World, dt: number): void {
       showPrompt(null);
       rt.promptOn = false;
     }
-  } else if (state.phase === 'rest') {
+  } else if (state.phase === 'rest' && !state.held) {
     showPrompt('Bボタン / Rキー：起きる');
   } else {
     showPrompt(null);

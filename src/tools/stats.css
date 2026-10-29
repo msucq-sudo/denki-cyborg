@@ -36,3 +36,9 @@ section > table:not(#etable) { table-layout:fixed; }
 section > table:not(#etable) th:nth-child(1) { width:28%; }
 section > table:not(#etable) th:nth-child(2) { width:22%; }
 section > table:not(#etable) th:nth-child(3) { width:26%; }
+
+/* 強化タブ：レベルごとの値の表（列幅は自動） */
+table.upg { table-layout:auto !important; }
+table.upg th, table.upg td { width:auto !important; }
+table.upg tr.trk th { background:#1a2d63; color:var(--ye); font-size:13px; }
+table.upg td.base { color:var(--mu); font-weight:500; }
