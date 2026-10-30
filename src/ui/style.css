@@ -710,3 +710,86 @@ html, body { margin: 0; height: 100%; overflow: hidden; background: #0d1420; }
   .us-left { width: calc(100vw - var(--gx) * 2); }
   .us-stage { left: 0; }
 }
+
+/* ======================================================================
+   死亡画面「YOU DIED」（hud.ts の scrOver）。暗い赤の縁取りの中にゆっくり浮かぶ
+   ====================================================================== */
+.screen.screen-over {
+  background:
+    radial-gradient(ellipse at 50% 46%, rgba(60, 0, 8, 0.38) 0%, rgba(26, 0, 4, 0.72) 48%, rgba(0, 0, 0, 0.94) 100%);
+  -webkit-backdrop-filter: grayscale(0.85) brightness(0.55) blur(2px);
+  backdrop-filter: grayscale(0.85) brightness(0.55) blur(2px);
+  transition: opacity 1.8s ease, visibility 1.8s;
+}
+.over-panel {
+  width: min(1000px, 96vw); max-height: 94vh; overflow: auto; padding: 28px 12px 24px; text-align: center;
+  background: radial-gradient(ellipse at 50% 55%, rgba(10, 0, 3, 0.62) 0%, rgba(10, 0, 3, 0.35) 55%, rgba(10, 0, 3, 0) 78%);
+}
+.over-title {
+  margin: 0; font-weight: 700; line-height: 1.05; white-space: nowrap;
+  font-family: 'Cinzel', 'Trajan Pro', 'Times New Roman', 'Noto Serif JP', 'Yu Mincho', serif;
+  font-size: clamp(40px, 9.5vw, 120px); text-indent: 0.16em;
+  color: #b3141e;
+  text-shadow: 0 0 34px rgba(210, 20, 34, 0.55), 0 0 6px rgba(120, 0, 10, 0.9), 0 5px 0 #2a0005;
+  opacity: 0; transform: scale(1.14); letter-spacing: 0.28em;
+  transition: opacity 2.2s ease 0.5s, transform 4s cubic-bezier(0.2, 0.7, 0.2, 1) 0.5s, letter-spacing 4s ease 0.5s;
+}
+.screen-over.show .over-title { opacity: 1; transform: scale(1); letter-spacing: 0.16em; }
+.over-sub {
+  margin: 10px 0 18px; font-size: 15px; letter-spacing: 0.4em; text-indent: 0.4em; color: #c98a90; opacity: 0;
+  transition: opacity 1.6s ease 1.6s;
+}
+.screen-over.show .over-sub { opacity: 0.85; }
+.screen-over .stats.stats-sm {
+  font-size: 12.5px; padding: 8px 16px; gap: 4px 20px; width: fit-content; margin: 0 auto;
+  background: rgba(255, 255, 255, 0.04); color: #d9b8bc; opacity: 0; transition: opacity 1.6s ease 2s;
+}
+.screen-over.show .stats.stats-sm { opacity: 0.8; }
+.over-row { margin-top: 26px; opacity: 0; transition: opacity 1.4s ease 2.2s; }
+.screen-over.show .over-row { opacity: 1; }
+.screen-over .btn {
+  min-width: 170px; color: #f1d5d8; background: rgba(40, 0, 6, 0.55);
+  box-shadow: inset 0 0 0 1.5px rgba(200, 40, 52, 0.7), 0 6px 20px rgba(0, 0, 0, 0.5);
+}
+.screen-over .btn:hover { background: rgba(120, 10, 22, 0.7); }
+.screen-over .btn-primary {
+  background: linear-gradient(135deg, #8d1520, #5c0a12); color: #fff0f1;
+  box-shadow: 0 0 22px rgba(200, 30, 44, 0.45), inset 0 1px 0 rgba(255, 160, 160, 0.35);
+}
+.screen-over .btn-primary:hover { background: linear-gradient(135deg, #b01c2a, #760e18); }
+.screen-over .btn:focus-visible { outline: 2px solid #ff9aa4; outline-offset: 3px; }
+.over-keys { margin: 16px 0 0; font-size: 12px; letter-spacing: 0.08em; color: #a37a80; opacity: 0; transition: opacity 1.4s ease 2.6s; }
+.screen-over.show .over-keys { opacity: 0.8; }
+
+/* ======================================================================
+   カットシーン（cinematic/overlay.ts）。body 直下。黒帯・字幕・暗転・閃光・スキップ表示
+   ====================================================================== */
+#hud.cutscene .play { opacity: 0 !important; visibility: hidden !important; }
+.cs-root { position: fixed; inset: 0; z-index: 25; pointer-events: none; font-family: 'Noto Sans JP', 'M PLUS Rounded 1c', system-ui, sans-serif; overflow: hidden; }
+.cs-bar { position: absolute; left: 0; right: 0; height: 0; background: #000; transition: height 0.7s cubic-bezier(0.2, 0.7, 0.2, 1); }
+.cs-top { top: 0; }
+.cs-bottom { bottom: 0; display: flex; align-items: center; justify-content: center; }
+.cs-root.on .cs-bar { height: 12vh; }
+.cs-caption {
+  color: #f4f8ff; font-size: clamp(14px, 2.6vh, 28px); font-weight: 700; letter-spacing: 0.16em; text-indent: 0.16em;
+  text-shadow: 0 0 10px rgba(0, 0, 0, 0.9); opacity: 0; transition: opacity 0.25s;
+}
+.cs-caption.show { opacity: 1; }
+.cs-vig {
+  position: absolute; inset: 0; opacity: 0; transition: opacity 0.35s;
+  background: radial-gradient(ellipse at center, rgba(0, 0, 0, 0) 42%, rgba(0, 16, 48, 0.6) 100%);
+}
+.cs-vig.on { opacity: 1; }
+.cs-flash, .cs-fade { position: absolute; inset: 0; opacity: 0; }
+.cs-flash { background: #fff; }
+.cs-fade { background: #000; }
+.cs-skip {
+  position: absolute; right: 2.4vw; bottom: 3vh; display: none; flex-direction: column; align-items: flex-end; gap: 4px;
+  font-size: clamp(10px, 1.7vh, 13px); letter-spacing: 0.08em; color: rgba(255, 255, 255, 0.62);
+}
+.cs-skip.show { display: flex; }
+.cs-skip-bar { width: 130px; height: 3px; background: rgba(255, 255, 255, 0.2); border-radius: 2px; overflow: hidden; }
+.cs-skip-fill { width: 0; height: 100%; background: #7ef3ff; }
+
+/* 演出・死亡画面の間は運転 HUD（driveHud.ts）を隠す */
+body.cutscene-on .dv, body.death-on .dv { display: none !important; }

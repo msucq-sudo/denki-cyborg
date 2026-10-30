@@ -139,6 +139,8 @@ export class Input {
   mouseReleased(button: number): boolean { return this.enabled && !this.locked && this.mouseReleasedSet.has(button); }
   /** ロック中でも読める「押した瞬間」（演出中の起き上がりなど） */
   rawPressed(code: string): boolean { return this.enabled && this.pressedSet.has(code); }
+  /** ロック中でも読める「押している間」（運転中の左右など） */
+  rawDown(code: string): boolean { return this.enabled && this.down.has(code); }
 
   /** テスト/デバッグ用：入力を外部から注入 */
   simulateKey(code: string, isDown: boolean): void {

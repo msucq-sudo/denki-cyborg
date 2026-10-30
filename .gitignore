@@ -6,3 +6,4 @@ tests/e2e/out
 debug.log
 # サブエージェントの一時デバッグ用スクリプト
 tests/e2e/*dbg*.mjs
+tests/e2e/_*.mjs

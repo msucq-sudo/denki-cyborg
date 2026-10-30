@@ -99,7 +99,7 @@ export function noise(x: Eng, t0: number, o: NoiseOpts): void {
 /* 継続音（ループ）                                                    */
 /* ------------------------------------------------------------------ */
 
-export type LoopName = 'absorb' | 'overload' | 'flight' | 'charge' | 'scouter' | 'siren';
+export type LoopName = 'absorb' | 'overload' | 'flight' | 'charge' | 'scouter' | 'siren' | 'engine';
 
 export interface Loop {
   /** 0..1 の制御値（overload: 過負荷率、charge: 溜め率）。不要なループでは無視 */
@@ -309,6 +309,64 @@ class SirenLoop extends LoopBase {
   set(ratio: number): void { this.vol.gain.value = 0.24 * Math.max(0, Math.min(1, ratio)); }
 }
 
+/**
+ * 車のエンジン（電気スポーツカー）：高いうなり＋低いハム＋風切り音。ratio=速度（0..1。340km/h が 1）でピッチ・音量・風が上がる
+ */
+class EngineLoop extends LoopBase {
+  private whine: OscillatorNode;
+  private whine2: OscillatorNode;
+  private hum: OscillatorNode;
+  private whineGain: GainNode;
+  private humGain: GainNode;
+  private windBp: BiquadFilterNode;
+  private windGain: GainNode;
+  private lp: BiquadFilterNode;
+
+  constructor(x: Eng) {
+    super(x);
+    this.lp = x.ctx.createBiquadFilter();
+    this.lp.type = 'lowpass';
+    this.lp.frequency.value = 1200;
+    this.lp.Q.value = 1.2;
+    this.lp.connect(this.out);
+    this.whineGain = x.ctx.createGain();
+    this.whineGain.gain.value = 0.05;
+    this.whine = this.osc('sawtooth', 90);
+    this.whine.connect(this.whineGain).connect(this.lp);
+    this.whine2 = this.osc('triangle', 181);
+    const g2 = x.ctx.createGain();
+    g2.gain.value = 0.03;
+    this.whine2.connect(g2).connect(this.lp);
+    this.humGain = x.ctx.createGain();
+    this.humGain.gain.value = 0.1;
+    this.hum = this.osc('sine', 48);
+    this.hum.connect(this.humGain).connect(this.out);
+    // 風切り音（速いほど大きく高く）
+    this.windBp = x.ctx.createBiquadFilter();
+    this.windBp.type = 'bandpass';
+    this.windBp.frequency.value = 600;
+    this.windBp.Q.value = 0.7;
+    this.windGain = x.ctx.createGain();
+    this.windGain.gain.value = 0.0;
+    this.noiseSrc().connect(this.windBp).connect(this.windGain).connect(this.out);
+    this.lfo(9, 0.006, this.whineGain.gain);
+  }
+
+  set(ratio: number): void {
+    const r = Math.max(0, Math.min(1, ratio));
+    const t = this.x.ctx.currentTime;
+    const f = 70 + 560 * Math.pow(r, 0.85);
+    this.whine.frequency.setTargetAtTime(f, t, 0.08);
+    this.whine2.frequency.setTargetAtTime(f * 2.01, t, 0.08);
+    this.hum.frequency.setTargetAtTime(44 + 46 * r, t, 0.1);
+    this.whineGain.gain.setTargetAtTime(0.04 + 0.05 * r, t, 0.1);
+    this.humGain.gain.setTargetAtTime(0.09 + 0.05 * r, t, 0.1);
+    this.lp.frequency.setTargetAtTime(900 + 3200 * r, t, 0.1);
+    this.windBp.frequency.setTargetAtTime(500 + 2800 * r, t, 0.1);
+    this.windGain.gain.setTargetAtTime(0.01 + 0.12 * r * r, t, 0.1);
+  }
+}
+
 export function createLoop(name: LoopName, x: Eng): Loop {
   switch (name) {
     case 'absorb': return new AbsorbLoop(x);
@@ -317,5 +375,6 @@ export function createLoop(name: LoopName, x: Eng): Loop {
     case 'charge': return new ChargeLoop(x);
     case 'scouter': return new ScouterLoop(x);
     case 'siren': return new SirenLoop(x);
+    case 'engine': return new EngineLoop(x);
   }
 }

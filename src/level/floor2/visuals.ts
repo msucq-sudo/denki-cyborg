@@ -84,6 +84,8 @@ export interface Floor2Visuals {
   root: THREE.Group;
   colliders: AABB[];
   doorCollider: AABB;
+  /** 開けて通れる出口のシャッター（pivot は上端。scale.y を縮めると巻き上がる）と、その当たり判定 */
+  exitDoors: Record<string, { pivot: THREE.Group; colliders: AABB[] }>;
   leaves: [THREE.Mesh, THREE.Mesh];
   /** エレベーターのドア上のランプ */
   lampMat: THREE.MeshBasicMaterial;
@@ -121,7 +123,16 @@ export function buildFloor2Visuals(plan: Plan): Floor2Visuals {
 
   // ---- プリミティブ（材質ごとに結合）
   const buckets = new Map<Mat, THREE.BufferGeometry[]>();
+  const partBuckets = new Map<string, Map<Mat, THREE.BufferGeometry[]>>();
   for (const p of plan.prims) {
+    if (p.part) {
+      let pb = partBuckets.get(p.part);
+      if (!pb) partBuckets.set(p.part, (pb = new Map()));
+      let pl = pb.get(p.m);
+      if (!pl) pb.set(p.m, (pl = []));
+      pl.push(primGeo(p));
+      continue;
+    }
     let list = buckets.get(p.m);
     if (!list) buckets.set(p.m, (list = []));
     list.push(primGeo(p));
@@ -136,6 +147,27 @@ export function buildFloor2Visuals(plan: Plan): Floor2Visuals {
     mesh.receiveShadow = m === 'floor' || m === 'panel' || m === 'solid' || m === 'metal' || m === 'hazard';
     if (m === 'glass') mesh.renderOrder = 2;
     root.add(mesh);
+  }
+
+  // ---- 開けて通れる出口のシャッター：上端を支点にして巻き上げる
+  const exitDoors: Floor2Visuals['exitDoors'] = {};
+  for (const [id, pb] of partBuckets) {
+    const ex = plan.exits.find((e) => e.id === id);
+    if (!ex) continue;
+    const pivot = new THREE.Group();
+    pivot.position.set(ex.doorX, DOOR_H, ex.doorZ);
+    for (const [m, list] of pb) {
+      const merged = mergeGeometries(list, false);
+      list.forEach((g) => g.dispose());
+      if (!merged) continue;
+      merged.translate(-ex.doorX, -DOOR_H, -ex.doorZ);
+      const mesh = new THREE.Mesh(merged, mats[m]);
+      mesh.castShadow = true;
+      mesh.receiveShadow = true;
+      pivot.add(mesh);
+    }
+    root.add(pivot);
+    exitDoors[id] = { pivot, colliders: [] };
   }
 
   // ---- 円形の壁（出入口で切れた円弧）
@@ -185,7 +217,12 @@ export function buildFloor2Visuals(plan: Plan): Floor2Visuals {
   }
 
   // ---- 当たり判定
-  for (const b of plan.blockers) colliders.push({ min: v3(b.x0, b.y0, b.z0), max: v3(b.x1, b.y1, b.z1), active: true, tag: b.tag });
+  for (const b of plan.blockers) {
+    const c: AABB = { min: v3(b.x0, b.y0, b.z0), max: v3(b.x1, b.y1, b.z1), active: true, tag: b.tag };
+    colliders.push(c);
+    const id = b.tag.startsWith('exitDoor:') ? b.tag.slice(9) : '';
+    if (id && exitDoors[id]) exitDoors[id].colliders.push(c);
+  }
 
   // ---- エレベーターのドア（左右スライド）
   const E = plan.elevator;
@@ -217,14 +254,21 @@ export function buildFloor2Visuals(plan: Plan): Floor2Visuals {
   el.rotation.y = Math.PI;
   root.add(el);
   for (const ex of plan.exits) {
-    const s = makeSign('封鎖中', 'red', 2.8);
+    const s = ex.usable ? makeSign('ガレージ・階段', 'green', 3.2) : makeSign('封鎖中', 'red', 2.8);
     s.position.set(ex.doorX - ex.dirX * 0.4, 3.7, ex.doorZ - ex.dirZ * 0.4);
     s.rotation.y = Math.atan2(-ex.dirX, -ex.dirZ);
     root.add(s);
+    if (ex.usable) {
+      // シャッターの先の突き当たり：階段ホールへの光る出入口
+      const glow = new THREE.Mesh(new THREE.PlaneGeometry(ex.width, DOOR_H), new THREE.MeshBasicMaterial({ color: new THREE.Color(0xcdf4ff).multiplyScalar(1.4) }));
+      glow.position.set(ex.doorX + ex.dirX * (ex.ext - 0.1), DOOR_H / 2, ex.doorZ + ex.dirZ * (ex.ext - 0.1));
+      glow.rotation.y = Math.atan2(-ex.dirX, -ex.dirZ);
+      root.add(glow);
+    }
   }
 
   return {
-    root, colliders, doorCollider, leaves, lampMat, glowMat,
+    root, colliders, doorCollider, exitDoors, leaves, lampMat, glowMat,
     dispose() {
       root.traverse((o) => {
         const m = o as THREE.Mesh;

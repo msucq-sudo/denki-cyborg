@@ -10,6 +10,8 @@ import { tone, noise, createLoop, type Eng, type Loop, type LoopName } from './s
 /* ------------------------------------------------------------------ */
 
 const MASTER_GAIN = 0.5;
+/** エンジン音が最高になる速度（340km/h を m/s に） */
+const ENGINE_MAX_MPS = 340 / 3.6;
 /** 電力25%以下の警告ビープ間隔（秒） */
 const LOW_POWER_INTERVAL = 2;
 const LOW_POWER_RATIO = 0.25;
@@ -56,6 +58,17 @@ const SFX_POLICY: Record<string, SfxPolicy> = {
   uiConfirm: { minInterval: 0.06, maxVoices: 2 },
   uiDenied: { minInterval: 0.15, maxVoices: 2 },
   upgrade: { minInterval: 0.1, maxVoices: 2 },
+  boostPerfect: { minInterval: 0.1, maxVoices: 2 },
+  boostGood: { minInterval: 0.1, maxVoices: 2 },
+  boostMiss: { minInterval: 0.1, maxVoices: 2 },
+  driveHit: { minInterval: 0.04, maxVoices: 5 },
+  driveBump: { minInterval: 0.2, maxVoices: 2 },
+  driveCrash: { maxVoices: 2 },
+  driveCheckpoint: { maxVoices: 2 },
+  fenceBreak: { maxVoices: 2 },
+  carWallCrash: { maxVoices: 2 },
+  carCaught: { maxVoices: 2 },
+  slowmo: { maxVoices: 2 },
 };
 
 /* ------------------------------------------------------------------ */
@@ -104,7 +117,7 @@ function makeDebug(): AudioDebug {
     lastSfx: null,
     played: {},
     suppressed: {},
-    loops: { absorb: false, overload: false, flight: false, charge: false, scouter: false, siren: false },
+    loops: { absorb: false, overload: false, flight: false, charge: false, scouter: false, siren: false, engine: false },
     lowPowerBeeps: 0,
     activeVoices: (name: string) => gate.activeVoices(name, nowSec()),
     lastError: null,
@@ -486,6 +499,7 @@ function subscribe(events: EventBus): void {
   subscribeWake(events);
   subscribePhase3(events);
   subscribeUpgrade(events);
+  subscribeDrive(events);
 }
 
 /* ------------------------------------------------------------------ */
@@ -548,6 +562,10 @@ export function updateAudio(world: World, dt: number): void {
     syncLoop('flight', p.flying ? 0.5 : null);
     syncLoop('charge', p.charging ? clamp01(p.charge) : null);
     syncLoop('scouter', null); // スカウターは音なし
+    // 車のエンジン：運転中（と演出中）は速度に合わせて鳴らし、それ以外は止める
+    const drv = world.level.data.drive as { phase?: string; speed?: number } | undefined;
+    const engineOn = !!drv && (drv.phase === 'driving' || drv.phase === 'cutscene');
+    syncLoop('engine', engineOn ? Math.max(0.03, clamp01(Math.abs(drv!.speed ?? 0) / ENGINE_MAX_MPS)) : null);
     // サイレンは閉じ込め開始から LOCKDOWN.sirenCycles 回（1回≒1.6秒）鳴ったら止める
     sirenT += dt;
     const sirenOn = LOCKDOWN.enabled && lockdownOn > 0 && sirenT < LOCKDOWN.sirenCycles * SIREN_PERIOD;
@@ -1019,5 +1037,132 @@ function subscribeUpgrade(events: EventBus): void {
     [523, 659, 784, 1046].forEach((f, i) => tone(x, t, { type: 'triangle', f: f * k, at: 0.2 + i * 0.065, dur: 0.24, gain: 0.12 }));
     tone(x, t, { type: 'sine', f: 2093 * k, at: 0.46, dur: 0.4, gain: 0.06 });
     tone(x, t, { type: 'sine', f: 180, f2: 360, at: 0.18, dur: 0.25, gain: 0.1 });
+  }));
+}
+
+/* ------------------------------------------------------------------ */
+/* サージ収容所への道：運転・演出                                       */
+/* ------------------------------------------------------------------ */
+
+function subscribeDrive(events: EventBus): void {
+  // 乗り込んでエンジン始動：キュイーンと立ち上がる
+  sub(events, 'driveStart', () => play('driveStart', 0.9, (x, t) => {
+    tone(x, t, { type: 'sawtooth', f: 80, f2: 420, dur: 0.7, gain: 0.07, attack: 0.05, filter: { type: 'lowpass', f: 600, f2: 3000 } });
+    tone(x, t, { type: 'sine', f: 55, f2: 90, dur: 0.6, gain: 0.2, attack: 0.02 });
+    noise(x, t, { at: 0.02, dur: 0.06, gain: 0.12, filter: { type: 'bandpass', f: 2200, q: 2 } }); // ドアのカチッ
+  }));
+  // タイミング加速：PERFECT は気持ちよく突き抜ける。GOOD は軽く。MISS は鈍いブザー
+  sub(events, 'driveBoost', (p) => {
+    if (p.quality === 'perfect') {
+      play('boostPerfect', 0.8, (x, t) => {
+        tone(x, t, { type: 'sawtooth', f: 200, f2: 1400, dur: 0.45, gain: 0.1, attack: 0.01, filter: { type: 'lowpass', f: 800, f2: 5000 } });
+        noise(x, t, { dur: 0.5, gain: 0.2, attack: 0.02, filter: { type: 'bandpass', f: 600, f2: 4500, q: 0.9 } });
+        tone(x, t, { type: 'sine', f: 90, f2: 40, dur: 0.3, gain: 0.3, attack: 0.002 });
+        [1320, 1760, 2349].forEach((f, i) => tone(x, t, { type: 'triangle', f, at: 0.04 + i * 0.05, dur: 0.22, gain: 0.08 }));
+      });
+    } else if (p.quality === 'good') {
+      play('boostGood', 0.5, (x, t) => {
+        tone(x, t, { type: 'sawtooth', f: 180, f2: 800, dur: 0.3, gain: 0.07, attack: 0.01, filter: { type: 'lowpass', f: 700, f2: 3000 } });
+        noise(x, t, { dur: 0.3, gain: 0.1, attack: 0.02, filter: { type: 'bandpass', f: 500, f2: 2500, q: 0.9 } });
+        tone(x, t, { type: 'triangle', f: 988, at: 0.03, dur: 0.15, gain: 0.07 });
+      });
+    } else {
+      play('boostMiss', 0.3, (x, t) => {
+        tone(x, t, { type: 'square', f: 130, f2: 95, dur: 0.18, gain: 0.07, filter: { type: 'lowpass', f: 600 } });
+        noise(x, t, { dur: 0.08, gain: 0.05, filter: { type: 'lowpass', f: 900 } });
+      });
+    }
+  });
+  // 雑魚をはね飛ばす：ゴッという低い衝撃＋金属のガシャン
+  sub(events, 'driveHitEnemy', (p) => {
+    const a = att(p.pos);
+    play('driveHit', 0.35, (x, t) => {
+      tone(x, t, { type: 'sine', f: 220, f2: 60, dur: 0.22, gain: 0.3 * a, attack: 0.002 });
+      noise(x, t, { dur: 0.16, gain: 0.2 * a, attack: 0.002, filter: { type: 'bandpass', f: 1800, f2: 500, q: 1 } });
+      tone(x, t, { type: 'triangle', f: 1500 + Math.random() * 700, f2: 700, at: 0.02, dur: 0.12, gain: 0.07 * a });
+    });
+  });
+  // T字路で壁・柵に軽くぶつかる（失敗ではない）：ドンッ＋ガシャ
+  sub(events, 'driveBump', (p) => {
+    const a = att(p.pos);
+    play('driveBump', 0.5, (x, t) => {
+      tone(x, t, { type: 'sine', f: 120, f2: 45, dur: 0.3, gain: 0.35 * a, attack: 0.002 });
+      noise(x, t, { dur: 0.2, gain: 0.22 * a, attack: 0.002, filter: { type: 'lowpass', f: 1400, f2: 250 } });
+      tone(x, t, { type: 'triangle', f: 520, f2: 330, at: 0.02, dur: 0.25, gain: 0.08 * a });
+    });
+  });
+  // 障害物に激突：大きな衝撃＋破片が散る
+  sub(events, 'driveCrash', () => play('driveCrash', 1.6, (x, t) => {
+    tone(x, t, { type: 'sine', f: 110, f2: 30, dur: 1.0, gain: 0.55, attack: 0.002 });
+    noise(x, t, { dur: 0.9, gain: 0.4, attack: 0.002, filter: { type: 'lowpass', f: 2400, f2: 150 } });
+    noise(x, t, { at: 0.04, dur: 0.35, gain: 0.25, filter: { type: 'bandpass', f: 3000, f2: 900, q: 1 } });
+    for (let i = 0; i < 6; i++) tone(x, t, { type: 'triangle', f: 700 + Math.random() * 1600, f2: 300, at: 0.08 + i * 0.07, dur: 0.14, gain: 0.05 });
+    tone(x, t, { type: 'sawtooth', f: 90, f2: 25, at: 0.05, dur: 1.2, gain: 0.12, filter: { type: 'lowpass', f: 300 } });
+  }));
+  // 判定地点：成功は上昇のきらめき、失敗は下がるブザー
+  sub(events, 'driveCheckpoint', (p) => play('driveCheckpoint', 1.2, (x, t) => {
+    if (p.ok) {
+      [523, 784, 1046, 1568].forEach((f, i) => tone(x, t, { type: 'triangle', f, at: i * 0.07, dur: 0.35, gain: 0.1 }));
+      tone(x, t, { type: 'sawtooth', f: 120, f2: 520, dur: 0.6, gain: 0.07, attack: 0.05, filter: { type: 'lowpass', f: 800, f2: 4000 } });
+    } else {
+      tone(x, t, { type: 'sawtooth', f: 330, f2: 110, dur: 0.9, gain: 0.12, filter: { type: 'lowpass', f: 1500, f2: 250 } });
+      tone(x, t, { type: 'square', f: 196, at: 0.0, dur: 0.18, gain: 0.05, filter: { type: 'lowpass', f: 900 } });
+      tone(x, t, { type: 'square', f: 147, at: 0.2, dur: 0.3, gain: 0.05, filter: { type: 'lowpass', f: 900 } });
+    }
+  }));
+
+  // ---- 演出
+  // 柵を突き破る：金属が砕けて飛び散る
+  sub(events, 'fenceBreak', (p) => {
+    const a = att(p.pos);
+    play('fenceBreak', 1.4, (x, t) => {
+      noise(x, t, { dur: 0.7, gain: 0.35 * a, attack: 0.002, filter: { type: 'highpass', f: 1800, f2: 5500 } });
+      noise(x, t, { at: 0.02, dur: 0.5, gain: 0.3 * a, attack: 0.002, filter: { type: 'bandpass', f: 2600, f2: 700, q: 0.8 } });
+      tone(x, t, { type: 'sine', f: 160, f2: 45, dur: 0.5, gain: 0.35 * a, attack: 0.002 });
+      for (let i = 0; i < 9; i++) {
+        tone(x, t, { type: 'triangle', f: 1200 + Math.random() * 3200, f2: 500 + Math.random() * 400, at: 0.03 + i * 0.05, dur: 0.16, gain: 0.07 * a });
+      }
+    });
+  });
+  // 壁に激突：腹に響く超大音量の衝撃＋崩れる音
+  sub(events, 'carWallCrash', (p) => {
+    const a = att(p.pos);
+    play('carWallCrash', 2.6, (x, t) => {
+      tone(x, t, { type: 'sine', f: 85, f2: 22, dur: 1.8, gain: 0.8 * a, attack: 0.002 });
+      tone(x, t, { type: 'sawtooth', f: 70, f2: 20, dur: 1.6, gain: 0.2 * a, filter: { type: 'lowpass', f: 260 } });
+      noise(x, t, { dur: 1.5, gain: 0.55 * a, attack: 0.002, filter: { type: 'lowpass', f: 3000, f2: 120 } });
+      noise(x, t, { at: 0.03, dur: 0.6, gain: 0.3 * a, filter: { type: 'bandpass', f: 2400, f2: 600, q: 0.8 } });
+      for (let i = 0; i < 12; i++) tone(x, t, { type: 'triangle', f: 400 + Math.random() * 2400, f2: 200, at: 0.1 + i * 0.08, dur: 0.18, gain: 0.05 * a });
+      noise(x, t, { at: 0.5, dur: 1.4, gain: 0.18 * a, attack: 0.1, filter: { type: 'lowpass', f: 900, f2: 200 } }); // 崩れる土煙
+    });
+  });
+  // ヘビーが車を受け止める：重い金属の衝突音＋タイヤの悲鳴
+  sub(events, 'carCaught', (p) => {
+    const a = att(p.pos);
+    play('carCaught', 2.2, (x, t) => {
+      // 長いスキッド
+      noise(x, t, { dur: 0.9, gain: 0.16 * a, attack: 0.03, filter: { type: 'bandpass', f: 3200, f2: 1100, q: 4 } });
+      tone(x, t, { type: 'sawtooth', f: 1500, f2: 600, dur: 0.8, gain: 0.04 * a, filter: { type: 'bandpass', f: 1500, q: 3 } });
+      // ガンッ：重い金属の衝突（inharmonic な打撃音）
+      const t0 = 0.55;
+      tone(x, t, { type: 'sine', f: 95, f2: 32, at: t0, dur: 0.9, gain: 0.6 * a, attack: 0.002 });
+      noise(x, t, { at: t0, dur: 0.5, gain: 0.4 * a, attack: 0.002, filter: { type: 'bandpass', f: 1600, f2: 400, q: 0.9 } });
+      [180, 233, 331, 457].forEach((f, i) => tone(x, t, { type: 'square', f, f2: f * 0.97, at: t0 + 0.01, dur: 0.7 - i * 0.1, gain: 0.05 * a, filter: { type: 'bandpass', f: f * 2, q: 5 } }));
+      tone(x, t, { type: 'triangle', f: 2100, f2: 1400, at: t0 + 0.05, dur: 0.4, gain: 0.07 * a });
+      // 残響のきしみ
+      noise(x, t, { at: t0 + 0.2, dur: 1.2, gain: 0.1 * a, attack: 0.2, filter: { type: 'lowpass', f: 700, f2: 120 } });
+    });
+  });
+  // スローモーション：入る時はピッチが落ちるウォーン、戻る時は逆に巻き上がる
+  sub(events, 'slowmo', (p) => play('slowmo', 1.0, (x, t) => {
+    if (p.on) {
+      tone(x, t, { type: 'sine', f: 900, f2: 110, dur: 0.7, gain: 0.14, attack: 0.01 });
+      noise(x, t, { dur: 0.6, gain: 0.14, attack: 0.02, filter: { type: 'bandpass', f: 3500, f2: 300, q: 0.8 } });
+      tone(x, t, { type: 'triangle', f: 440, f2: 55, dur: 0.8, gain: 0.07 });
+    } else {
+      tone(x, t, { type: 'sine', f: 110, f2: 900, dur: 0.45, gain: 0.12, attack: 0.02 });
+      noise(x, t, { dur: 0.5, gain: 0.16, attack: 0.15, filter: { type: 'bandpass', f: 300, f2: 4000, q: 0.8 } });
+      tone(x, t, { type: 'sine', f: 55, f2: 40, at: 0.4, dur: 0.3, gain: 0.2 });
+    }
   }));
 }

@@ -101,6 +101,19 @@ export interface GameEvents {
   sleepStart: {};
   /** 眠りの演出が終わった。ここに強化（アップグレード）画面を後で差し込む */
   sleepComplete: {};
+  /** サージ収容所への道：車に乗る／タイミング加速（quality: 'perfect' | 'good' | 'miss'）／敵をはね飛ばす／障害物に激突／判定地点 */
+  driveStart: {};
+  driveBoost: { quality: 'perfect' | 'good' | 'miss'; kmh: number };
+  driveHitEnemy: { pos: THREE.Vector3 };
+  driveCrash: { pos: THREE.Vector3 };
+  /** T字路の壁・柵に軽くぶつかった（跳ね返って立て直す。失敗ではない） */
+  driveBump: { pos: THREE.Vector3; kmh: number };
+  driveCheckpoint: { ok: boolean; kmh: number };
+  /** 演出：柵を突き破る／壁に激突／ヘビーが車を受け止める／スローモーションの開始・終了 */
+  fenceBreak: { pos: THREE.Vector3 };
+  carWallCrash: { pos: THREE.Vector3 };
+  carCaught: { pos: THREE.Vector3 };
+  slowmo: { on: boolean };
   /** 強化でレベルが上がった */
   upgrade: { id: string; level: number };
   /** 強化画面のメニュー操作（SE用）：カーソル移動 / 決定・項目の切り替え / 受け付けられない（歯車不足・最大レベル） */

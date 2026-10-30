@@ -1,6 +1,7 @@
 // 2階（サイボーグ改造室）。buildDungeon / buildFloor1 と同じ役割の buildFloor2 / updateFloor2。
 // 使い方: URL に ?level=floor2（1階のエレベーターに乗っても来られる）
-// 円形の小部屋。中央に改造ベッド、壁沿いに PC・サーバー、南にエレベーター、北の左右 35° に2つの出口（今は封鎖）。
+// 円形の小部屋。中央に改造ベッド、壁沿いに PC・サーバー、南にエレベーター、北の左右 35° に2つの出口。
+// 西の出口（出口A）はベッドで一度眠ったあとに近づくとシャッターが開き、突き当たりの出入口に入ると「サージ収容所への道」（level 'surge'）へ。東の出口（出口B）は封鎖のまま。
 // ベッドの近くで パッド B（キーボード R）→ ベッドに横になる → 眠りの演出 → onSleepComplete フック
 // （強化画面を開く。main.ts が差し込む）→ 画面を閉じる（wakeFromRest）か、もう一度 B / R（または自動）で起き上がる。
 import * as THREE from 'three';
@@ -36,7 +37,13 @@ export interface Floor2State {
   nearBed: boolean;
   /** 強化画面を開いている間は起きない（floor2Hooks.onSleepComplete が true を返した） */
   held: boolean;
+  /** 西の出口のシャッターの開き具合 0..1 */
+  exitOpen: number;
+  /** 西の出口が使えるか（ベッドで一度眠った） */
+  exitUnlocked: boolean;
 }
+/** 西の出口のシャッターが開く距離（出口の中心から m） */
+const EXIT_OPEN_DIST = 7;
 interface Runtime {
   plan: Plan;
   vis: Floor2Visuals;
@@ -53,6 +60,7 @@ interface Runtime {
   /** 演出中の暗転（DOM） */
   dim: HTMLDivElement | null;
   doorEmitted: boolean;
+  exitEmitted: boolean;
 }
 const runtimes = new WeakMap<World, Runtime>();
 
@@ -108,7 +116,7 @@ export function buildFloor2(world: World): void {
   car.position.set(0, 4.4, R + 2.6);
   scene.add(car);
   for (const ex of plan.exits) {
-    const l = new THREE.PointLight(0xff4a3a, 22, 9, 2);
+    const l = new THREE.PointLight(ex.usable ? 0x62ffb0 : 0xff4a3a, 22, 9, 2);
     l.position.set(ex.x + ex.dirX * 2.5, 4.2, ex.z + ex.dirZ * 2.5);
     scene.add(l);
   }
@@ -122,12 +130,12 @@ export function buildFloor2(world: World): void {
   world.level.currentRoom = 0;
   world.level.bossSpawned = false;
   world.level.bossDefeated = false;
-  world.level.data.objective = '中央のベッドで休んで体を強化しよう';
+  world.level.data.objective = '中央のベッドで休んで体を強化し、西の出口からガレージへ';
   world.level.data.remaining = 0;
   world.level.data.interactNear = false;
   world.level.data.nextFloor = 0;
 
-  const state: Floor2State = { phase: 'free', t: 0, sleeps: 0, doorOpen: 0, leftCar: false, nearBed: false, held: false };
+  const state: Floor2State = { phase: 'free', t: 0, sleeps: 0, doorOpen: 0, leftCar: false, nearBed: false, held: false, exitOpen: 0, exitUnlocked: false };
   world.level.data.floor2 = state;
   world.player.pos.set(plan.start.x, 0, plan.start.z);
   world.player.yaw = plan.start.yaw;
@@ -136,7 +144,7 @@ export function buildFloor2(world: World): void {
   const d = makeDim();
   runtimes.set(world, {
     plan, vis, state, hemi, key, fill, accents, clock: 0, inCarT: 0, promptOn: false,
-    from: { x: 0, z: 0, yaw: 0 }, dim: d, doorEmitted: false,
+    from: { x: 0, z: 0, yaw: 0 }, dim: d, doorEmitted: false, exitEmitted: false,
   });
 }
 
@@ -282,6 +290,39 @@ export function updateFloor2(world: World, dt: number): void {
     applySleepPose(world, rt);
   }
 
+  // ---- 西の出口：眠ったあとに近づくとシャッターが開く。開いた先の出入口に入ると「サージ収容所への道」へ
+  const exW = plan.exits.find((e) => e.usable);
+  let exitHint: string | null = null;
+  if (exW) {
+    if (state.sleeps >= 1 && !state.exitUnlocked) {
+      state.exitUnlocked = true;
+      world.level.data.objective = '西の出口（北西）から階段を下りて、ガレージへ向かおう';
+    }
+    const edx = p.pos.x - exW.x, edz = p.pos.z - exW.z;
+    const near = Math.hypot(edx, edz) < EXIT_OPEN_DIST && state.phase === 'free' && p.hp > 0;
+    const before = state.exitOpen;
+    if (state.exitUnlocked && (near || state.exitOpen > 0)) state.exitOpen = Math.min(1, state.exitOpen + dt / 1.5);
+    if (before === 0 && state.exitOpen > 0 && !rt.exitEmitted) {
+      rt.exitEmitted = true;
+      world.events.emit('doorOpen', { pos: new THREE.Vector3(exW.doorX, 2, exW.doorZ) });
+    }
+    const door = vis.exitDoors[exW.id];
+    if (door) {
+      const e = smooth(state.exitOpen);
+      door.pivot.scale.y = Math.max(0.04, 1 - e * 0.96);
+      const open = state.exitOpen > 0.6;
+      for (const c of door.colliders) c.active = !open;
+    }
+    // 手前でヒント。まだ眠っていないなら案内する
+    const proj = edx * exW.dirX + edz * exW.dirZ;       // 出口の中心から外向きに何 m 進んだか
+    if (near && !state.exitUnlocked && proj > 0.5) exitHint = '先に中央のベッドで体を強化しよう';
+    // 突き当たりの出入口に入った
+    if (state.exitOpen >= 0.9 && proj > exW.depth + 0.3 && !world.level.data.nextLevel && p.hp > 0 && state.phase === 'free') {
+      toast(world, 'ガレージへ降りる', 2.5);
+      world.level.data.nextLevel = { level: 'surge' };
+    }
+  }
+
   // ---- ベッドの近くか（前フレームの値が player.ts の回避判定に使われる）
   const b = plan.bed;
   const dx = p.pos.x - b.x, dz = p.pos.z - b.z;
@@ -302,6 +343,9 @@ export function updateFloor2(world: World, dt: number): void {
     }
   } else if (state.phase === 'rest' && !state.held) {
     showPrompt('Bボタン / Rキー：起きる');
+  } else if (exitHint) {
+    showPrompt(exitHint);
+    rt.promptOn = false;
   } else {
     showPrompt(null);
     rt.promptOn = false;

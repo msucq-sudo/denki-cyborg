@@ -56,7 +56,7 @@ const _qRoll = new THREE.Quaternion(), _qLean = new THREE.Quaternion(), _axis = 
 const IDENT = new THREE.Quaternion();
 
 /** 2ボーンIK（肩ローカル）。qs=肩の回転、qe=肘の回転（肩ローカル） */
-function solveArm(S: THREE.Vector3, T: THREE.Vector3, Lu: number, Lf: number, pole: THREE.Vector3, qs: THREE.Quaternion, qe: THREE.Quaternion): void {
+export function solveArm(S: THREE.Vector3, T: THREE.Vector3, Lu: number, Lf: number, pole: THREE.Vector3, qs: THREE.Quaternion, qe: THREE.Quaternion): void {
   _u.subVectors(T, S);
   const d = clamp(_u.length(), Math.abs(Lu - Lf) + 1e-3, Lu + Lf - 1e-3);
   _u.normalize();

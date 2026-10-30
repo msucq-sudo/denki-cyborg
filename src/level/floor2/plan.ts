@@ -6,7 +6,7 @@
 
 export type Mat = 'solid' | 'panel' | 'floor' | 'glow' | 'glass' | 'hazard' | 'metal' | 'scr0' | 'scr1' | 'scr2' | 'scr3';
 
-interface PBase { m: Mat; c: number; x: number; y: number; z: number; ry: number; rot?: [number, number, number] }
+interface PBase { m: Mat; c: number; x: number; y: number; z: number; ry: number; rot?: [number, number, number]; /** 動かす部品（開く出口のシャッターなど）の名前。見た目側で別メッシュにする */ part?: string }
 export interface PBox extends PBase { t: 'box'; sx: number; sy: number; sz: number }
 /** 円柱（既定は Y 軸。中心が (x,y,z)）。r2 を指定すると上端の半径（円錐台） */
 export interface PCyl extends PBase { t: 'cyl'; r: number; r2?: number; len: number; seg: number }
@@ -26,8 +26,12 @@ export interface ExitDef {
   /** 外向きの単位ベクトル */
   dirX: number; dirZ: number;
   width: number; depth: number;
-  /** 今は封鎖（先の階層につなぐまで閉じたドア） */
+  /** 閉じたドアがある（出口Aは眠ったあとに開く／出口Bは先の階層につなぐまで封鎖のまま） */
   sealed: boolean;
+  /** 開けて通れる出口（サージ収容所への道へつながる西の出口）。通路を奥へ少し延ばし、突き当たりに光る出入口を置く */
+  usable: boolean;
+  /** usable の出口：シャッターの先の短い踊り場の長さ */
+  ext: number;
   /** 封鎖ドアの中心 */
   doorX: number; doorZ: number;
 }
@@ -185,31 +189,42 @@ export function generateFloor2(): Plan {
     const a = rad(phi);
     const dirX = Math.sin(a), dirZ = -Math.cos(a);
     const depth = 5, width = 4.4;
+    // 西の出口（出口A）は開けて通れる：シャッターの先に短い踊り場（ext）を延ばして、突き当たりを階段への出入口にする
+    const usable = sgn === -1;
+    const ext = usable ? 2.4 : 0;
     const f = frame(R * dirX, R * dirZ, -a); // ローカル -z が外向き
     const sideX = width / 2 + 0.4;
-    f.box('panel', K.white, -sideX, 2.6, -depth / 2, 0.8, 5.2, depth + 1.0);
-    f.box('panel', K.white, sideX, 2.6, -depth / 2, 0.8, 5.2, depth + 1.0);
-    f.box('solid', K.dark, 0, H - 0.5, -depth / 2, width + 1.6, 1, depth + 1.0);
-    f.box('floor', K.light, 0, -0.1, -depth / 2, width + 1.6, 0.2, depth + 1.0);
-    // 封鎖ドア（ハザード柄のシャッター＋赤ランプ）
+    f.box('panel', K.white, -sideX, 2.6, -depth / 2 - ext / 2, 0.8, 5.2, depth + 1.0 + ext);
+    f.box('panel', K.white, sideX, 2.6, -depth / 2 - ext / 2, 0.8, 5.2, depth + 1.0 + ext);
+    f.box('solid', K.dark, 0, H - 0.5, -depth / 2 - ext / 2, width + 1.6, 1, depth + 1.0 + ext);
+    f.box('floor', K.light, 0, -0.1, -depth / 2 - ext / 2, width + 1.6, 0.2, depth + 1.0 + ext);
+    // 封鎖ドア（ハザード柄のシャッター＋赤ランプ）。usable の出口のシャッターは part='exitW' で別メッシュにして巻き上げる
+    const p0 = prims.length;
     f.box('metal', K.steel, 0, 2.2, -depth - 0.25, width, 4.4, 0.5);
     f.box('hazard', K.yellow, 0, 0.45, -depth - 0.25, width, 0.9, 0.58);
     for (const y of [1.6, 2.7, 3.7]) f.box('solid', K.navy, 0, y, -depth - 0.25, width, 0.14, 0.58);
-    f.box('glow', K.red, 0, 4.9, -depth + 0.1, 1.6, 0.25, 0.1);
-    f.box('glow', K.red, 0, 4.9, 0.4, 3.4, 0.14, 0.1); // 開口の上の赤い枠灯
+    if (usable) for (let i = p0; i < prims.length; i++) prims[i].part = id;
+    const lampCol = usable ? K.green : K.red;
+    f.box('glow', lampCol, 0, 4.9, -depth + 0.1, 1.6, 0.25, 0.1);
+    f.box('glow', lampCol, 0, 4.9, 0.4, 3.4, 0.14, 0.1); // 開口の上の枠灯
     // 当たり判定：両脇の壁と封鎖ドア（斜めなので四角を並べる）
-    const e0 = f.w(-sideX, 0.4), e1 = f.w(-sideX, -depth - 0.2);
-    const g0 = f.w(sideX, 0.4), g1 = f.w(sideX, -depth - 0.2);
+    const e0 = f.w(-sideX, 0.4), e1 = f.w(-sideX, -depth - 0.2 - ext);
+    const g0 = f.w(sideX, 0.4), g1 = f.w(sideX, -depth - 0.2 - ext);
     chain(e0.x, e0.z, e1.x, e1.z, 0.4, H, 'wall');
     chain(g0.x, g0.z, g1.x, g1.z, 0.4, H, 'wall');
     const d0 = f.w(-width / 2, -depth), d1 = f.w(width / 2, -depth);
-    chain(d0.x, d0.z, d1.x, d1.z, 0.4, H, 'exitDoor');
+    chain(d0.x, d0.z, d1.x, d1.z, 0.4, H, `exitDoor:${id}`);
+    if (usable) {
+      // 突き当たり（光る出入口）：ここに触れると階段ホールへ。奥には行けない
+      const s0 = f.w(-width / 2, -depth - ext - 0.3), s1 = f.w(width / 2, -depth - ext - 0.3);
+      chain(s0.x, s0.z, s1.x, s1.z, 0.4, H, 'exitStop');
+    }
     const dc = f.w(0, -depth - 0.25);
     exits.push({
       id, label, angleDeg: phi, offsetFromOpposite: sgn * EXIT_OFFSET, x: R * dirX, z: R * dirZ, dirX, dirZ, width, depth, sealed: true,
-      doorX: dc.x, doorZ: dc.z,
+      usable, ext, doorX: dc.x, doorZ: dc.z,
     });
-    lamps.push({ x: f.w(0, -2).x, y: H - 0.6, z: f.w(0, -2).z, color: 0xff6a5a });
+    lamps.push({ x: f.w(0, -2).x, y: H - 0.6, z: f.w(0, -2).z, color: usable ? 0x6affb0 : 0xff6a5a });
   }
 
   // ------------------------------------------------------------ エレベーター（南 180°）：壁の凹みにかご
