@@ -11,15 +11,20 @@ import type { SkillId } from '../core/types';
 import { clamp, formatRate, formatTime, pct, projectToScreen, stepRate } from './format';
 import type { RateState } from './format';
 
-export interface HudCallbacks { onStart(): void; onContinue?(): void; onRetry(): void; onResume(): void; onTitle(): void }
+export interface HudCallbacks { onStart(): void; onContinue?(): void; onRetry(): void; onResume(): void; onTitle(): void; onCheckpoint?(id: string): void }
+export interface HudCheckpoint { id: string; label: string; detail: string; disabled?: boolean }
 export interface HudWeapon { name: string; owned: boolean; icon?: string }
 export interface Hud {
   update(world: World, dt: number): void;
   showScreen(world: World): void;
+  /** タイトル／ポーズの地点選択パネルが開いている間 true */
+  readonly checkpointOpen: boolean;
   /** 武器リストを差し替える（selected は選択中の index） */
   setWeapons(list: HudWeapon[], selected: number): void;
   /** タイトル画面の「つづきから」ボタン。label が null なら隠す（セーブが無い） */
   setContinue(label: string | null): void;
+  /** タイトル／ポーズから選べる再開地点を差し替える */
+  setCheckpoints(items: HudCheckpoint[], selectedId?: string): void;
 }
 
 const KIND_NAME = Object.fromEntries(
@@ -182,6 +187,10 @@ export function createHUD(root: HTMLElement, cb: HudCallbacks): Hud {
   let curWorld: World | null = null;
   let lastWorld: World | null = null;
   let screenState = '';
+  let checkpoints: HudCheckpoint[] = [];
+  let selectedCheckpointId = '';
+  let checkpointOpen = false;
+  let checkpointScreen: 'title' | 'paused' | null = null;
   let helpCollapsed = true;
   let hitT = 0;
   let hitWeak = false;
@@ -585,10 +594,133 @@ export function createHUD(root: HTMLElement, cb: HudCallbacks): Hud {
     return b;
   }
 
+  interface CheckpointPicker {
+    screen: 'title' | 'paused';
+    root: HTMLDivElement;
+    select: HTMLSelectElement;
+    detail: HTMLParagraphElement;
+    resume: HTMLButtonElement;
+  }
+
+  function createCheckpointPicker(screen: 'title' | 'paused'): CheckpointPicker {
+    const panel = el('div', 'checkpoint-panel off');
+    panel.addEventListener('click', (e) => e.stopPropagation());
+    const heading = el('h3', 'checkpoint-heading', '再開地点を選ぶ');
+    const label = el('label', 'checkpoint-label', '地点');
+    const select = el('select', 'checkpoint-select');
+    select.id = `checkpoint-select-${screen}`;
+    select.setAttribute('aria-label', '再開地点');
+    select.size = 5;
+    label.htmlFor = select.id;
+    const detail = el('p', 'checkpoint-detail');
+    detail.setAttribute('aria-live', 'polite');
+    const actions = el('div', 'btn-row checkpoint-actions');
+    const resume = btn('ここから再開', 'btn-primary', confirmCheckpoint);
+    const back = btn('戻る', '', () => closeCheckpointPicker(true));
+    actions.append(resume, back);
+    panel.append(heading, label, select, detail, actions);
+    select.addEventListener('change', () => {
+      selectedCheckpointId = select.value;
+      syncCheckpointPickers();
+    });
+    select.addEventListener('keydown', (e) => {
+      if (e.key === 'Escape') {
+        e.preventDefault();
+        click(() => closeCheckpointPicker(true));
+      } else if (e.key === 'Enter') {
+        e.preventDefault();
+        confirmCheckpoint();
+      } else if (e.key === 'ArrowUp') {
+        e.preventDefault();
+        moveCheckpoint(-1);
+      } else if (e.key === 'ArrowDown') {
+        e.preventDefault();
+        moveCheckpoint(1);
+      } else if (e.key === 'Home' || e.key === 'End') {
+        e.preventDefault();
+        const enabled = checkpoints.filter((item) => !item.disabled);
+        const item = e.key === 'Home' ? enabled[0] : enabled[enabled.length - 1];
+        if (item) { selectedCheckpointId = item.id; syncCheckpointPickers(); }
+      }
+    });
+    return { screen, root: panel, select, detail, resume };
+  }
+
+  const titleCheckpointPicker = createCheckpointPicker('title');
+  const pauseCheckpointPicker = createCheckpointPicker('paused');
+  const checkpointPickers = [titleCheckpointPicker, pauseCheckpointPicker];
+  tPanel.append(titleCheckpointPicker.root);
+  pPanel.append(pauseCheckpointPicker.root);
+
+  function selectedCheckpoint(): HudCheckpoint | undefined {
+    return checkpoints.find((item) => item.id === selectedCheckpointId);
+  }
+
+  function syncCheckpointPickers(): void {
+    const selected = selectedCheckpoint();
+    for (const picker of checkpointPickers) {
+      if (picker.select.value !== selectedCheckpointId) picker.select.value = selectedCheckpointId;
+      setText(picker.detail, selected?.detail ?? '再開できる地点がありません。');
+      picker.resume.disabled = !selected || !!selected.disabled || !cb.onCheckpoint;
+      picker.select.disabled = checkpoints.length === 0 || checkpoints.every((item) => !!item.disabled);
+    }
+  }
+
+  function closeCheckpointPicker(returnFocus = false): void {
+    const previousScreen = checkpointScreen;
+    checkpointOpen = false;
+    checkpointScreen = null;
+    for (const picker of checkpointPickers) picker.root.classList.add('off');
+    tPanel.classList.remove('checkpoint-active');
+    pPanel.classList.remove('checkpoint-active');
+    if (returnFocus) (previousScreen === 'title' ? titleCheckpointBtn : pauseCheckpointBtn)?.focus();
+  }
+
+  function openCheckpointPicker(screen: 'title' | 'paused'): void {
+    if (!checkpoints.length) return;
+    checkpointOpen = true;
+    checkpointScreen = screen;
+    for (const picker of checkpointPickers) picker.root.classList.toggle('off', picker.screen !== screen);
+    tPanel.classList.toggle('checkpoint-active', screen === 'title');
+    pPanel.classList.toggle('checkpoint-active', screen === 'paused');
+    syncCheckpointPickers();
+    const select = (screen === 'title' ? titleCheckpointPicker : pauseCheckpointPicker).select;
+    select.focus();
+    select.selectedOptions[0]?.scrollIntoView({ block: 'nearest' });
+  }
+
+  function confirmCheckpoint(): void {
+    const selected = selectedCheckpoint();
+    if (!selected || selected.disabled || !cb.onCheckpoint) return;
+    closeCheckpointPicker();
+    click(() => cb.onCheckpoint?.(selected.id));
+  }
+
+  function moveCheckpoint(direction: -1 | 1): void {
+    const enabled = checkpoints.filter((item) => !item.disabled);
+    if (!enabled.length) return;
+    const index = enabled.findIndex((item) => item.id === selectedCheckpointId);
+    const next = index < 0 ? 0 : (index + direction + enabled.length) % enabled.length;
+    selectedCheckpointId = enabled[next].id;
+    syncCheckpointPickers();
+  }
+
+  function checkpointInput(world: World): boolean {
+    if (!checkpointOpen) return false;
+    const input = world.input;
+    if (input.rawPressed('PadB')) { click(() => closeCheckpointPicker(true)); return true; }
+    if (input.rawPressed('PadUp')) { moveCheckpoint(-1); return true; }
+    if (input.rawPressed('PadDown')) { moveCheckpoint(1); return true; }
+    if (input.rawPressed('PadA')) { confirmCheckpoint(); return true; }
+    return false;
+  }
+
   const contBtn = btn('つづきから', 'btn-primary', () => cb.onContinue?.());
   contBtn.style.display = 'none';
   const startBtn = btn('スタート', 'btn-primary', () => cb.onStart());
-  tRow.append(contBtn, startBtn);
+  const titleCheckpointBtn = btn('途中地点を選ぶ', '', () => openCheckpointPicker('title'));
+  titleCheckpointBtn.style.display = 'none';
+  tRow.append(contBtn, startBtn, titleCheckpointBtn);
   function setContinue(label: string | null): void {
     contBtn.style.display = label ? '' : 'none';
     if (label) contBtn.textContent = label;
@@ -596,9 +728,32 @@ export function createHUD(root: HTMLElement, cb: HudCallbacks): Hud {
     startBtn.textContent = label ? 'はじめから' : 'スタート';
     startBtn.classList.toggle('btn-primary', !label);
   }
+  function setCheckpoints(items: HudCheckpoint[], preferredId?: string): void {
+    checkpoints = items.filter((item) => !!item && typeof item.id === 'string' && item.id.length > 0);
+    if (preferredId && checkpoints.some(item => item.id === preferredId && !item.disabled)) selectedCheckpointId = preferredId;
+    const current = checkpoints.find((item) => item.id === selectedCheckpointId);
+    selectedCheckpointId = current && !current.disabled
+      ? current.id
+      : (checkpoints.find((item) => !item.disabled) ?? checkpoints[0])?.id ?? '';
+    for (const picker of checkpointPickers) {
+      picker.select.replaceChildren(...checkpoints.map((item) => {
+        const option = el('option', '', item.label);
+        option.value = item.id;
+        option.disabled = !!item.disabled;
+        return option;
+      }));
+    }
+    titleCheckpointBtn.style.display = checkpoints.length ? '' : 'none';
+    pauseCheckpointBtn.style.display = checkpoints.length ? '' : 'none';
+    if (!checkpoints.length) closeCheckpointPicker();
+    syncCheckpointPickers();
+  }
+  const pauseCheckpointBtn = btn('途中地点を選ぶ', '', () => openCheckpointPicker('paused'));
+  pauseCheckpointBtn.style.display = 'none';
   pRow.append(
     btn('再開', 'btn-primary', () => cb.onResume()),
     btn('タイトルへ', '', () => cb.onTitle()),
+    pauseCheckpointBtn,
   );
   const overRetry = btn('リトライ', 'btn-primary', () => cb.onRetry());
   const overQuit = btn('終了', '', () => cb.onTitle());
@@ -610,7 +765,7 @@ export function createHUD(root: HTMLElement, cb: HudCallbacks): Hud {
 
   // ポーズ画面はどこをクリックしても再開（「クリックで視点操作に戻ります」）
   scrPause.addEventListener('click', (e) => {
-    if ((e.target as HTMLElement).closest('button')) return;
+    if ((e.target as HTMLElement).closest('button, .checkpoint-panel')) return;
     click(() => cb.onResume());
   });
 
@@ -648,6 +803,7 @@ export function createHUD(root: HTMLElement, cb: HudCallbacks): Hud {
     subscribe(world.events);
     lastWorld = world;
     if (world === curWorld) return;
+    closeCheckpointPicker();
     curWorld = world;
     rate.prev = world.player.energy;
     rate.rate = 0;
@@ -670,6 +826,7 @@ export function createHUD(root: HTMLElement, cb: HudCallbacks): Hud {
   function applyScreens(world: World): void {
     const st = world.state;
     if (st === screenState) return;
+    if (checkpointOpen && st !== checkpointScreen) closeCheckpointPicker();
     screenState = st;
     document.body.classList.toggle('death-on', st === 'gameover');
     setCls(scrTitle, 'show', st === 'title');
@@ -852,6 +1009,7 @@ export function createHUD(root: HTMLElement, cb: HudCallbacks): Hud {
     attach(world);
     applyScreens(world);
     const st = world.state;
+    if (checkpointInput(world)) return;
     if (st === 'gameover') { overInput(world, dt); return; }
     if (st !== 'playing' && st !== 'paused') return;
 
@@ -1050,5 +1208,8 @@ export function createHUD(root: HTMLElement, cb: HudCallbacks): Hud {
     syncToasts(world);
   }
 
-  return { update, showScreen, setWeapons, setContinue };
+  return {
+    update, showScreen, setWeapons, setContinue, setCheckpoints,
+    get checkpointOpen() { return checkpointOpen; },
+  };
 }

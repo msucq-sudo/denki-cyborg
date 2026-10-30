@@ -18,8 +18,9 @@ import { buildDungeon, updateLevel } from './level/dungeon';
 import { buildFloor1, buildFloor1Revisit, updateFloor1, FLOOR1_EXPOSURE, getFloor1Memo, restoreFloor1Memo } from './level/floor1';
 import { buildFloor2, updateFloor2, floor2Hooks, wakeFromRest, FLOOR2_EXPOSURE, type Floor2State } from './level/floor2';
 import { buildSurge, updateSurge, SURGE_EXPOSURE } from './level/surge';
-import { buildCamp1, updateCamp1, CAMP1_EXPOSURE, getCamp1Memo, setCamp1Memo } from './level/camp1';
-import { readSave, writeSave, describeSave, SAVE_VERSION } from './core/save';
+import { buildCamp1, updateCamp1, CAMP1_EXPOSURE, getCamp1Memo, setCamp1Memo, prepareCamp1RoomResume } from './level/camp1';
+import { readSave, readSaveHistory, getSaveCheckpointId, writeSave, describeSave, SAVE_VERSION, type SaveData } from './core/save';
+import { activeCheckpointId, checkpointChoices, CHECKPOINT_TARGETS, prepareFloor1Checkpoint } from './core/checkpoints';
 import { toast } from './core/combat';
 import { buildCamp2, updateCamp2, CAMP2_EXPOSURE } from './level/camp2';
 import { CAMERA, CHARACTER } from './config/balance';
@@ -90,6 +91,7 @@ let hadLock = false;
 const hud = createHUD(document.getElementById('hud')!, {
   onStart: () => freshGame(),
   onContinue: () => continueGame(),
+  onCheckpoint: (id) => chooseCheckpoint(id),
   onRetry: () => retry(),
   onResume: () => resume(),
   onTitle: () => { flushSave(); world = newWorld(); refreshContinue(); hud.showScreen(world); },
@@ -101,8 +103,10 @@ hud.showScreen(world);
 /** 保存に成功した永続状態。失敗した場合は更新せず再試行する。 */
 let saveKey = '';
 let saveRetryAt = 0;
+let checkpointOverride: string | undefined;
+function checkpointId(): string { return checkpointOverride ?? activeCheckpointId(world, levelId, startAt, floor1Revisit); }
 function savePlace(): string {
-  return `${levelId}|${(world.level.data.retryAt as string | undefined) ?? startAt ?? ''}`;
+  return `${levelId}|${checkpointId()}`;
 }
 function currentSaveKey(): string {
   return `${savePlace()}|${JSON.stringify({
@@ -116,6 +120,9 @@ function saveNow(): boolean {
     v: SAVE_VERSION, savedAt: Date.now(), level: levelId,
     startAt: (world.level.data.retryAt as string | undefined) ?? startAt,
     floor1Revisit: levelId === 'floor1' && floor1Revisit,
+    checkpointId: checkpointId(),
+    resume: levelId === 'camp1' || checkpointId() === 'surge:garage'
+      ? { x: world.player.pos.x, y: world.player.pos.y, z: world.player.pos.z, yaw: world.player.yaw, pitch: world.player.pitch } : undefined,
     inventory: { ...world.inventory }, upgrades: { ...world.upgrades }, functions: { ...world.functions },
     unlocks: { ...world.unlocks }, loadout: { ...world.loadout, owned: [...world.loadout.owned] }, selectedSkill: world.skills.selected,
     levelMemo: levelId === 'camp1' ? getCamp1Memo()
@@ -152,11 +159,16 @@ document.addEventListener('visibilitychange', () => { if (document.hidden) flush
 function refreshContinue(): void {
   const s = readSave();
   hud.setContinue(s && s.level in LEVELS ? `つづきから（${describeSave(s)}）` : null);
+  hud.setCheckpoints(checkpointChoices(s, readSaveHistory(), initialLevelId), s ? getSaveCheckpointId(s) : undefined);
 }
 /** つづきから：セーブした地点のステージを作り直し、所持品・強化・解放を戻して始める */
 function continueGame(): void {
   const s = readSave();
   if (!s || !(s.level in LEVELS)) { refreshContinue(); return; }
+  restoreGame(s);
+}
+
+function restoreGame(s: SaveData): void {
   floor1Revisit = !!s.floor1Revisit;
   if (s.level === 'camp1') setCamp1Memo(s.levelMemo);
   levelId = s.level as LevelId;
@@ -177,8 +189,53 @@ function continueGame(): void {
     state.sleeps = 1;
     state.exitUnlocked = true;
   }
+  if (s.resume && (levelId === 'camp1' || levelId === 'surge')) {
+    world.player.pos.set(s.resume.x, s.resume.y, s.resume.z);
+    world.player.yaw = s.resume.yaw; world.player.pitch = s.resume.pitch;
+    world.player.vel.set(0, 0, 0);
+  }
   if (world.loadout.current !== 'pistol') setPlayerWeapon(world, world.loadout.current);
   startGame();
+}
+
+/** 地点の過去記録があればそれを復元し、旧1枠セーブでは現在の装備を引き継ぐ。 */
+function chooseCheckpoint(id: string): void {
+  const latest = readSave(), history = readSaveHistory();
+  if (!checkpointChoices(latest, history, initialLevelId).some(c => c.id === id && !c.disabled)) return;
+  const recorded = history.find(s => getSaveCheckpointId(s) === id)
+    ?? (latest && getSaveCheckpointId(latest) === id ? latest : null);
+  const target = CHECKPOINT_TARGETS.find(t => t.id === id);
+  if (!recorded && !target) return;
+  // 選択だけで直前の未保存進行を失わない。
+  flushSave();
+  const base = readSave() ?? latest;
+  if (recorded) restoreGame(recorded);
+  else if (target) {
+    const s: SaveData = base ? JSON.parse(JSON.stringify(base)) : {
+      v: SAVE_VERSION, savedAt: Date.now(), level: target.level,
+      inventory: { ...world.inventory }, upgrades: { ...world.upgrades }, functions: { ...world.functions },
+      unlocks: { ...world.unlocks }, loadout: { ...world.loadout, owned: [...world.loadout.owned] }, selectedSkill: world.skills.selected,
+    };
+    const prior = base?.level === target.level ? base.levelMemo
+      : [...history].filter(h => h.level === target.level).sort((a, b) => b.savedAt - a.savedAt)[0]?.levelMemo;
+    s.level = target.level; s.startAt = target.startAt; s.floor1Revisit = false;
+    s.resume = undefined; s.checkpointId = id;
+    s.levelMemo = target.level === 'floor2' ? { rested: id === 'floor2:rested' }
+      : target.level === 'camp1' ? prior ?? {
+        gears: ['tunnel', 'E', 'I', 'J', 'duct', 'H'], keys: ['B', 'F'], vacuum: s.unlocks.vacuum,
+        ally: 'enemy', allyHp: 0, hatchOpen: true, cLit: true, wallBroken: true,
+        laserOff: true, drained: ['L1', 'L2'], boss: false,
+      } : undefined;
+    restoreGame(s);
+    if (target.level === 'floor1') prepareFloor1Checkpoint(world, target.room, prior);
+    if (target.level === 'camp1' && target.room) prepareCamp1RoomResume(world, target.room);
+    if (id === 'surge:garage') { world.player.pos.set(0, 0, 8); world.player.yaw = 0; }
+  }
+  checkpointOverride = id;
+  world.level.data.saveDirty = true;
+  autoSave();
+  checkpointOverride = undefined;
+  input.resetAll();
 }
 
 function newWorld(): World {
@@ -231,6 +288,9 @@ function changeLevel(to: LevelId, start?: string, opts: { keepHp?: boolean } = {
   world.loadout = keep.loadout;
   world.skills.selected = keep.selectedSkill;
   if (world.loadout.current !== 'pistol') setPlayerWeapon(world, world.loadout.current);
+  // 部屋判定が進む前のステージ入口も履歴に残す（所持品の引き継ぎ後に保存）。
+  world.level.data.saveDirty = true;
+  autoSave();
 }
 
 /**
@@ -307,6 +367,7 @@ function pause(): void {
   world.state = 'paused';
   input.resetAll();
   input.exitLock();
+  refreshContinue();
   hud.showScreen(world);
 }
 
@@ -406,11 +467,11 @@ function step(dt: number): void {
       hud.showScreen(world);
     }
   } else if (world.state === 'paused') {
-    if (input.pressed('KeyP')) resume();
+    if (!hud.checkpointOpen && input.pressed('KeyP')) resume();
   } else if (world.state === 'title') {
     // タイトル背景：カメラをゆっくり回す
     updatePlayer(world, 0);
-    if (input.pressed('PadA') || input.pressed('KeyP')) {
+    if (!hud.checkpointOpen && (input.pressed('PadA') || input.pressed('KeyP'))) {
       if (readSave()) continueGame(); else startGame();
     }
   } else if (world.state === 'gameover' || world.state === 'clear') {

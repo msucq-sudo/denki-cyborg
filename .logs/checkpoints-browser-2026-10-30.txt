@@ -1,0 +1,13 @@
+{
+  "checks": [
+    "legacy single-slot save returns to lab before upgrading, preserving current gear and upgrades",
+    "first recorded checkpoint remains unchanged after spending gears and upgrading",
+    "garage before boarding and driving start are separately selectable",
+    "all eleven floor1 room locations remain playable without duplicating gears",
+    "all twelve camp1 rooms and special passages can be selected and simulated without losing inventory",
+    "pause menu supports keyboard confirmation and fits 960x540",
+    "gamepad virtual navigation confirms a checkpoint without triggering normal continue",
+    "stage entry is archived after carrying inventory into the new world"
+  ],
+  "errors": []
+}

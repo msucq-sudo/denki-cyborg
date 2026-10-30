@@ -1,0 +1,75 @@
+
+> denki-cyborg@0.1.0 build
+> tsc --noEmit && vite build
+
+vite v5.4.10 building for production...
+transforming...
+✓ 148 modules transformed.
+Export "overloadEnemy" of module "src/enemies/enemies.ts" was reexported through module "src/enemies/api.ts" while both modules are dependencies of each other and will end up in different chunks by current Rollup settings. This scenario is not well supported at the moment as it will produce a circular dependency between chunks and will likely lead to broken execution order.
+Either change the import in "src/abilities/absorb.ts" to point directly to the exporting module or reconfigure "output.manualChunks" to ensure these modules end up in the same chunk.
+Export "drainEnemy" of module "src/enemies/enemies.ts" was reexported through module "src/enemies/api.ts" while both modules are dependencies of each other and will end up in different chunks by current Rollup settings. This scenario is not well supported at the moment as it will produce a circular dependency between chunks and will likely lead to broken execution order.
+Either change the import in "src/abilities/absorb.ts" to point directly to the exporting module or reconfigure "output.manualChunks" to ensure these modules end up in the same chunk.
+Export "drainEnemy" of module "src/enemies/enemies.ts" was reexported through module "src/enemies/api.ts" while both modules are dependencies of each other and will end up in different chunks by current Rollup settings. This scenario is not well supported at the moment as it will produce a circular dependency between chunks and will likely lead to broken execution order.
+Either change the import in "src/abilities/vacuum.ts" to point directly to the exporting module or reconfigure "output.manualChunks" to ensure these modules end up in the same chunk.
+Export "spawnEnemy" of module "src/enemies/enemies.ts" was reexported through module "src/enemies/api.ts" while both modules are dependencies of each other and will end up in different chunks by current Rollup settings. This scenario is not well supported at the moment as it will produce a circular dependency between chunks and will likely lead to broken execution order.
+Either change the import in "src/level/dungeon.ts" to point directly to the exporting module or reconfigure "output.manualChunks" to ensure these modules end up in the same chunk.
+Export "spawnEnemy" of module "src/enemies/enemies.ts" was reexported through module "src/enemies/api.ts" while both modules are dependencies of each other and will end up in different chunks by current Rollup settings. This scenario is not well supported at the moment as it will produce a circular dependency between chunks and will likely lead to broken execution order.
+Either change the import in "src/level/floor1.ts" to point directly to the exporting module or reconfigure "output.manualChunks" to ensure these modules end up in the same chunk.
+Export "spawnEnemy" of module "src/enemies/enemies.ts" was reexported through module "src/enemies/api.ts" while both modules are dependencies of each other and will end up in different chunks by current Rollup settings. This scenario is not well supported at the moment as it will produce a circular dependency between chunks and will likely lead to broken execution order.
+Either change the import in "src/level/spawnBoxes.ts" to point directly to the exporting module or reconfigure "output.manualChunks" to ensure these modules end up in the same chunk.
+Export "spawnEnemy" of module "src/enemies/enemies.ts" was reexported through module "src/enemies/api.ts" while both modules are dependencies of each other and will end up in different chunks by current Rollup settings. This scenario is not well supported at the moment as it will produce a circular dependency between chunks and will likely lead to broken execution order.
+Either change the import in "src/level/camp1.ts" to point directly to the exporting module or reconfigure "output.manualChunks" to ensure these modules end up in the same chunk.
+Export "spawnEnemy" of module "src/enemies/enemies.ts" was reexported through module "src/enemies/api.ts" while both modules are dependencies of each other and will end up in different chunks by current Rollup settings. This scenario is not well supported at the moment as it will produce a circular dependency between chunks and will likely lead to broken execution order.
+Either change the import in "src/level/camp2.ts" to point directly to the exporting module or reconfigure "output.manualChunks" to ensure these modules end up in the same chunk.
+Export "shutdownEnemy" of module "src/enemies/enemies.ts" was reexported through module "src/enemies/api.ts" while both modules are dependencies of each other and will end up in different chunks by current Rollup settings. This scenario is not well supported at the moment as it will produce a circular dependency between chunks and will likely lead to broken execution order.
+Either change the import in "src/level/camp2.ts" to point directly to the exporting module or reconfigure "output.manualChunks" to ensure these modules end up in the same chunk.
+Export "updateEnemies" of module "src/enemies/enemies.ts" was reexported through module "src/enemies/api.ts" while both modules are dependencies of each other and will end up in different chunks by current Rollup settings. This scenario is not well supported at the moment as it will produce a circular dependency between chunks and will likely lead to broken execution order.
+Either change the import in "src/main.ts" to point directly to the exporting module or reconfigure "output.manualChunks" to ensure these modules end up in the same chunk.
+rendering chunks...
+computing gzip size...
+dist/mapsheet2.html                               1.25 kB │ gzip:   0.86 kB
+dist/sfx.html                                     1.49 kB │ gzip:   0.87 kB
+dist/lab.html                                     1.55 kB │ gzip:   0.82 kB
+dist/stats.html                                   1.57 kB │ gzip:   0.80 kB
+dist/bestiary.html                                1.84 kB │ gzip:   0.94 kB
+dist/index.html                                   1.85 kB │ gzip:   0.69 kB
+dist/map.html                                     1.94 kB │ gzip:   0.86 kB
+dist/spark.html                                   2.18 kB │ gzip:   1.08 kB
+dist/maps.html                                    2.48 kB │ gzip:   1.29 kB
+dist/mapsheet.html                                3.79 kB │ gzip:   1.68 kB
+dist/assets/stats-DZV_qB9q.css                    2.80 kB │ gzip:   1.08 kB
+dist/assets/bestiary-B1O9krfo.css                 2.93 kB │ gzip:   1.10 kB
+dist/assets/main-DpNypg2Q.css                    44.14 kB │ gzip:  10.32 kB
+dist/assets/podSize-Cbh2RJeR.js                   0.10 kB │ gzip:   0.11 kB
+dist/assets/mapsheet2-Dq-JC9RW.js                 0.42 kB │ gzip:   0.29 kB
+dist/assets/modulepreload-polyfill-B5Qt9EMX.js    0.71 kB │ gzip:   0.40 kB
+dist/assets/RoundedBoxGeometry-CW6kt9rW.js        1.54 kB │ gzip:   0.70 kB
+dist/assets/spark-Cx07x93T.js                     3.04 kB │ gzip:   1.42 kB
+dist/assets/enemyInfo-D0y_Sty4.js                 3.38 kB │ gzip:   2.80 kB
+dist/assets/weapons-HQAlBsw-.js                   3.67 kB │ gzip:   1.05 kB
+dist/assets/BufferGeometryUtils-i245m2Ew.js       3.84 kB │ gzip:   1.13 kB
+dist/assets/effects-DFa8ImP0.js                   3.86 kB │ gzip:   1.89 kB
+dist/assets/map-C7CKKdg1.js                       5.89 kB │ gzip:   3.14 kB
+dist/assets/sfx-BG9pJSAF.js                       6.11 kB │ gzip:   3.40 kB
+dist/assets/bestiary-aYj6WZg2.js                  6.81 kB │ gzip:   3.72 kB
+dist/assets/balance-Q0qGswdm.js                   6.90 kB │ gzip:   3.02 kB
+dist/assets/floor2-CgAODRWO.js                    7.33 kB │ gzip:   3.04 kB
+dist/assets/plan-CPE30mZF.js                     12.40 kB │ gzip:   5.13 kB
+dist/assets/stats-DoxNsITE.js                    13.56 kB │ gzip:   7.12 kB
+dist/assets/spark-BuTZJNyd.js                    15.10 kB │ gzip:   6.36 kB
+dist/assets/layout-DAaqM4-y.js                   18.89 kB │ gzip:   7.81 kB
+dist/assets/OrbitControls-CW8xvrTR.js            18.94 kB │ gzip:   4.32 kB
+dist/assets/visuals-CWuX8S2F.js                  19.60 kB │ gzip:   7.74 kB
+dist/assets/plan-CvAmYcvH.js                     20.78 kB │ gzip:   8.76 kB
+dist/assets/sfx-CwnJ8e2m.js                      41.17 kB │ gzip:  10.34 kB
+dist/assets/mapsheet-ByxOMSCk.js                 45.25 kB │ gzip:  17.42 kB
+dist/assets/lab-MHbwcO3e.js                      48.35 kB │ gzip:  18.74 kB
+dist/assets/index-iI9WWZvb.js                   141.38 kB │ gzip:  48.34 kB
+dist/assets/main-BIOIcdjr.js                    337.34 kB │ gzip: 129.71 kB
+dist/assets/three.module-dyCDnW1V.js            683.65 kB │ gzip: 176.21 kB
+
+(!) Some chunks are larger than 500 kB after minification. Consider:
+- Using dynamic import() to code-split the application
+- Use build.rollupOptions.output.manualChunks to improve chunking: https://rollupjs.org/configuration-options/#output-manualchunks
+- Adjust chunk size limit for this warning via build.chunkSizeWarningLimit.
+✓ built in 1.97s

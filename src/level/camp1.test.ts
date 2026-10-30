@@ -9,7 +9,7 @@ import { getPowerSources, drainSource } from '../core/powerSources';
 import { getGrabbables } from '../core/armGrab';
 import { CAMP1, ENEMY_NOTICE, PLAYER } from '../config/balance';
 import { ENEMY_ORDER, enemyNo } from '../config/enemyInfo';
-import { buildCamp1, getCamp1, getCamp1Memo, hitBrittleWall, pickKey, setCamp1Memo, updateCamp1 } from './camp1';
+import { buildCamp1, getCamp1, getCamp1Memo, hitBrittleWall, pickKey, prepareCamp1RoomResume, setCamp1Memo, updateCamp1 } from './camp1';
 import { generateCamp1 } from './camp1/plan';
 
 const DT = 1 / 30;
@@ -376,6 +376,124 @@ describe('camp1 (サージ収容所 1階)', () => {
     expect(() => setCamp1Memo(malformed)).not.toThrow();
     expect(getCamp1Memo()).toBeNull();
     expect(() => mk('entrance')).not.toThrow();
+  });
+
+  it('prepares every room resume at a clear canonical point', () => {
+    const ids = ['A', 'B', 'C', 'D', 'E', 'F', 'G', 'H', 'I', 'J', 'tunnel', 'duct'];
+    for (const id of ids) {
+      const { w } = mk();
+      w.inventory.gears = 13;
+      expect(prepareCamp1RoomResume(w, id), id).toBe(true);
+      expect(w.player.vel.lengthSq(), id).toBe(0);
+      const position = w.player.pos.clone();
+      const resolved = position.clone();
+      moveCharacter(w.colliders, resolved, new THREE.Vector3(), DT, PLAYER.radius, PLAYER.height);
+      expect(resolved.distanceTo(position), id).toBeLessThan(1e-6);
+      expect(w.inventory.gears, id).toBe(13);
+    }
+    const { w } = mk();
+    expect(prepareCamp1RoomResume(w, 'not-a-room')).toBe(false);
+    expect(prepareCamp1RoomResume(createWorld({} as never, new EventBus(), 1), 'A')).toBe(false);
+    setCamp1Memo(null);
+  });
+
+  it('opens the key route for D/H and keeps memo, fight retry, and collected gears consistent', () => {
+    setCamp1Memo({
+      gears: ['E'], keys: ['B'], vacuum: false, ally: 'dead', allyHp: 0,
+      hatchOpen: false, cLit: false, wallBroken: false, laserOff: false, drained: [], boss: true,
+      fights: { A: 'done', boss: 'done' },
+    });
+    const { w } = mk('entrance');
+    w.inventory.gears = 9;
+    const c = getCamp1(w)!;
+    const keyGate = c.vis.gates.find((g) => g.def.id === 'key')!;
+    const hEntry = c.vis.gates.find((g) => g.def.id === 'hEntry')!;
+    const exit = c.vis.gates.find((g) => g.def.id === 'exit')!;
+
+    expect(prepareCamp1RoomResume(w, 'H')).toBe(true);
+    expect(c.state.keys).toEqual(['B', 'F']);
+    expect(c.state.keyDoorOpen).toBe(true);
+    expect(keyGate.collider.active).toBe(false);
+    expect(c.state.gears).toEqual(['E']);
+    expect(c.vis.gears.find((g) => g.id === 'E')!.taken).toBe(true);
+    expect(w.inventory.gears).toBe(9);
+    expect(c.state.boss).toBe('idle');
+    expect(c.state.fights.boss).toBe('idle');
+    expect(c.state.fights.A).toBe('done');
+    expect(c.state.exitOpen).toBe(false);
+    expect(c.state.wave2).toBe(false);
+    expect(hEntry.collider.active).toBe(false);
+    expect(exit.collider.active).toBe(true);
+    expect(w.level.data.retryAt).toBe('boss');
+    expect(w.level.data.saveDirty).toBe(true);
+    expect(getCamp1Memo()).toMatchObject({ gears: ['E'], keys: ['B', 'F'], boss: false, fights: { A: 'done', boss: 'idle' } });
+
+    updateCamp1(w, DT);
+    expect(c.state.boss).toBe('active');
+    expect(c.state.fights.boss).toBe('active');
+    setCamp1Memo(null);
+  });
+
+  it('retries only the selected completed room and preserves a cleared H when resuming elsewhere', () => {
+    setCamp1Memo({
+      gears: ['I'], keys: ['B', 'F'], vacuum: false, ally: 'dead', allyHp: 0,
+      hatchOpen: false, cLit: false, wallBroken: false, laserOff: false, drained: [], boss: true,
+      fights: { A: 'done', B: 'done', boss: 'done' },
+    });
+    const { w } = mk('entrance');
+    const c = getCamp1(w)!;
+    const exit = c.vis.gates.find((g) => g.def.id === 'exit')!;
+    expect(prepareCamp1RoomResume(w, 'A')).toBe(true);
+    expect(c.state.fights.A).toBe('idle');
+    expect(c.state.fights.B).toBe('done');
+    expect(c.state.fights.boss).toBe('done');
+    expect(c.state.boss).toBe('done');
+    expect(c.state.exitOpen).toBe(true);
+    expect(exit.collider.active).toBe(false);
+    expect(getCamp1Memo()).toMatchObject({ gears: ['I'], boss: true, fights: { A: 'idle', B: 'done', boss: 'done' } });
+    setCamp1Memo(null);
+  });
+
+  it('restores special passages and lets the player return through them', () => {
+    const iWorld = mk().w;
+    expect(prepareCamp1RoomResume(iWorld, 'I')).toBe(true);
+    const i = getCamp1(iWorld)!;
+    expect(i.state.laserOff).toBe(true);
+    expect(i.vis.laser.collider.active).toBe(false);
+    const iExit = route(iWorld, [[50.5, 51.5], [49, 47], [36, 34], [24, 22]]);
+    expect(near(iExit, 24, 22, 1.5)).toBe(true);
+
+    const jWorld = mk().w;
+    expect(prepareCamp1RoomResume(jWorld, 'J')).toBe(true);
+    expect(getCamp1(jWorld)!.state.wallBroken).toBe(true);
+    expect(getCamp1(jWorld)!.vis.brittle.collider.active).toBe(false);
+    const jExit = walk(jWorld, [101.5, 0, 71], [94, 71], 8);
+    expect(jExit.x).toBeLessThan(97.5);
+
+    const tunnelWorld = mk().w;
+    expect(prepareCamp1RoomResume(tunnelWorld, 'tunnel')).toBe(true);
+    expect(getCamp1(tunnelWorld)!.state.hatchOpen).toBe(true);
+    expect(getCamp1(tunnelWorld)!.vis.hatch.collider.active).toBe(false);
+    const tunnelExit = tunnelWorld.player.pos.clone(), v = new THREE.Vector3();
+    let ground = true;
+    for (let step = 0; step < 60 * 12 && tunnelExit.x > 4.6; step++) {
+      v.x = -PLAYER.moveSpeed; v.z = (59.2 - tunnelExit.z) * 2;
+      v.y = Math.max(-45, v.y - PLAYER.gravity / 60);
+      const x0 = tunnelExit.x;
+      const moved = moveCharacter(tunnelWorld.colliders, tunnelExit, v, 1 / 60, PLAYER.radius, PLAYER.height);
+      if ((moved.hitWall || x0 - tunnelExit.x < 0.02) && ground && moved.onGround) v.y = PLAYER.jumpSpeed;
+      ground = moved.onGround;
+    }
+    expect(tunnelExit.y).toBeGreaterThan(-0.1);
+    expect(tunnelExit.x).toBeLessThan(6);
+
+    const ductWorld = mk().w;
+    expect(prepareCamp1RoomResume(ductWorld, 'duct')).toBe(true);
+    const duct = getCamp1(ductWorld)!.plan.duct;
+    const ductExit = walk(ductWorld, [ductWorld.player.pos.x, ductWorld.player.pos.y, ductWorld.player.pos.z], [97, (duct.z0 + duct.z1) / 2], 8);
+    expect(ductExit.x).toBeGreaterThan(86);
+    expect(ductExit.y).toBeLessThan(0.5);
+    setCamp1Memo(null);
   });
 
   it("start=boss begins in D with the retry point set", () => {

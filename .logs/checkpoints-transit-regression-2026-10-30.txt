@@ -1,0 +1,81 @@
+after upgrade {
+  level: 'floor2',
+  state: 'playing',
+  hud: '',
+  body: '',
+  play: 'play show',
+  opacity: '0',
+  visibility: 'hidden',
+  hp: 'flex',
+  weapons: 'block',
+  overlays: 0,
+  upgrade: { phase: 'closed', cat: 'gun', row: 0, shownGears: 10 },
+  drive: undefined
+}
+surge {
+  level: 'surge',
+  state: 'playing',
+  hud: 'driving',
+  body: '',
+  play: 'play show',
+  opacity: '0',
+  visibility: 'hidden',
+  hp: 'none',
+  weapons: 'none',
+  overlays: 0,
+  upgrade: { phase: 'closed', cat: 'gun', row: 0, shownGears: 10 },
+  drive: 'driving'
+}
+started cutscene {
+  level: 'surge',
+  state: 'playing',
+  hud: 'driving cutscene',
+  body: 'cutscene-on',
+  play: 'play show',
+  opacity: '0',
+  visibility: 'hidden',
+  hp: 'none',
+  weapons: 'none',
+  overlays: 1,
+  upgrade: { phase: 'closed', cat: 'gun', row: 0, shownGears: 10 },
+  drive: 'cutscene'
+}
+after success {
+  level: 'surge',
+  state: 'playing',
+  hud: '',
+  body: '',
+  play: 'play show',
+  opacity: '0',
+  visibility: 'hidden',
+  hp: 'flex',
+  weapons: 'block',
+  overlays: 1,
+  upgrade: { phase: 'closed', cat: 'gun', row: 0, shownGears: 10 },
+  drive: 'done'
+}
+camp1 {
+  level: 'camp1',
+  state: 'playing',
+  hud: '',
+  body: '',
+  play: 'play show',
+  opacity: '1',
+  visibility: 'visible',
+  hp: 'flex',
+  weapons: 'block',
+  overlays: 0,
+  upgrade: { phase: 'closed', cat: 'gun', row: 0, shownGears: 10 },
+  drive: undefined
+}
+{
+  "checks": [
+    "normal HUD returns immediately after leaving car",
+    "floor2 upgrade -> surge success -> camp1 keeps HUD visible",
+    "camp1 vacuum pickup, Y activation and 14 second cooldown display work",
+    "camp2 entry also shows HP and weapon HUD",
+    "retry after simultaneous death/unlock saves freed checkpoint and continues correctly",
+    "skipping driving cutscene completes crash, restores HUD and allows camp1 entry"
+  ],
+  "errors": []
+}

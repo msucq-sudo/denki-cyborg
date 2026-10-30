@@ -523,6 +523,30 @@ html, body { margin: 0; height: 100%; overflow: hidden; background: #0d1420; }
   box-shadow: 0 0 22px rgba(126, 243, 255, 0.55), inset 0 1px 0 rgba(255, 255, 255, 0.6);
 }
 .btn-primary:hover { background: linear-gradient(135deg, #b0fbff, #5fe0f5); }
+.checkpoint-panel {
+  display: grid; gap: 8px; margin-top: 16px; padding: 14px 16px 12px; text-align: left;
+  border: 1px solid rgba(46, 230, 255, 0.4); border-radius: 18px;
+  background: rgba(5, 14, 34, 0.72); box-shadow: inset 0 0 22px rgba(46, 230, 255, 0.05);
+}
+.checkpoint-heading { margin: 0; text-align: center; font-size: 17px; font-weight: 800; color: #d9fbff; }
+.checkpoint-label { margin-top: 2px; font-size: 12px; color: var(--hud-cyan); font-weight: 700; }
+.checkpoint-select {
+  display: block; width: 100%; max-height: clamp(100px, 25vh, 170px); overflow: auto; padding: 5px 8px;
+  border: 1px solid rgba(126, 243, 255, 0.48); border-radius: 10px; background: rgba(8, 19, 45, 0.96);
+  color: #e8f3ff; font: inherit; font-size: 13px; line-height: 1.45;
+}
+.checkpoint-select option { padding: 4px 6px; background: #0b1730; color: #e8f3ff; }
+.checkpoint-select:focus-visible { outline: 2px solid #fff; outline-offset: 2px; }
+.checkpoint-detail { min-height: 2.8em; margin: 0; color: #b9cce4; font-size: 12px; line-height: 1.5; }
+.checkpoint-actions { margin-top: 2px; gap: 8px; }
+.checkpoint-actions .btn { min-width: 130px; padding: 9px 18px; font-size: 14px; }
+.checkpoint-actions .btn:disabled { opacity: 0.48; cursor: not-allowed; transform: none; }
+.screen-title .panel-big.checkpoint-active .game-sub,
+.screen-title .panel-big.checkpoint-active .tips,
+.screen-title .panel-big.checkpoint-active > .btn-row,
+.screen-pause .panel-big.checkpoint-active > .keys,
+.screen-pause .panel-big.checkpoint-active > .btn-row,
+.screen-pause .panel-big.checkpoint-active > .click-hint { display: none; }
 
 .stats {
   display: grid; grid-template-columns: auto auto; gap: 8px 22px; justify-content: center;

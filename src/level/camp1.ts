@@ -97,6 +97,22 @@ interface Runtime {
 }
 const runtimes = new WeakMap<World, Runtime>();
 
+type Camp1RoomResumeId = 'A' | 'B' | 'C' | 'D' | 'E' | 'F' | 'G' | 'H' | 'I' | 'J' | 'tunnel' | 'duct';
+const roomResumePoints: Record<Camp1RoomResumeId, { x: number; y: number; z: number; yaw: number }> = {
+  A: { x: 11, y: 0, z: 73, yaw: 0 },
+  B: { x: 53, y: 0, z: 66, yaw: Math.PI / 2 },
+  C: { x: 100, y: 0, z: 60, yaw: Math.PI },
+  D: { x: 96, y: 0, z: 46, yaw: 0 },
+  E: { x: 24, y: 0, z: 25, yaw: Math.PI },
+  F: { x: 69.5, y: 0, z: 22, yaw: Math.PI },
+  G: { x: 62, y: 0, z: 42, yaw: Math.PI / 2 },
+  H: { x: 96, y: 0, z: 16, yaw: 0 },
+  I: { x: 50.5, y: 0, z: 51.5, yaw: -Math.PI / 4 },
+  J: { x: 101.5, y: 0, z: 71, yaw: -Math.PI / 2 },
+  tunnel: { x: 20, y: -5, z: 59.2, yaw: -Math.PI / 2 },
+  duct: { x: 84.6, y: 7.6, z: 39.1, yaw: Math.PI / 2 },
+};
+
 /**
  * リトライで World を作り直しても、拾った物と仲間の状態は残す（main.ts の changeLevel は所持品・強化しか引き継がないため）。
  * 外から入り直した（startAt なし）ときに消す
@@ -152,6 +168,75 @@ function validateMemo(value: unknown): Memo | null {
 export function getCamp1(world: World): { plan: Plan; state: Camp1State; vis: Camp1Visuals; walker: Enemy | null } | null {
   const rt = runtimes.get(world);
   return rt ? { plan: rt.plan, state: rt.state, vis: rt.vis, walker: rt.walker } : null;
+}
+
+/**
+ * 保存再開のフォールバック用。指定した部屋の安全地点へ移動し、そこまでの必須ギミックを整える。
+ * 実際のプレイ履歴があるセーブでは呼ばず、履歴のない旧セーブだけに使う。
+ */
+export function prepareCamp1RoomResume(world: World, roomId: string): boolean {
+  const rt = runtimes.get(world);
+  if (!rt || !Object.prototype.hasOwnProperty.call(roomResumePoints, roomId)) return false;
+  const id = roomId as Camp1RoomResumeId;
+  const point = roomResumePoints[id];
+  const { state, plan } = rt;
+
+  if (id === 'I') {
+    for (const sourceId of ['L1', 'L2']) {
+      const source = getPowerSources(world)[plan.sources.findIndex((s) => s.id === sourceId)];
+      if (source) { source.amount = 0; source.enabled = false; }
+      sourceEmpty(world, rt, sourceId, true);
+    }
+  } else if (id === 'J') {
+    breakWall(world, rt, true);
+  } else if (id === 'tunnel') {
+    openHatch(world, rt, true);
+    rt.hatchK = 1;
+    rt.vis.hatch.left.rotation.z = 1.7;
+    rt.vis.hatch.right.rotation.z = -1.7;
+    rt.vis.hatch.collider.active = false;
+  }
+
+  // D/H はキー扉の先。キーを拾った状態にそろえ、所持ギア数には触れない。
+  if (id === 'D' || id === 'H') {
+    for (const key of ['B', 'F'] as const) {
+      if (!state.keys.includes(key)) state.keys.push(key);
+      hideKey(world, rt, key);
+    }
+    state.keyDoorOpen = true;
+    forceGate(rt, 'key', true);
+    state.checkpoint = 'boss';
+    world.level.data.retryAt = 'boss';
+  }
+
+  const targetFight = id === 'H' ? 'boss' : id;
+  const zone = rt.zones.find((z) => z.def.id === targetFight);
+  if (zone && zone.state === 'done') {
+    zone.state = 'idle';
+    state.fights[targetFight] = 'idle';
+  }
+  if (id === 'H') {
+    // H を選んだ場合はボス戦を再戦可能にする。既取得ギアや他区画の状態は維持する。
+    state.boss = 'idle';
+    state.fights.boss = 'idle';
+    state.wave2 = false;
+    state.lockdown = false;
+    state.exitOpen = false;
+    state.exitReached = false;
+    world.level.data.nextLevel = undefined;
+    forceGate(rt, 'hEntry', true);
+    forceGate(rt, 'exit', false);
+  }
+
+  world.player.pos.set(point.x, point.y, point.z);
+  world.player.yaw = point.yaw;
+  world.player.pitch = 0;
+  world.player.vel.set(0, 0, 0);
+  world.player.onGround = false;
+  world.level.data.gears = state.gears.length;
+  world.level.data.objective = objective(rt);
+  remember(rt);
+  return true;
 }
 
 // ---------------------------------------------------------------- 構築
