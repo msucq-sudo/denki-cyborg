@@ -10,6 +10,7 @@ import { fall, faceToward, makeCtx, separate } from './common';
 import { animateDrone, updateCrawler, updateDrone, updateGunner, updateHeavy } from './ai';
 import { initBossAI, updateBoss } from './boss';
 import { KIND_MODULES } from './kinds';
+import { updateTraverse } from './traverse';
 import { makeDormant, updateDormant, type DormantOpts } from './dormant';
 import { spawnMetalDrop } from '../core/pickups';
 
@@ -316,7 +317,9 @@ function updateOne(world: World, e: Enemy, dt: number): void {
       e.pos.addScaledVector(e.vel, dt);
       if (resolveFloor(world, e)) e.vel.set(0, 0, 0);
     } else fall(world, e, dt);
+    ai.climbing = false;
     animate(world, e, dt);
+    applyClimbTilt(e, dt);
     return;
   }
 
@@ -341,7 +344,7 @@ function updateOne(world: World, e: Enemy, dt: number): void {
       animate(world, e, dt);
       return;
     }
-    switch (e.kind) {
+    if (!updateTraverse(c)) switch (e.kind) {
       case 'drone': updateDrone(c); break;
       case 'crawler': updateCrawler(c); break;
       case 'gunner': updateGunner(c); break;
@@ -352,6 +355,18 @@ function updateOne(world: World, e: Enemy, dt: number): void {
     if (e.kind === 'boss') checkBossPhase(world, e);
   }
   animate(world, e, dt);
+  applyClimbTilt(e, dt);
+}
+
+/** 壁登り中は体を起こして壁にへばりつく向きにし、登り終えたら元に戻す（機体全体を前に倒す。種類別アニメとは干渉しない） */
+function applyClimbTilt(e: Enemy, dt: number): void {
+  const ai = e.ai;
+  const k = (ai.climbK ?? 0) + ((ai.climbing ? 1 : 0) - (ai.climbK ?? 0)) * Math.min(1, dt * 10);
+  ai.climbK = k < 0.005 && !ai.climbing ? 0 : k;
+  const r = e.root.rotation;
+  if (ai.climbK > 0) { r.order = 'YXZ'; r.x = -1.25 * ai.climbK; }
+  else if (r.x !== 0 && ai.climbTilted) r.x = 0;
+  ai.climbTilted = ai.climbK > 0;
 }
 
 import { resolveSphere } from '../core/collision';
@@ -484,7 +499,8 @@ function animate(world: World, e: Enemy, dt: number): void {
     case 'boss': {
       const open = ai.openAmt ?? 0;
       const plates: THREE.Mesh[] = p.plates;
-      p.orbit.rotation.y += dt * (e.status === 'stunned' ? 0.2 : ai.phase === 2 ? 1.6 : 0.8);
+      // 仲間を呼ぶ動作中（summonGlow 0..1）は装甲が速く回る
+      p.orbit.rotation.y += dt * ((e.status === 'stunned' ? 0.2 : ai.phase === 2 ? 1.6 : 0.8) + (ai.summonGlow ?? 0) * 6);
       plates.forEach((pl, i) => {
         const s = 1 + open * 0.4;
         pl.scale.setScalar(s);

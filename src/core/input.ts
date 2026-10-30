@@ -25,6 +25,11 @@ export class Input {
    * 生の仮想キー（PadUp/PadDown/PadLeft/PadRight/PadA/PadB/PadX/PadY）だけが届く。
    */
   padCapture = false;
+  /** パッドの十字キー下を押している間 true（スキル選択中。視点は動かさない） */
+  skillMenuHeld = false;
+  /** 右スティックの生の値（-1..1。デッドゾーンなし）。スキル選択の画面で向きを読む。パッドが無ければ 0 */
+  skillStickX = 0;
+  skillStickY = 0;
   /** 最後に触った入力機器（ハッキングの表示切り替え用） */
   lastDevice: 'kbm' | 'pad' = 'kbm';
 
@@ -68,12 +73,16 @@ export class Input {
   /**
    * ゲームパッド（Xbox 配置）をキーボード/マウス入力に変換する。毎フレーム1回呼ぶ。
    * 左スティック=WASD、右スティック=視点、RT=射撃、LT=照準、LB=吸収(E)、A=ジャンプ/飛行、RB=回避(C)、Lスティック押込=ダッシュ(Shift)、
-   * X=逆流(F)、B=インタラクト(PadB。ベッドなど)、Y=飛行(3)、十字キー左/上=スカウター/オートエイム(1/2)、Start=ポーズ(P)、A=決定(PadA)
+   * X=逆流(F)、B=インタラクト(PadB。ベッドなど)、Y=スキル発動(Skill)、十字キー上=オートエイム(2)、十字キー下=スキル選択（押している間は視点固定）、
+   * 十字キー左右=武器の切り替え（仮想キー WeaponPrev / WeaponNext）、Start=ポーズ(P)、A=決定(PadA)
    */
   pollGamepad(dt: number): void {
     const pad = navigator.getGamepads?.().find((g) => g && g.connected && g.mapping === 'standard');
     const keys = new Set<string>();
     const mouse = new Set<number>();
+    this.skillMenuHeld = false;
+    this.skillStickX = 0;
+    this.skillStickY = 0;
     if (pad) {
       const b = (i: number) => !!pad.buttons[i]?.pressed;
       const ax = (i: number) => pad.axes[i] ?? 0;
@@ -90,11 +99,17 @@ export class Input {
       // B(1)=インタラクト専用（PadB。2階のベッドなど）。回避は RB(5) だけ
       if (b(5)) keys.add('KeyC');
       if (b(2) && !cap) keys.add('KeyF');
-      // Y(3)=インタラクト（R：スイッチなど）。ジェットパックは A 長押し
-      if (b(3) && !cap) keys.add('KeyR');
+      // Y(3)=スキル発動（仮想キー 'Skill'）。ジェットパックは A 長押し
+      if (b(3) && !cap) keys.add('Skill');
       if (b(4)) keys.add('KeyE');
-      if (b(14) && !cap) keys.add('Digit1');
       if (b(12) && !cap) keys.add('Digit2');
+      // 十字キー下を押している間はスキル選択（右スティックは選択に使うので視点を動かさない）
+      this.skillMenuHeld = b(13) && !cap;
+      // 十字キー左右=前／次の武器（ハッキング中はコード入力に使うので出さない）
+      if (b(14) && !cap) keys.add('WeaponPrev');
+      if (b(15) && !cap) keys.add('WeaponNext');
+      this.skillStickX = ax(2);
+      this.skillStickY = ax(3);
       if (b(9)) keys.add('KeyP');
       if (b(10)) keys.add('ShiftLeft');
       if (b(7) || (pad.buttons[7]?.value ?? 0) > 0.3) mouse.add(0);
@@ -107,7 +122,7 @@ export class Input {
         return Math.sign(v) * n * n;
       };
       if (keys.size > 0 || mouse.size > 0 || Math.abs(ax(2)) > 0.3 || Math.abs(ax(3)) > 0.3) this.lastDevice = 'pad';
-      if (!this.locked) {
+      if (!this.locked && !this.skillMenuHeld) {
         this.mouseDX += look(ax(2)) * PAD_LOOK_PX_PER_SEC * dt;
         this.mouseDY += look(ax(3)) * PAD_LOOK_PX_PER_SEC * dt;
       }

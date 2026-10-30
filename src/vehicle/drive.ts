@@ -64,6 +64,7 @@ const MAX_MS = DRIVE.maxKmh * KMH;
 
 export function initDrive(world: World, at: { x: number; z: number; yaw: number }): DriveState | null {
   const car = buildCar();
+  car.driver.visible = false; // 乗るまで運転手は出さない
   car.root.rotation.order = 'YXZ';
   car.root.position.set(at.x, 0, at.z);
   car.root.rotation.y = at.yaw;
@@ -114,6 +115,7 @@ export function startDrive(world: World): void {
 export function updateDrive(world: World, dt: number): void {
   const d = getDrive(world);
   if (!d) return;
+  d.car.driver.visible = d.phase !== 'parked';
   switch (d.phase) {
     case 'parked':
       d.car.update(dt, 0);

@@ -1,5 +1,5 @@
 import * as THREE from 'three';
-import { ABSORB, ENEMIES, GRAPPLE, HACK } from '../config/balance';
+import { ABSORB, ALLY_LINK, ENEMIES, GRAPPLE, HACK } from '../config/balance';
 import { absorbConversion, absorbDrainPerSec, overloadEnergyPerSec } from '../progression/effects';
 import { KIND_MODULES } from '../enemies/kinds';
 import type { Enemy, World } from '../core/types';
@@ -17,6 +17,8 @@ import {
 } from '../core/grapple';
 import { createArmVisual, type ArmMode, type ArmVisual } from './absorbVisual';
 import { getGrabbables, type ArmGrabbable } from '../core/armGrab';
+import { drainSource, getPowerSources, type PowerSource } from '../core/powerSources';
+import { toast } from '../core/combat';
 
 /** アームでアイテムを掴む当たり半径（メタル） */
 const DROP_GRAB_RADIUS = 0.7;
@@ -43,6 +45,13 @@ interface Extra {
   reach: number;
   /** アームで掴んで引き戻し中のアイテム（歯車など） */
   carry: ArmGrabbable | null;
+  /** 電力を吸っている固定の電力源（core/powerSources.ts） */
+  source: PowerSource | null;
+  /** つないでいる味方（level.data.allyArm のステージだけ）。送電で回復／吸収 */
+  ally: Enemy | null;
+  /** 「最大まで回復しました」を出した（つなぎ直すまで出さない） */
+  allyFullShown: boolean;
+  allyFloorShown: boolean;
 }
 
 const extras = new WeakMap<World, Extra>();
@@ -67,7 +76,7 @@ export function initAbsorb(world: World): void {
   extras.set(world, {
     vis, root: new THREE.Vector3(), anchor: new THREE.Vector3(), hasAnchor: false,
     losLost: 0, overloading: false, noEnergyShown: false, sparkTimer: 0, socket: null, socketT: 0,
-    grapple: null, reach: ABSORB.range, carry: null,
+    grapple: null, reach: ABSORB.range, carry: null, source: null, ally: null, allyFullShown: false, allyFloorShown: false,
   });
 }
 
@@ -100,6 +109,8 @@ function startRetract(world: World, ex: Extra): void {
   a.target = null;
   ex.socket = null;
   ex.grapple = null;
+  ex.source = null;
+  ex.ally = null;
   ex.hasAnchor = false;
   ex.losLost = 0;
   a.phase = 'retracting';
@@ -208,8 +219,40 @@ export function updateAbsorb(world: World, dt: number): void {
         const t = segmentSphere(p0, p1, d.pos, DROP_GRAB_RADIUS);
         if (t !== null && t < it) { it = t; ig = null; dropHit = true; }
       }
-      const itemFirst = it < Infinity && it <= (lt ?? Infinity) + 1e-6 && it <= (eh ? eh.t : Infinity) && it <= st && it <= gt;
-      if (itemFirst) {
+      // 電力源（吸える装置）・味方（allyArm のステージだけ）
+      let ps: PowerSource | null = null, pt = Infinity;
+      for (const s of getPowerSources(world)) {
+        if (!s.enabled) continue;
+        const t = segmentSphere(p0, p1, s.pos, s.radius);
+        if (t !== null && t < pt) { pt = t; ps = s; }
+      }
+      let al: Enemy | null = null, alT = Infinity;
+      if (world.level.data.allyArm) {
+        for (const e of world.enemies) {
+          if (!e.allied || e.status !== 'active' || e.ai.dormant) continue;
+          const t = segmentSphere(p0, p1, e.pos, e.radius + TIP_RADIUS);
+          if (t !== null && t < alT) { alT = t; al = e; }
+        }
+      }
+      const lvT = (lt ?? Infinity) + 1e-6, enT = eh ? eh.t : Infinity;
+      const srcFirst = ps !== null && pt <= lvT && pt <= enT && pt <= it && pt <= st && pt <= gt && pt <= alT;
+      const allyFirst = !srcFirst && al !== null && alT <= lvT && alT <= enT && alT <= it && alT <= st && alT <= gt;
+      const itemFirst = !srcFirst && !allyFirst && it < Infinity && it <= (lt ?? Infinity) + 1e-6 && it <= (eh ? eh.t : Infinity) && it <= st && it <= gt;
+      if (srcFirst && ps) {
+        a.tip.lerpVectors(p0, p1, pt);
+        a.phase = 'attached';
+        a.target = null;
+        ex.source = ps;
+        world.events.emit('absorbAttach', { pos: a.tip.clone() });
+      } else if (allyFirst && al) {
+        a.tip.lerpVectors(p0, p1, alT);
+        a.phase = 'attached';
+        a.target = null;
+        ex.ally = al;
+        ex.allyFullShown = false;
+        ex.allyFloorShown = false;
+        world.events.emit('absorbAttach', { pos: a.tip.clone() });
+      } else if (itemFirst) {
         a.tip.lerpVectors(p0, p1, it);
         if (ig) {
           ig.enabled = false;
@@ -262,7 +305,9 @@ export function updateAbsorb(world: World, dt: number): void {
         ex.socketT -= dt;
         a.tip.copy(ex.socket.pos);
         if (ex.socketT <= 0) startRetract(world, ex);
-      } else updateAttached(world, ex, dt);
+      } else if (ex.source) updateSourceLink(world, ex, dt);
+      else if (ex.ally) updateAllyLink(world, ex, dt);
+      else updateAttached(world, ex, dt);
       break;
     case 'retracting': {
       const toRoot = tmpA.subVectors(ex.root, a.tip);
@@ -407,4 +452,95 @@ function updateAttached(world: World, ex: Extra, dt: number): void {
     world.events.emit('absorbComplete', { pos: enemy.pos.clone() });
     startRetract(world, ex);
   }
+}
+
+/** 線が切れる条件（距離・見通し）。切れたら true（引き戻し開始済み） */
+function linkBroken(world: World, ex: Extra, at: THREE.Vector3, dt: number): boolean {
+  if (world.aimOrigin.distanceTo(at) > ABSORB.breakDistance) {
+    world.events.emit('absorbBreak', {});
+    startRetract(world, ex);
+    return true;
+  }
+  if (hasLineOfSight(world.colliders, world.aimOrigin, at)) ex.losLost = 0;
+  else {
+    ex.losLost += dt;
+    if (ex.losLost > LOS_GRACE) {
+      world.events.emit('absorbBreak', {});
+      startRetract(world, ex);
+      return true;
+    }
+  }
+  return false;
+}
+
+/** 固定の電力源から吸う。吸い尽くしたら戻す */
+function updateSourceLink(world: World, ex: Extra, dt: number): void {
+  const a = world.absorb;
+  const s = ex.source!;
+  a.tip.copy(s.pos);
+  if (!s.enabled) { startRetract(world, ex); return; }
+  if (linkBroken(world, ex, s.pos, dt)) return;
+  const got = drainSource(s, absorbDrainPerSec(world) * dt);
+  if (got > 0) {
+    const added = addEnergy(world, got * absorbConversion(world));
+    a.totalAbsorbed += added;
+    world.stats.energyAbsorbed += added;
+    ex.sparkTimer -= dt;
+    if (ex.sparkTimer <= 0) { ex.sparkTimer = 0.08; spawnBurst(world, s.pos, 0x66e6ff, 2, 2.5, 0.25); }
+  }
+  if (!s.enabled) {
+    world.events.emit('absorbComplete', { pos: s.pos.clone() });
+    startRetract(world, ex);
+  }
+}
+
+/**
+ * 味方とつながっている間：逆流ボタン（F）で送電＝回復（満タンで「最大まで回復しました」。ショートはしない）、
+ * 離している間は味方から吸収（吸った分だけ味方の体力が減る。ALLY_LINK.drainFloor より下には減らさない）
+ */
+function updateAllyLink(world: World, ex: Extra, dt: number): void {
+  const a = world.absorb;
+  const e = ex.ally!;
+  if (!world.enemies.includes(e) || !e.allied || e.status !== 'active') { startRetract(world, ex); return; }
+  a.tip.copy(e.pos);
+  if (linkBroken(world, ex, e.pos, dt)) return;
+  const p = world.player;
+  if (world.input.isDown('KeyF')) {
+    if (e.hp >= e.maxHp - 1e-6) {
+      endOverload(world, ex);
+      if (!ex.allyFullShown) { ex.allyFullShown = true; toast(world, '最大まで回復しました', 2.5); world.events.emit('absorbComplete', { pos: e.pos.clone() }); }
+      return;
+    }
+    if (p.energy <= 0) {
+      if (!ex.noEnergyShown) { ex.noEnergyShown = true; world.events.emit('noEnergy', {}); }
+      endOverload(world, ex);
+      return;
+    }
+    if (!ex.overloading) { ex.overloading = true; p.overloading = true; world.events.emit('overloadStart', {}); }
+    const room = (e.maxHp - e.hp) / ALLY_LINK.feedMul;
+    const want = Math.min(overloadEnergyPerSec(world) * dt, room);
+    const sent = drainEnergy(world, want) * want;
+    e.hp = Math.min(e.maxHp, e.hp + sent * ALLY_LINK.feedMul);
+    ex.sparkTimer -= dt;
+    if (ex.sparkTimer <= 0) { ex.sparkTimer = 0.08; spawnBurst(world, e.pos, 0x66e6ff, 2, 2.5, 0.25); }
+    if (e.hp >= e.maxHp - 1e-6) {
+      e.hp = e.maxHp;
+      endOverload(world, ex);
+      if (!ex.allyFullShown) { ex.allyFullShown = true; toast(world, '最大まで回復しました', 2.5); world.events.emit('absorbComplete', { pos: e.pos.clone() }); }
+    }
+    return;
+  }
+  endOverload(world, ex);
+  ex.noEnergyShown = false;
+  ex.allyFullShown = false;
+  const floor = e.maxHp * ALLY_LINK.drainFloor;
+  const want = Math.min(absorbDrainPerSec(world) * ALLY_LINK.drainMul * dt, Math.max(0, e.hp - floor));
+  if (want <= 0) {
+    if (!ex.allyFloorShown) { ex.allyFloorShown = true; toast(world, 'これ以上吸うと仲間が止まってしまう', 2.5); }
+    return;
+  }
+  e.hp -= want;
+  const added = addEnergy(world, want * absorbConversion(world));
+  a.totalAbsorbed += added;
+  world.stats.energyAbsorbed += added;
 }

@@ -1,0 +1,14 @@
+{
+  "checks": [
+    "first start creates a save",
+    "floor1 reload restores cleared fight, power, collected gear, inventory, loadout and upgraded max HP",
+    "storage failure warns, retains pending state and retries successfully",
+    "fresh start alone preserves the previous save",
+    "floor2 rest and west exit unlock survive reload",
+    "title keyboard shortcut also continues the saved game",
+    "camp1 collected security key survives reload",
+    "camp2 boss defeat and freed residents survive reload",
+    "incomplete save is ignored safely"
+  ],
+  "errors": []
+}

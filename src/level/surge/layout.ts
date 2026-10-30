@@ -62,3 +62,14 @@ export const COMPOUND = {
 
 /** レベルの開始地点（world.level.data.startAt）。'stairs'（既定）＝2階から降りてきた所、'drive'＝車に乗った状態（リトライ用） */
 export type SurgeStart = 'stairs' | 'drive';
+
+/**
+ * 激突のあと：車を降りて歩く建物の外。入口は建物を正面（東）から見て左側（南）の非常口。
+ * ここに入ると「サージ収容所 1階」（level 'camp1'）へ。yardZ1 は歩ける庭の南端
+ */
+export const ENTRANCE = {
+  x: COMPOUND.wallX, z: ROAD.junctionZ + 60,
+  /** 入口の幅（z 方向）と、入ったとみなす壁からの距離 */
+  w: 5, reach: 2.6,
+  yardZ1: ROAD.junctionZ + 75,
+};

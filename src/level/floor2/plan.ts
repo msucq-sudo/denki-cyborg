@@ -69,6 +69,8 @@ export interface Plan {
     /** 寝ているときの足元（キャラ原点）の位置 */ lieX: number; lieZ: number; lieY: number; lieYaw: number;
     /** 近づいたと判定する距離（ベッド中心から） */ reach: number;
   };
+  /** スパーク（研究者）の立ち位置。ベッドの南東。yaw は +Z が正面のキャラの向き */
+  spark: { x: number; z: number; yaw: number };
   /** 出入口から壁を除いた円弧（°）[a,b]（北から時計回り、a<b、0..360） */
   arcs: [number, number][];
 }
@@ -498,9 +500,13 @@ export function generateFloor2(): Plan {
   }
 
   // ------------------------------------------------------------ まとめ
+  const bedStandZ = 1.45;
+  // スパーク：ベッドの南東に立ち、南の立ち位置（プレイヤー）のほうを向く
+  const spark = { x: 2.3, z: 0.9, yaw: Math.atan2(0 - 2.3, bedStandZ - 0.9) };
+  block(spark.x, spark.z, 0.8, 0.8, 0, 1.8, 'npc', 1);
   const bed = {
     x: 0, z: 0, len: bedLen, wid: bedWid, top: bedTop, headX: -1, headZ: 0,
-    standX: 0, standZ: 1.45, standYaw: 0,
+    standX: 0, standZ: bedStandZ, standYaw: 0,
     lieX: 0.95, lieZ: 0, lieY: bedTop + 0.1 + 0.22, lieYaw: -Math.PI / 2,
     reach: 3.0,
   };
@@ -508,6 +514,6 @@ export function generateFloor2(): Plan {
     prims, blockers, objects, lamps, gaps, exits, arcs,
     rooms: [{ id: 'lab', name: 'サイボーグ改造室', x0: -R, x1: R, z0: -R, z1: R, h: H }],
     start: { x: 0, z: R + 2.6, yaw: 0 },
-    elevator, bed,
+    elevator, bed, spark,
   };
 }

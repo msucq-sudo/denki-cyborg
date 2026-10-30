@@ -9,6 +9,7 @@ import type { World } from '../core/types';
 import { toast } from '../core/combat';
 import { setPlayerFacing } from '../player/player';
 import { showPrompt } from './floor1';
+import { createSpark, type Spark } from '../characters/spark';
 import { generateFloor2, R, type Plan } from './floor2/plan';
 import { buildFloor2Visuals, type Floor2Visuals } from './floor2/visuals';
 
@@ -22,6 +23,9 @@ export const SLEEP = { walk: 0.7, lie: 1.5, sleep: 1.6, wake: 1.3, autoWake: 7 }
 export const floor2Hooks: { onSleepComplete: (world: World) => boolean | void } = {
   onSleepComplete: (world) => { toast(world, '（強化画面は準備中です）', 4); return false; },
 };
+
+/** スパークがこちらを向く距離（m） */
+const SPARK_NOTICE = 5;
 
 type Phase = 'free' | 'walk' | 'lie' | 'sleep' | 'rest' | 'wake';
 export interface Floor2State {
@@ -61,6 +65,8 @@ interface Runtime {
   dim: HTMLDivElement | null;
   doorEmitted: boolean;
   exitEmitted: boolean;
+  /** ベッドのそばに立つスパーク */
+  spark: Spark;
 }
 const runtimes = new WeakMap<World, Runtime>();
 
@@ -141,10 +147,15 @@ export function buildFloor2(world: World): void {
   world.player.yaw = plan.start.yaw;
   world.player.pitch = 0;
 
+  const spark = createSpark();
+  spark.root.position.set(plan.spark.x, 0, plan.spark.z);
+  spark.root.rotation.y = plan.spark.yaw;
+  spark.setPose('tablet');
+  scene.add(spark.root);
   const d = makeDim();
   runtimes.set(world, {
     plan, vis, state, hemi, key, fill, accents, clock: 0, inCarT: 0, promptOn: false,
-    from: { x: 0, z: 0, yaw: 0 }, dim: d, doorEmitted: false, exitEmitted: false,
+    from: { x: 0, z: 0, yaw: 0 }, dim: d, doorEmitted: false, exitEmitted: false, spark,
   });
 }
 
@@ -283,6 +294,17 @@ export function updateFloor2(world: World, dt: number): void {
   rt.clock += dt;
   const t = rt.clock;
   const E = plan.elevator;
+
+  // ---- スパーク：普段はタブレットを見ている。近づくと、こちらを向いて話しかける姿勢になる
+  {
+    const sp = rt.spark.root;
+    const dxs = p.pos.x - plan.spark.x, dzs = p.pos.z - plan.spark.z;
+    const near = Math.hypot(dxs, dzs) < SPARK_NOTICE && state.phase === 'free';
+    const want = near ? Math.atan2(dxs, dzs) : plan.spark.yaw;
+    sp.rotation.y = lerpAngle(sp.rotation.y, want, Math.min(1, dt * 5));
+    rt.spark.setPose(near ? 'talk' : 'tablet');
+    rt.spark.update(dt);
+  }
 
   // ---- 眠りの演出中は、プレイヤーの体とカメラを上書きする
   if (state.phase !== 'free') {

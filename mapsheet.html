@@ -3,35 +3,58 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
-<title>1階 平面図</title>
+<title>平面図（全ステージ）</title>
 <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+JP:wght@400;700&display=swap" rel="stylesheet">
 <style>
   body { margin: 0; background: #dfe5ec; font-family: 'Noto Sans JP', sans-serif; }
-  .bar { position: sticky; top: 0; padding: 8px 12px; background: #0a1330; color: #e8f3ff; display: flex; flex-wrap: wrap; gap: 8px 12px; align-items: center; z-index: 1; }
+  .app { height: 100vh; display: flex; flex-direction: column; }
+  .bar { padding: 8px 12px; background: #0a1330; color: #e8f3ff; display: flex; flex-wrap: wrap; gap: 8px 12px; align-items: center; }
   .bar a { color: #2ee6ff; font-weight: 700; text-decoration: none; }
   button { font: inherit; font-weight: 700; padding: 5px 12px; border: 0; border-radius: 8px; background: #2ee6ff; color: #0a1330; cursor: pointer; }
+  #tabs { display: flex; flex-wrap: wrap; gap: 6px; }
+  #tabs button { background: #1d2f66; color: #e8f3ff; font-size: 14px; }
+  #tabs button.on { background: #2ee6ff; color: #0a1330; }
+  .tools button { background: #e8f3ff; padding: 4px 10px; }
+  #zoom { min-width: 44px; text-align: right; opacity: .8; font-size: 13px; }
+  #play { display: flex; flex-wrap: wrap; gap: 6px 14px; }
+  #play a { color: #ffd83a; }
+  .links { margin-left: auto; display: flex; gap: 12px; font-size: 13px; }
   #enemyFilter { display: flex; flex-wrap: wrap; gap: 6px; }
   #enemyFilter button { opacity: .55; font-size: 13px; }
   #enemyFilter button.on { opacity: 1; outline: 2px solid #ffd83a; }
-  canvas { display: block; margin: 12px; box-shadow: 0 2px 10px #0003; }
+  #view { flex: 1; min-height: 0; position: relative; overflow: hidden; cursor: grab; background: #c9d2dc; touch-action: none; }
+  #view.drag { cursor: grabbing; }
+  #view canvas { position: absolute; left: 0; top: 0; transform-origin: 0 0; box-shadow: 0 2px 10px #0003; }
+  #view .err { margin: 20px; color: #b01818; font-weight: 700; }
   table { border-collapse: collapse; margin: 0 12px 24px; background: #fff; font-size: 13px; }
   th, td { padding: 4px 10px; border-bottom: 1px solid #dde3ea; text-align: left; white-space: nowrap; }
   th { background: #0a1330; color: #e8f3ff; }
-  h2 { margin: 8px 12px; font-size: 16px; color: #28467a; }
+  h2 { margin: 12px; font-size: 16px; color: #28467a; }
 </style>
 </head>
 <body>
-<div class="bar">
-  <b>研究所1階 平面図</b>
-  <button id="save">PNGで保存</button>
-  <span style="opacity:.75">敵の印の数字＝図鑑No.／#＝配置の番号</span>
-  <a href="/bestiary.html">敵図鑑 ↗</a>
-  <a href="/stats.html#敵">データ一覧 ↗</a>
-  <a href="/map.html">3Dマップ ↗</a>
+<div class="app">
+  <div class="bar">
+    <b>平面図</b>
+    <div id="tabs"></div>
+    <div class="links">
+      <a href="/bestiary.html">敵図鑑 ↗</a>
+      <a href="/stats.html#敵">データ一覧 ↗</a>
+      <a href="/map.html">3Dマップ ↗</a>
+    </div>
+  </div>
+  <div class="bar" style="background:#12214d">
+    <div id="play"></div>
+    <span class="tools" style="margin-left:auto;display:flex;gap:6px;align-items:center">
+      <span style="opacity:.7;font-size:12px">ホイール＝拡大縮小／ドラッグ＝移動</span>
+      <button id="zout">－</button><button id="zin">＋</button><button id="actual">100%</button><button id="fit">全体</button><span id="zoom"></span>
+      <button id="save">PNGで保存</button>
+    </span>
+  </div>
+  <div class="bar" id="filterBar" style="background:#1a2a5a">強調：<div id="enemyFilter"></div><span style="opacity:.75;font-size:12px">敵の印の数字＝図鑑No.／#＝配置の番号</span></div>
+  <div id="view"></div>
 </div>
-<div class="bar" style="top:44px;background:#12214d">強調：<div id="enemyFilter"></div></div>
-<canvas id="sheet"></canvas>
-<h2>配置されている敵</h2>
+<h2 id="tableHead">配置されている敵</h2>
 <table id="placedTable"></table>
 <script type="module" src="/src/tools/mapSheet.ts"></script>
 </body>

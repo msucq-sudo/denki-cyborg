@@ -69,6 +69,11 @@ const SFX_POLICY: Record<string, SfxPolicy> = {
   carWallCrash: { maxVoices: 2 },
   carCaught: { maxVoices: 2 },
   slowmo: { maxVoices: 2 },
+  vacuumStart: { maxVoices: 1 },
+  vacuumEnd: { maxVoices: 1 },
+  skillSelect: { minInterval: 0.05, maxVoices: 2 },
+  skillDenied: { minInterval: 0.2 },
+  weaponSwitch: { minInterval: 0.06, maxVoices: 2 },
 };
 
 /* ------------------------------------------------------------------ */
@@ -500,6 +505,7 @@ function subscribe(events: EventBus): void {
   subscribePhase3(events);
   subscribeUpgrade(events);
   subscribeDrive(events);
+  subscribeSkill(events);
 }
 
 /* ------------------------------------------------------------------ */
@@ -1037,6 +1043,50 @@ function subscribeUpgrade(events: EventBus): void {
     [523, 659, 784, 1046].forEach((f, i) => tone(x, t, { type: 'triangle', f: f * k, at: 0.2 + i * 0.065, dur: 0.24, gain: 0.12 }));
     tone(x, t, { type: 'sine', f: 2093 * k, at: 0.46, dur: 0.4, gain: 0.06 });
     tone(x, t, { type: 'sine', f: 180, f2: 360, at: 0.18, dur: 0.25, gain: 0.1 });
+  }));
+}
+
+/* ------------------------------------------------------------------ */
+/* スキル（バキューム）・武器の切り替え                                 */
+/* ------------------------------------------------------------------ */
+
+function subscribeSkill(events: EventBus): void {
+  // バキューム：空気ごと吸い込む「ゴォォッ」＋下がっていく吸引音＋ビリビリの放電。長さは吸い込む時間に合わせる
+  sub(events, 'vacuumStart', (p) => {
+    const d = Math.max(0.4, p.duration);
+    play('vacuumStart', d + 0.2, (x, t) => {
+      noise(x, t, { dur: d, gain: 0.22, attack: d * 0.35, filter: { type: 'bandpass', f: 280, f2: 2600, q: 1.1 } });
+      noise(x, t, { dur: d * 0.9, gain: 0.08, attack: 0.05, filter: { type: 'lowpass', f: 900, f2: 200, q: 0.7 } });
+      tone(x, t, { type: 'sawtooth', f: 900, f2: 110, dur: d, gain: 0.07, attack: 0.04, filter: { type: 'lowpass', f: 1800, f2: 500 } });
+      tone(x, t, { type: 'sine', f: 70, f2: 50, dur: d, gain: 0.16, attack: 0.1 });
+      const n = Math.round(d / 0.11);
+      for (let i = 0; i < n; i++) {
+        noise(x, t, { at: 0.05 + i * 0.11 + Math.random() * 0.04, dur: 0.035, gain: 0.07, filter: { type: 'highpass', f: 3500 + Math.random() * 2000 } });
+      }
+    });
+  });
+  // 吸い終わり：ゴクッと飲み込む上昇音（吸えたら明るいチャイム）
+  sub(events, 'vacuumEnd', (p) => play('vacuumEnd', 0.5, (x, t) => {
+    tone(x, t, { type: 'sine', f: 180, f2: 760, dur: 0.16, gain: 0.2, attack: 0.004 });
+    noise(x, t, { dur: 0.12, gain: 0.1, filter: { type: 'bandpass', f: 1800, f2: 400, q: 1.5 } });
+    if (p.gained > 0) {
+      tone(x, t, { type: 'triangle', f: 1046, at: 0.12, dur: 0.22, gain: 0.1 });
+      tone(x, t, { type: 'triangle', f: 1568, at: 0.2, dur: 0.28, gain: 0.08 });
+    }
+  }));
+  sub(events, 'skillSelect', () => play('skillSelect', 0.08, (x, t) => {
+    tone(x, t, { type: 'sine', f: 980, f2: 1320, dur: 0.06, gain: 0.08, attack: 0.002 });
+  }));
+  sub(events, 'skillDenied', () => play('skillDenied', 0.22, (x, t) => {
+    tone(x, t, { type: 'square', f: 170, f2: 130, dur: 0.09, gain: 0.06, filter: { type: 'lowpass', f: 800 } });
+    tone(x, t, { type: 'square', f: 160, f2: 120, at: 0.11, dur: 0.09, gain: 0.06, filter: { type: 'lowpass', f: 800 } });
+  }));
+  // 武器の切り替え：ガチャッ（機械音2つ）
+  sub(events, 'weaponSwitch', () => play('weaponSwitch', 0.16, (x, t) => {
+    noise(x, t, { dur: 0.04, gain: 0.14, filter: { type: 'bandpass', f: 2400, q: 3 } });
+    tone(x, t, { type: 'triangle', f: 520, f2: 380, dur: 0.05, gain: 0.08 });
+    noise(x, t, { at: 0.08, dur: 0.05, gain: 0.16, filter: { type: 'bandpass', f: 1500, q: 3 } });
+    tone(x, t, { type: 'triangle', f: 760, at: 0.08, dur: 0.06, gain: 0.08 });
   }));
 }
 

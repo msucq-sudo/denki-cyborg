@@ -232,7 +232,7 @@ describe('GUN（ピストル）', () => {
 
   it('Lv3 の単発は Lv3 のダメージと消費電力', () => {
     setLv('gun.pistol', 3);
-    expect(shoot()).toBe(26);
+    expect(shoot()).toBe(13);
     expect(world.player.energy).toBe(100 - 7);
   });
 
@@ -249,7 +249,7 @@ describe('GUN（ピストル）', () => {
     input.endFrame();
     const charged = world.projectiles.filter((p) => p.owner === 'player' && p.charged);
     expect(charged.length).toBe(1);
-    expect(charged[0].damage).toBe(82);
+    expect(charged[0].damage).toBe(41);
   });
 
   it('chargeDamage は最大値を渡せる（省略は GUN.chargeMaxDamage）', () => {

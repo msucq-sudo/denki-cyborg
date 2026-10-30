@@ -394,6 +394,58 @@ html, body { margin: 0; height: 100%; overflow: hidden; background: #0d1420; }
 .wslot-name { font-size: 11px; font-weight: 700; color: #e8f3ff; }
 .wslot.locked .wslot-name { color: var(--hud-mute); }
 .wslot-sub { font-size: 9px; }
+@keyframes wpnSwap { 0% { transform: translateY(-4px); box-shadow: 0 0 22px rgba(46, 230, 255, 0.7); } 100% { transform: none; } }
+.wpn.pop { animation: wpnSwap 0.25s ease-out; }
+
+/* 右下（武器の上）：選択中のスキルとクールダウン */
+.skill-box { position: fixed; right: 16px; bottom: 136px; min-width: 150px; }
+.sk-row { display: flex; gap: 8px; align-items: center; }
+.sk-icon { width: 34px; height: 34px; flex: none; }
+.sk-icon svg { width: 100%; height: 100%; display: block; }
+.sk-info { flex: 1; min-width: 0; }
+.sk-name { font-size: 12px; font-weight: 800; color: #e8f3ff; }
+.sk-state { font-size: 10px; color: var(--hud-mute); font-variant-numeric: tabular-nums; }
+.sk-bar { height: 4px; border-radius: 2px; background: rgba(143, 166, 207, 0.25); margin-top: 3px; overflow: hidden; }
+.sk-fill { height: 100%; width: 0; background: var(--hud-cyan); }
+.skill-box.ready { border-color: var(--hud-cyan); }
+.skill-box.ready .sk-state { color: var(--hud-cyan); font-weight: 700; }
+.skill-box.active { box-shadow: 0 0 18px rgba(46, 230, 255, 0.65); }
+.skill-box.active .sk-icon { animation: skSpin 0.5s linear infinite; }
+@keyframes skSpin { to { transform: rotate(-360deg); } }
+.skill-box.locked { opacity: 0.55; }
+.skill-box.locked .sk-name { color: var(--hud-mute); }
+
+/* 画面中央：スキル選択のリング（十字キー下を押している間） */
+.skill-wheel {
+  position: fixed; left: 50%; top: 50%; width: 300px; height: 300px; transform: translate(-50%, -50%);
+  animation: swIn 0.12s ease-out;
+}
+@keyframes swIn { from { opacity: 0; transform: translate(-50%, -50%) scale(0.85); } }
+.sw-svg { position: absolute; inset: 0; width: 100%; height: 100%; overflow: visible; }
+.sw-seg { fill: rgba(10, 19, 48, 0.78); stroke: rgba(46, 230, 255, 0.45); stroke-width: 1.2; transition: fill 0.1s; }
+.sw-seg.locked { fill: rgba(10, 19, 48, 0.55); stroke: rgba(143, 166, 207, 0.3); }
+.sw-seg.sel { fill: rgba(46, 230, 255, 0.28); stroke: var(--hud-cyan); stroke-width: 2; }
+.sw-seg.hover { stroke: var(--hud-yellow); stroke-width: 2.4; }
+.sw-seg.hover.locked { fill: rgba(255, 107, 138, 0.18); stroke: var(--hud-coral); }
+.sw-label {
+  position: absolute; transform: translate(-50%, -50%); text-align: center; width: 76px;
+  display: flex; flex-direction: column; align-items: center; gap: 2px;
+}
+.sw-icon { width: 32px; height: 32px; }
+.sw-icon svg { width: 100%; height: 100%; display: block; }
+.sw-name { font-size: 11px; font-weight: 800; color: #e8f3ff; text-shadow: 0 0 6px rgba(0, 0, 0, 0.8); }
+.sw-label.locked .sw-name { color: var(--hud-mute); }
+.sw-label.sel .sw-name { color: var(--hud-cyan); }
+.sw-ptr {
+  position: absolute; left: 50%; top: 50%; width: 12px; height: 12px; border-radius: 50%;
+  background: var(--hud-yellow); box-shadow: 0 0 10px var(--hud-yellow);
+}
+.sw-center {
+  position: absolute; left: 50%; top: 50%; transform: translate(-50%, -50%); width: 120px; text-align: center;
+}
+.sw-c-name { font-size: 13px; font-weight: 800; color: var(--hud-cyan); text-shadow: 0 0 8px rgba(46, 230, 255, 0.6); margin-top: 22px; }
+.sw-c-name.locked { color: var(--hud-mute); text-shadow: none; }
+.sw-c-hint { font-size: 9px; color: var(--hud-mute); margin-top: 2px; }
 
 /* 右上：ミニマップ */
 .tr { position: fixed; top: 16px; right: 16px; display: flex; gap: 10px; align-items: flex-start; }
@@ -487,6 +539,8 @@ html, body { margin: 0; height: 100%; overflow: hidden; background: #0d1420; }
   .bleft { width: 46vw; left: 12px; bottom: 12px; }
   .wpn { right: 12px; bottom: 12px; }
   .wslot { width: 56px; height: 66px; }
+  .skill-box { right: 12px; bottom: 112px; min-width: 120px; }
+  .skill-wheel { width: 240px; height: 240px; }
   .funcs { left: 12px; top: 12px; }
   .tr { top: 12px; right: 12px; }
   .comm { top: 120px; left: 12px; }

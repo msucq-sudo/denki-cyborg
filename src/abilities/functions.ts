@@ -5,9 +5,9 @@ import { hasLineOfSight } from '../core/collision';
 import { drainEnergy } from '../core/energy';
 import { isTargetable, weakPointWorld } from '../core/enemyUtil';
 
-/** スカウター・ジェットパックは最初から使える基本機能。オートエイムは world.unlocks で解放してから */
+/** スカウター（常にON）・ジェットパックは最初から使える基本機能。オートエイムは world.unlocks で解放してから */
 type FnName = 'scouter' | 'autoAim';
-const KEYS: [string, FnName][] = [['Digit1', 'scouter'], ['Digit2', 'autoAim']];
+const KEYS: [string, FnName][] = [['Digit2', 'autoAim']];
 /** ON の間じゅう常時消費するもの（オートエイムは射撃時のみ消費するので0） */
 const DRAIN: Record<FnName, number> = {
   scouter: FUNCTIONS.scouter.drainPerSec,
@@ -112,7 +112,8 @@ export function updateFunctions(world: World, dt: number): void {
   const st = states.get(world);
   const f = world.functions;
 
-  // ---- トグル ----
+  // ---- トグル（スカウターは常にON。切り替え操作なし） ----
+  f.scouter = true;
   for (const [key, name] of KEYS) if (world.input.pressed(key)) toggle(world, name);
 
   // ---- 消費・自動OFF ----

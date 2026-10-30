@@ -91,6 +91,12 @@ const NEW: Array<[keyof GameEvents, any, string]> = [
   ['carCaught', { pos: v }, 'carCaught'],
   ['slowmo', { on: true }, 'slowmo'],
   ['slowmo', { on: false }, 'slowmo'],
+  // スキル・武器の切り替え
+  ['vacuumStart', { pos: v, radius: 8, duration: 1.5 }, 'vacuumStart'],
+  ['vacuumEnd', { pos: v, gained: 20, count: 2 }, 'vacuumEnd'],
+  ['skillSelect', { id: 'vacuum' }, 'skillSelect'],
+  ['skillDenied', { id: 'vacuum', reason: 'cooldown' }, 'skillDenied'],
+  ['weaponSwitch', { id: 'shotgun' }, 'weaponSwitch'],
 ];
 
 describe('sfx 新規イベントのハンドラ', () => {

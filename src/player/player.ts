@@ -293,7 +293,7 @@ function updateCamera(world: World, s: PState, dt: number): void {
   );
   const len = _off.length();
   _end.copy(_head).add(_off);
-  const t = raycastLevel(world.colliders, _head, _end);
+  const t = raycastLevel(world.colliders, _head, _end, { camera: true });
   let target = 1;
   if (t !== null) target = Math.max(0.12, t - 0.25 / len);
   if (target < s.camS || dt === 0) s.camS = target;
@@ -481,6 +481,11 @@ export function getAbsorbArmRoot(world: World, out: THREE.Vector3): boolean {
 }
 
 /** 向き（体）を即座に合わせる。演出（ベッドから起きた後など）で体の向きが飛ばないように */
+/** 主人公の見た目（関節）。ムービーで updatePlayer のあとに関節を上書きするときに使う */
+export function getPlayerVisual(world: World): PlayerVisual {
+  return st(world).vis;
+}
+
 export function setPlayerFacing(world: World, yaw: number): void {
   const s = st(world);
   s.facing = yaw;

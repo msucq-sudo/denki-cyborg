@@ -108,7 +108,7 @@ export function currentGrapple(world: World): GrapplePoint | null { return gs(wo
 
 /** 撃てる状態か（待ち時間・電力） */
 export function canGrapple(world: World): boolean {
-  return gs(world).phase === 'none' && gs(world).cooldown <= 0 && world.player.energy >= GRAPPLE.cost;
+  return GRAPPLE.enabled && gs(world).phase === 'none' && gs(world).cooldown <= 0 && world.player.energy >= GRAPPLE.cost;
 }
 
 // ---------------------------------------------------------------- 照準・命中

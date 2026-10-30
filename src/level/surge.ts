@@ -22,7 +22,8 @@ import { showPrompt } from './floor1';
 import { buildCity, FOG_COLOR, SUN_DIR, WALK } from './surge/city';
 import { buildCompound } from './surge/compound';
 import { buildLab } from './surge/lab';
-import { COMPOUND, GARAGE, ROAD, STAIRS, type SurgeStart } from './surge/layout';
+import { COMPOUND, ENTRANCE, GARAGE, ROAD, STAIRS, type SurgeStart } from './surge/layout';
+import { setPlayerFacing } from '../player/player';
 
 export const SURGE_EXPOSURE = 1.05;
 /** シャッターが巻き上がる時間（秒） */
@@ -54,6 +55,11 @@ interface Runtime {
   /** 開始地点が 'drive'：最初のフレームで車に乗る（initPlayer より後に呼ぶ必要があるため） */
   autoBoard: boolean;
   startAt: SurgeStart;
+  /** 激突の演出が終わって車を降り、建物の外を歩いている */
+  walkOut: boolean;
+  /** 建物の左側の入口の目印（降りるまで隠す） */
+  entrance: THREE.Group;
+  entranceLight: THREE.PointLight;
 }
 const runtimes = new WeakMap<World, Runtime>();
 
@@ -121,7 +127,12 @@ export function buildSurge(world: World): void {
   };
 
   const state: SurgeState = { powered: false, open: 0, nearCar: false, boarded: false, via: null };
-  const rt: Runtime = { state, lab, city, comp, sun, clock: 0, promptOn: false, doorEmitted: false, autoBoard: false, startAt };
+  const entrance = buildEntranceMarker();
+  scene.add(entrance.group);
+  const rt: Runtime = {
+    state, lab, city, comp, sun, clock: 0, promptOn: false, doorEmitted: false, autoBoard: false, startAt,
+    walkOut: false, entrance: entrance.group, entranceLight: entrance.light,
+  };
   runtimes.set(world, rt);
   world.level.data.surgeState = state;
 
@@ -259,6 +270,11 @@ export function updateSurge(world: World, dt: number): void {
   // ---- 運転・演出（車担当）
   updateDrive(world, dt);
 
+  // ---- 激突の演出が終わった：車を降りて、建物の左側の入口まで歩く → 入ったら収容所 1階へ
+  const dd = driveOf(world);
+  if (dd && dd.phase === 'done' && dd.result === 'success' && !rt.walkOut) beginWalkOut(world, rt, dd);
+  if (rt.walkOut) updateWalkOut(world, rt, dd, t);
+
   // ---- 収容所のサーチライトなど
   rt.comp.update(t);
 
@@ -290,3 +306,88 @@ function boardCar(world: World, rt: Runtime): void {
   world.level.data.objective = '西へ！ 判定地点まで 300km/h 以上を出せ';
   startDrive(world);
 }
+
+// ---------------------------------------------------------------- 激突のあと：建物の外を歩く
+/** 入口の目印：緑の光・扉の枠・光の柱（降りるまで隠す） */
+function buildEntranceMarker(): { group: THREE.Group; light: THREE.PointLight } {
+  const g = new THREE.Group();
+  g.position.set(ENTRANCE.x, 0, ENTRANCE.z);
+  g.visible = false;
+  const frame = new THREE.MeshBasicMaterial({ color: new THREE.Color(0x3dff7a).multiplyScalar(1.6) });
+  const door = new THREE.Mesh(new THREE.BoxGeometry(0.3, 4.4, ENTRANCE.w - 0.4), new THREE.MeshBasicMaterial({ color: 0x0b1a12 }));
+  door.position.set(0.7, 2.2, 0);
+  g.add(door);
+  for (const sz of [-1, 1]) {
+    const post = new THREE.Mesh(new THREE.BoxGeometry(0.4, 4.8, 0.3), frame);
+    post.position.set(0.8, 2.4, sz * (ENTRANCE.w / 2));
+    g.add(post);
+  }
+  const top = new THREE.Mesh(new THREE.BoxGeometry(0.4, 0.3, ENTRANCE.w + 0.3), frame);
+  top.position.set(0.8, 4.8, 0);
+  g.add(top);
+  const beam = new THREE.Mesh(new THREE.CylinderGeometry(0.6, 1.4, 40, 12, 1, true),
+    new THREE.MeshBasicMaterial({ color: 0x5aff9a, transparent: true, opacity: 0.12, depthWrite: false, blending: THREE.AdditiveBlending, side: THREE.DoubleSide }));
+  beam.position.set(3, 20, 0);
+  g.add(beam);
+  const ring = new THREE.Mesh(new THREE.RingGeometry(1.6, 2.1, 32), new THREE.MeshBasicMaterial({ color: 0x3dff7a, transparent: true, opacity: 0.5, depthWrite: false }));
+  ring.rotation.x = -Math.PI / 2;
+  ring.position.set(3, 0.05, 0);
+  g.add(ring);
+  const light = new THREE.PointLight(0x5aff9a, 0, 18, 2);
+  light.position.set(3, 3.5, 0);
+  g.add(light);
+  return { group: g, light };
+}
+
+function beginWalkOut(world: World, rt: Runtime, d: DriveState): void {
+  rt.walkOut = true;
+  // 車担当の仮の文言は消す（このステージで続きが遊べる）
+  world.toasts = world.toasts.filter((t) => !t.text.includes('続きは今後'));
+  const p = world.player;
+  // 激突した車の南側（入口の側）に降りる
+  p.pos.set(d.pos.x + 1.2, 0, d.pos.z + 3.4);
+  p.vel.set(0, 0, 0);
+  p.pitch = 0;
+  const dx = ENTRANCE.x + 4 - p.pos.x, dz = ENTRANCE.z - p.pos.z;
+  p.yaw = Math.atan2(-dx, -dz);
+  setPlayerFacing(world, p.yaw);
+  p.root.visible = true;
+  p.invuln = Math.max(p.invuln, 1);
+  world.input.locked = false;
+  d.car.driver.visible = false;
+  // 車の当たり判定（降りた後はぶつかる）
+  d.car.root.updateMatrixWorld(true);
+  const bb = new THREE.Box3().setFromObject(d.car.root);
+  if (!bb.isEmpty()) {
+    bb.expandByScalar(-0.15);
+    world.colliders.push({ min: bb.min.clone().setY(0), max: bb.max.clone(), active: true, tag: 'crashedCar' });
+  }
+  // 柵は突き破られた
+  rt.comp.fenceCollider.active = false;
+  // 南の庭へ出られるように：道の南の見えない壁（西の部分）を柵より東だけにし、庭の外周に壁を足す
+  const jz = ROAD.junctionZ, half = ROAD.width / 2 + ROAD.sidewalk;
+  for (const c of world.colliders) {
+    if (c.tag === 'roadWall' && Math.abs(c.min.x - COMPOUND.wallX) < 0.01 && Math.abs(c.min.z - (jz + half)) < 0.01) c.min.x = COMPOUND.fenceX + 0.5;
+  }
+  const col = (x0: number, x1: number, z0: number, z1: number) => world.colliders.push({ min: new THREE.Vector3(x0, -4, z0), max: new THREE.Vector3(x1, 45, z1), active: true, tag: 'yardWall' });
+  col(COMPOUND.fenceX - 0.5, COMPOUND.fenceX + 0.5, jz + half, ENTRANCE.yardZ1);          // 庭の東（柵の線）
+  col(COMPOUND.wallX - 6, COMPOUND.fenceX + 0.5, ENTRANCE.yardZ1, ENTRANCE.yardZ1 + 1);  // 庭の南
+  rt.entrance.visible = true;
+  world.level.data.objective = '建物の左側（南）の入口から中へ入れ';
+  toast(world, '車を降りた。建物の左側の入口から中へ入ろう', 5);
+  world.events.emit('doorOpen', { pos: new THREE.Vector3(ENTRANCE.x + 1, 2, ENTRANCE.z) });
+}
+
+function updateWalkOut(world: World, rt: Runtime, d: DriveState | undefined, t: number): void {
+  if (d) d.car.driver.visible = false;  // updateDrive が毎フレーム表示に戻すので、降りた後は隠し直す
+  rt.entranceLight.intensity = 26 + 10 * Math.sin(t * 3);
+  const p = world.player;
+  if (world.level.data.nextLevel || p.hp <= 0) return;
+  if (p.pos.x < ENTRANCE.x + ENTRANCE.reach && Math.abs(p.pos.z - ENTRANCE.z) < ENTRANCE.w / 2 && p.pos.y < 3) {
+    toast(world, 'サージ収容所の中へ', 2.5);
+    world.level.data.nextLevel = { level: 'camp1' };
+  }
+}
+
+/** テスト用：激突のあとに歩いているか */
+export function isWalkingOut(world: World): boolean { return !!runtimes.get(world)?.walkOut; }

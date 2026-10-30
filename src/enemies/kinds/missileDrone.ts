@@ -21,7 +21,7 @@ export const MISSILE_DRONE = {
   /** 装填：斉射後 reloadWait 秒たってから、1本ずつ reloadStagger 秒ずらして reloadTime 秒かけて装填 */
   reloadWait: 0.7, reloadStagger: 0.35, reloadTime: 0.45,
   /** ミサイル */
-  missileHp: 15,           // 通常弾（GUN.tapDamage=20）1発で落ちる
+  missileHp: 8,            // 通常弾（GUN.tapDamage=10）1発で落ちる
   missileRadius: 0.32,
   launchSpeed: 5.5,        // 横へ開く初速
   homingDelay: 0.5,        // 開いてからホーミング開始まで

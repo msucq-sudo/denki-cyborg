@@ -32,7 +32,7 @@ export const CAMERA = {
 export const GUN = {
   /** タップ単発（ピストル：1発が重くて遅い） */
   tapCost: 8,
-  tapDamage: 20,
+  tapDamage: 10,
   tapInterval: 0.5,
   /** これ以上押し続けたら溜め開始（秒） */
   chargeThreshold: 0.18,
@@ -41,9 +41,9 @@ export const GUN = {
   /** 最大溜めまでに消費する電力の合計（溜め中に徐々に消費） */
   chargeCostTotal: 12,
   /** 最大溜めダメージ（効率 4/電力。単発は 2/電力） */
-  chargeMaxDamage: 48,
+  chargeMaxDamage: 24,
   /** 溜め最小ダメージ（溜め開始直後に離した場合） */
-  chargeMinDamage: 10,
+  chargeMinDamage: 5,
   bulletSpeed: 70,
   chargedBulletSpeed: 55,
   bulletLife: 1.5,
@@ -82,7 +82,39 @@ export const ABSORB = {
 };
 
 /** グラップル（吸収アームを足場の「フック」に刺して体を引き寄せる） */
+/** 高所のプレイヤーへ向かう敵の移動。enabled=false で従来どおり（地上から見上げるだけ） */
+export type TraverseMode = 'climb' | 'jet' | 'leap';
+export const TRAVERSE = {
+  enabled: true,
+  /** 敵種ごとの方法：climb=壁登り（重力無視）/ jet=ジェットパック / leap=大ジャンプ */
+  modes: {
+    // 近づいて戦う地上の敵は壁登り、遠くから撃つ敵はジェットパック
+    crawler: 'climb', walker: 'climb', redWalker: 'climb', heavyWalker: 'climb', heavy: 'climb', jumper: 'climb',
+    gunner: 'jet', beamer: 'jet', missile: 'jet', bomber: 'jet',
+  } as Partial<Record<string, TraverseMode>>,
+  /** プレイヤーの体の中心がこれ以上高いと動き出す（m） */
+  minRise: 2.4,
+  /** これより水平に離れていたら動かない */
+  range: 32,
+  /** 目標の高さまで残りこれ未満で到着（通常 AI に戻る） */
+  arriveRise: 0.6,
+  /** 登り・飛行にかけてよい時間 = これ + 高さ÷速さ×timeoutPerRise（高い所でも途中で諦めない） */
+  timeout: 6,
+  timeoutPerRise: 2.5,
+  cooldown: 2,
+  failCooldown: 5,
+  climbSpeedDefault: 3,
+  climbSpeed: { crawler: 6, walker: 2.6, redWalker: 2.8, heavyWalker: 2.4, heavy: 2.6, jumper: 3.4 } as Record<string, number>,
+  jetSpeed: 6.5,
+  /** 大ジャンプ：届く高さの上限、頂点の余裕、水平速度の上限 */
+  leapMaxRise: 9,
+  leapClear: 1.4,
+  leapMaxSpeed: 14,
+};
+
 export const GRAPPLE = {
+  /** false: グラップルを使えなくする（コードは残す） */
+  enabled: true,
   /** false: グラップルポイントだけに刺さる。true: 向きが合う壁・天井ならどこでも刺さる（レベルデザイン用の切替） */
   anySurface: true,
   /** anySurface：壁に刺さった点から上の縁までこの高さ以内なら、縁によじ登る（それ以上なら壁にぶら下がる） */
@@ -114,7 +146,7 @@ export const OVERLOAD = {
   /** 逆流中にプレイヤーが失う電力/秒 */
   energyPerSec: 25,
   explosionRadius: 6,
-  explosionDamage: 70,
+  explosionDamage: 30,
   /** 爆心からこの距離内にいるとプレイヤーも被弾 */
   selfDamageRadius: 3,
   selfDamage: 15,
@@ -142,31 +174,31 @@ export const ENEMIES: Record<EnemyKind, {
   /** 吸収アームで吸う速さの倍率（省略=1） */
   drainMul?: number;
 }> = {
-  drone:   { hp: 30,  speed: 4,   radius: 0.55, damage: 6,  attackInterval: 1.8, projectileSpeed: 18, weakMultiplier: 2, overloadCap: 12, sightRange: 28 },
-  crawler: { hp: 40,  speed: 6.5, radius: 0.6,  damage: 10, attackInterval: 1.0, projectileSpeed: 0,  weakMultiplier: 2, overloadCap: 14, sightRange: 24 },
-  gunner:  { hp: 70,  speed: 3,   radius: 0.7,  damage: 5,  attackInterval: 2.4, projectileSpeed: 22, weakMultiplier: 2, overloadCap: 22, sightRange: 32 },
-  heavy:   { hp: 180, speed: 3,   radius: 1.2,  damage: 22, attackInterval: 3.5, projectileSpeed: 0,  weakMultiplier: 3, overloadCap: 38, sightRange: 30 },
+  drone:   { hp: 30,  speed: 4,   radius: 0.55, damage: 3,  attackInterval: 1.8, projectileSpeed: 18, weakMultiplier: 2, overloadCap: 12, sightRange: 28 },
+  crawler: { hp: 40,  speed: 6.5, radius: 0.6,  damage: 5, attackInterval: 1.0, projectileSpeed: 0,  weakMultiplier: 2, overloadCap: 14, sightRange: 24 },
+  gunner:  { hp: 70,  speed: 3,   radius: 0.7,  damage: 2.5,  attackInterval: 2.4, projectileSpeed: 22, weakMultiplier: 2, overloadCap: 22, sightRange: 32 },
+  heavy:   { hp: 180, speed: 3,   radius: 1.2,  damage: 11, attackInterval: 3.5, projectileSpeed: 0,  weakMultiplier: 3, overloadCap: 38, sightRange: 30 },
   /** ウォーカー：ゆっくり近づきながら遠距離射撃（何も考えずに前進） */
-  walker:  { hp: 50,  speed: 1.6, radius: 0.7,  damage: 6,  attackInterval: 2.0, projectileSpeed: 16, weakMultiplier: 2, overloadCap: 18, sightRange: 30 },
+  walker:  { hp: 50,  speed: 1.6, radius: 0.7,  damage: 3,  attackInterval: 2.0, projectileSpeed: 16, weakMultiplier: 2, overloadCap: 18, sightRange: 30 },
   /** ヘビーウォーカー：突進＋踏みつけ電撃（範囲）。damage=踏みつけ */
-  heavyWalker: { hp: 220, speed: 2.2, radius: 1.3, damage: 18, attackInterval: 3.0, projectileSpeed: 0, weakMultiplier: 2.5, overloadCap: 42, sightRange: 30 },
+  heavyWalker: { hp: 220, speed: 2.2, radius: 1.3, damage: 9, attackInterval: 3.0, projectileSpeed: 0, weakMultiplier: 2.5, overloadCap: 42, sightRange: 30 },
   /** ミサイル溜めロボット：護衛を召喚→ミサイルを溜めて発射。damage=ミサイル1発、attackInterval=溜め時間 */
-  missile: { hp: 160, speed: 1.8, radius: 1.1,  damage: 16, attackInterval: 7.0, projectileSpeed: 11, weakMultiplier: 2.5, overloadCap: 34, sightRange: 34 },
+  missile: { hp: 160, speed: 1.8, radius: 1.1,  damage: 8, attackInterval: 7.0, projectileSpeed: 11, weakMultiplier: 2.5, overloadCap: 34, sightRange: 34 },
   /** 赤ウォーカー：ウォーカーの赤い版。ハッキングできる（吸収アームをつなぐとコード入力）。T3-C で調整 */
-  redWalker: { hp: 60, speed: 1.8, radius: 0.7, damage: 7, attackInterval: 1.8, projectileSpeed: 17, weakMultiplier: 2, overloadCap: 20, sightRange: 30 },
+  redWalker: { hp: 60, speed: 1.8, radius: 0.7, damage: 3.5, attackInterval: 1.8, projectileSpeed: 17, weakMultiplier: 2, overloadCap: 20, sightRange: 30 },
   /** ビーマー：遠距離で長く溜めて極太ビーム。体力が多い。damage=ビーム1発 */
-  beamer:  { hp: 240, speed: 2,   radius: 1.1,  damage: 30, attackInterval: 3.5, projectileSpeed: 0,  weakMultiplier: 3, overloadCap: 45, sightRange: 42 },
+  beamer:  { hp: 240, speed: 2,   radius: 1.1,  damage: 15, attackInterval: 3.5, projectileSpeed: 0,  weakMultiplier: 3, overloadCap: 45, sightRange: 42 },
   /** リーチ（吸収マン）：とても小さい。吸収アームでプレイヤーの電力を吸う。つながれると逃げる */
   leech:   { hp: 30,  speed: 5,   radius: 0.32, damage: 0,  attackInterval: 3.0, projectileSpeed: 0,  weakMultiplier: 2, overloadCap: 10, sightRange: 26 },
   /** ジャンパー：大きな頭の二足歩行。ジャンプでゆっくり移動し、着地の瞬間に突き。頭（核）が開いている間しか攻撃も吸収も効かない。speed=1回の跳躍の水平速度の上限、attackInterval=着地から次の跳躍までの周期。T3-D で調整 */
-  jumper:  { hp: 120, speed: 3.2, radius: 0.95, damage: 16, attackInterval: 2.5, projectileSpeed: 0,  weakMultiplier: 2.5, overloadCap: 30, sightRange: 30 },
+  jumper:  { hp: 120, speed: 3.2, radius: 0.95, damage: 8, attackInterval: 2.5, projectileSpeed: 0,  weakMultiplier: 2.5, overloadCap: 30, sightRange: 30 },
   /** ミサイルドローン：4発のミサイルを放つドローン。ミサイルは撃つかアームを当てると消せる。damage=ミサイル1発。T3-E で調整 */
-  missileDrone: { hp: 45, speed: 3.5, radius: 0.7, damage: 9, attackInterval: 4.5, projectileSpeed: 9, weakMultiplier: 2, overloadCap: 14, sightRange: 32 },
+  missileDrone: { hp: 45, speed: 3.5, radius: 0.7, damage: 4.5, attackInterval: 4.5, projectileSpeed: 9, weakMultiplier: 2, overloadCap: 14, sightRange: 32 },
   /** ボンバー：小さく丸い。電気の球を投げ、着弾で爆発（中心ほど大ダメージ）。damage=爆心ダメージ。T3-F で調整 */
-  bomber:  { hp: 35,  speed: 3.2, radius: 0.45, damage: 22, attackInterval: 2.4, projectileSpeed: 12, weakMultiplier: 2, overloadCap: 12, sightRange: 26 },
+  bomber:  { hp: 35,  speed: 3.2, radius: 0.45, damage: 11, attackInterval: 2.4, projectileSpeed: 12, weakMultiplier: 2, overloadCap: 12, sightRange: 26 },
   /** 赤ドローン：ドローンの赤い版。ハッキングできる。つなぐと吸収が遅くなる(HACK.drainMul)ので、コード入力の時間が取れるよう体力は多め */
-  redDrone: { hp: 60, speed: 4,   radius: 0.55, damage: 6,  attackInterval: 1.8, projectileSpeed: 18, weakMultiplier: 2, overloadCap: 14, sightRange: 28 },
-  boss:    { hp: 900, speed: 2.5, radius: 2.4,  damage: 6,  attackInterval: 2.0, projectileSpeed: 16, weakMultiplier: 2.5, overloadCap: 60, sightRange: 60 },
+  redDrone: { hp: 60, speed: 4,   radius: 0.55, damage: 3,  attackInterval: 1.8, projectileSpeed: 18, weakMultiplier: 2, overloadCap: 14, sightRange: 28 },
+  boss:    { hp: 900, speed: 2.5, radius: 2.4,  damage: 3,  attackInterval: 2.0, projectileSpeed: 16, weakMultiplier: 2.5, overloadCap: 60, sightRange: 60 },
 };
 
 /**
@@ -201,6 +233,41 @@ export const BOSS = {
   /** 逆流満タン時：爆発せずショート（スタン＋大ダメージ） */
   shortStun: 4,
   shortDamage: 150,
+};
+
+/**
+ * ボス「ジェネレーター」の行動の調整値（enemies/boss.ts が読む）。
+ * 仲間召喚：summonWindup 秒の「呼ぶ動作」（体が光って浮き上がり、出現地点に光の柱が立つ）のあとに雑魚が出る。
+ * 突進：第2形態のみ。chargeTelegraph 秒の予告（赤い線＋体が赤く光る）→ chargeSpeed で chargeTime 秒まっすぐ飛ぶ
+ */
+export const GENERATOR = {
+  /** 呼ぶ動作の長さ（秒） */
+  summonWindup: 1.3,
+  /** 既定の召喚（第1形態 / 第2形態）。レベルが e.ai.summonKinds1 / summonKinds2 で上書きできる */
+  summonKinds1: ['drone', 'drone'] as EnemyKind[],
+  summonKinds2: ['crawler', 'crawler'] as EnemyKind[],
+  /** 突進（第2形態） */
+  chargeEvery: 10,
+  chargeFirst: 6,
+  chargeTelegraph: 1.0,
+  chargeSpeed: 20,
+  chargeTime: 0.95,
+  chargeDamage: 14,
+};
+
+/** サージ収容所 2階（?level=camp2。level/camp2.ts）。ボス戦 */
+export const CAMP2 = {
+  /** 扉を調べられる距離（m） */
+  doorReach: 2.6,
+  /** 檻の中の住民の数 */
+  residents: 64,
+  /** 檻の扉が開く時間（秒） */
+  doorOpenTime: 2.0,
+  /** ボスが倒れてから扉が開き始めるまで（秒）。爆発の演出のあと */
+  openDelay: 3.2,
+  /** ジェネレーターが呼ぶ雑魚（第1形態 / 第2形態）。図鑑 No.1〜11 から */
+  summon1: ['drone', 'walker'] as EnemyKind[],
+  summon2: ['crawler', 'redWalker', 'drone'] as EnemyKind[],
 };
 
 /** 閉じ込め戦の演出。enabled=false で赤い警報照明とサイレンを両方止める（ドアの開閉はそのまま） */
@@ -339,4 +406,71 @@ export const HACK = {
   jamSpeedMul: 0.5,
   /** 味方でいる時間 */
   allyTime: 20,
+};
+
+/**
+ * バキューム（スキル。world.unlocks.vacuum で解放）。発動すると、自分を中心とした円の中にいる敵全員から
+ * duration 秒かけて電力（敵HP）を吸い取り、自分の電力にする。吸収アーム（ABSORB）と同じく drainEnemy で吸う
+ */
+export const VACUUM = {
+  /** 吸い込む円の半径（水平距離。敵の半径ぶんは内側に入っていれば届く）m */
+  radius: 8,
+  /** 上下の届く範囲（プレイヤーの体の中心から）m */
+  height: 4,
+  /** 吸い込み続ける時間（秒） */
+  duration: 1.5,
+  /** 1体あたり毎秒吸う敵HP。duration と掛けて1体から最大 36（ドローン・ボマーは吸い切れる） */
+  drainPerSec: 24,
+  /** 吸った量のうちプレイヤー電力になる割合（吸収アームの 0.65 より少し低い。まとめて吸える分） */
+  conversion: 0.5,
+  /** 1回で得られる電力の上限 */
+  maxGain: 60,
+  /** 吸い尽くした敵は倒れる（吸収アームと同じ。false なら HP1 で止める） */
+  canKill: true,
+  /** 吸い尽くして倒した1体ごとのボーナス電力（吸収アームの finishBonus 8 の半分） */
+  finishBonus: 4,
+  /** 発動のための電力（0=無料） */
+  cost: 0,
+  /** 再使用までの時間（秒）。発動した瞬間から数える */
+  cooldown: 14,
+};
+
+/**
+ * 味方（ハッキングした敵）と吸収アームをつなぐ（level.data.allyArm が true のステージだけ）。
+ * 逆流ボタン（F）を押している間は送電＝味方の体力を回復（ショートはしない）、離している間は味方から吸収
+ */
+export const ALLY_LINK = {
+  /** 送電で味方に入る体力 ＝ 使った電力 × この倍率 */
+  feedMul: 1.5,
+  /** 吸収で味方の体力がこの割合まで減ったら、それ以上は吸わない（止まってしまわないように） */
+  drainFloor: 0.15,
+  /** 吸う速さの倍率（敵から吸う速さに対して） */
+  drainMul: 0.6,
+};
+
+/** サージ収容所 1階（level/camp1.ts） */
+export const CAMP1 = {
+  exposure: 1.1,
+  /** セキュリティキーの数（そろうと C の上の青い扉が開く） */
+  keysNeeded: 2,
+  /** 脆い壁：ひびの段階の数（この段階まではひびが入るだけ） */
+  crackStages: 4,
+  /** 通常弾1発で進むひび／溜め撃ち（最大未満）で進むひび */
+  crackPerShot: 1,
+  crackPerCharged: 2,
+  /** 溜めがこれ以上（0..1）なら壁が壊れる */
+  breakCharge: 0.95,
+  /** レーザー網の電力源1つあたりの電力 */
+  sourceAmount: 18,
+  /** レーザー網に触れたときのダメージと、次に受けるまでの間隔（秒） */
+  laserDamage: 6,
+  laserInterval: 0.6,
+  /** 赤ウォーカーの案内：G に入ったら隠し通路の下へ歩く速さの倍率・到着とみなす距離 */
+  guideArrive: 1.2,
+  /** 床のハッチが開くのにかかる時間（秒） */
+  hatchTime: 1.2,
+  /** 中ボス戦：2つ目の波を出す、1つ目の波の残り数 */
+  bossWave2At: 2,
+  /** 実ライトを割り当てる天井灯の数 */
+  lampSlots: 8,
 };

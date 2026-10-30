@@ -38,6 +38,7 @@ export interface Floor1State {
   lockdown: boolean;
 }
 interface Runtime {
+  world: World;
   plan: Plan;
   vis: Floor1Visuals;
   state: Floor1State;
@@ -58,6 +59,8 @@ interface Runtime {
   inCarT: number;
   warned: boolean;
   padRemain: number[];
+  /** pad remaining の保存しきい値。消費中の毎フレーム書き込みを避ける */
+  padSaveMarks: number[];
   roomSeen: boolean[];
   /** SE用の状態 */
   promptOn: boolean;
@@ -70,6 +73,172 @@ interface Runtime {
   powerSocketOn: boolean;
 }
 const runtimes = new WeakMap<World, Runtime>();
+
+type FightState = Floor1State['fights'][string];
+interface Floor1Memo {
+  v: 1;
+  player: { x: number; y: number; z: number; yaw: number; pitch: number };
+  powered: boolean;
+  powerVia: Floor1State['powerVia'];
+  powerT: number;
+  gears: number[];
+  kits: number[];
+  fights: Record<string, FightState>;
+  gates: Record<string, boolean>;
+  gateWants: Record<string, boolean>;
+  sideVisited: boolean;
+  passedExit: boolean;
+  padRemain: number[];
+  roomSeen: boolean[];
+  doorOpen: number;
+  cleared: boolean;
+}
+
+/** 研究所1階の再開データ。World や Three.js オブジェクトを含めず JSON 化できる形にする。 */
+export function getFloor1Memo(world: World): unknown | null {
+  const rt = runtimes.get(world);
+  if (!rt) return null;
+  const gearIds = rt.vis.gears.flatMap((g, i) => g.taken ? [i] : []);
+  const kitIds = rt.plan.kits.flatMap((k, i) => rt.vis.kits.some((live) => live.x === k.x && live.y === k.y && live.z === k.z) ? [] : [i]);
+  return {
+    v: 1,
+    player: { x: world.player.pos.x, y: world.player.pos.y, z: world.player.pos.z, yaw: world.player.yaw, pitch: world.player.pitch },
+    powered: rt.state.powered,
+    powerVia: rt.state.powerVia,
+    powerT: rt.state.powerT,
+    gears: gearIds,
+    kits: kitIds,
+    fights: { ...rt.state.fights },
+    gates: { ...rt.state.gates },
+    gateWants: Object.fromEntries(rt.want),
+    sideVisited: rt.sideVisited,
+    passedExit: rt.passedExit,
+    padRemain: [...rt.padRemain],
+    roomSeen: [...rt.roomSeen],
+    doorOpen: rt.state.doorOpen,
+    cleared: rt.state.cleared,
+  } satisfies Floor1Memo;
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return !!value && typeof value === 'object' && !Array.isArray(value);
+}
+function finite(value: unknown): value is number { return typeof value === 'number' && Number.isFinite(value); }
+function sameKeys(value: Record<string, unknown>, keys: string[]): boolean {
+  const got = Object.keys(value).sort();
+  return got.length === keys.length && got.every((key, i) => key === [...keys].sort()[i]);
+}
+
+/** buildFloor1 / buildFloor1Revisit と initPlayer の後に呼ぶ。壊れた memo はそのまま無視する。 */
+export function restoreFloor1Memo(world: World, value: unknown): void {
+  const rt = runtimes.get(world);
+  if (!rt || !isRecord(value) || value.v !== 1 || !isRecord(value.player)) return;
+  const m = value as unknown as Floor1Memo;
+  const ids = rt.plan.zones.map((z) => z.id);
+  const gateIds = rt.plan.gates.map((g) => g.id);
+  const p = m.player;
+  const inBounds = finite(p.x) && finite(p.y) && finite(p.z)
+    && finite(p.yaw) && finite(p.pitch)
+    && Math.abs(p.x) < 300 && Math.abs(p.z) < 300 && p.y >= -10 && p.y < 80;
+  const fightsOk = isRecord(m.fights) && sameKeys(m.fights, ids)
+    && ids.every((id) => m.fights[id] === 'idle' || m.fights[id] === 'active' || m.fights[id] === 'done');
+  const gatesOk = isRecord(m.gates) && sameKeys(m.gates, gateIds) && gateIds.every((id) => typeof m.gates[id] === 'boolean');
+  const wantsOk = isRecord(m.gateWants) && sameKeys(m.gateWants, gateIds) && gateIds.every((id) => typeof m.gateWants[id] === 'boolean');
+  const indicesOk = (list: unknown, length: number): list is number[] => Array.isArray(list)
+    && list.every((i) => Number.isInteger(i) && i >= 0 && i < length)
+    && new Set(list).size === list.length;
+  const numericArrayOk = (list: unknown, length: number, min: number, max: number): list is number[] => Array.isArray(list)
+    && list.length === length && list.every((n) => finite(n) && n >= min && n <= max);
+  const booleanArrayOk = (list: unknown, length: number): list is boolean[] => Array.isArray(list)
+    && list.length === length && list.every((item) => typeof item === 'boolean');
+  const flagsOk = typeof m.powered === 'boolean'
+    && (m.powerVia === null || m.powerVia === 'shot' || m.powerVia === 'arm')
+    && (m.powered ? m.powerVia !== null : m.powerVia === null)
+    && finite(m.powerT) && m.powerT >= 0 && m.powerT < 1e6
+    && typeof m.sideVisited === 'boolean' && typeof m.passedExit === 'boolean'
+    && finite(m.doorOpen) && m.doorOpen >= 0 && m.doorOpen <= 1
+    && typeof m.cleared === 'boolean';
+  if (!inBounds || !fightsOk || !gatesOk || !wantsOk || !flagsOk
+      || !indicesOk(m.gears, rt.vis.gears.length) || !indicesOk(m.kits, rt.plan.kits.length)
+      || !numericArrayOk(m.padRemain, rt.plan.pads.length, 0, LEVEL.chargePadCapacity)
+      || !booleanArrayOk(m.roomSeen, rt.plan.rooms.length)) return;
+
+  // If a caller restores after a tick, discard this runtime's prior enemies before rebuilding the saved encounters.
+  for (const z of rt.zones) {
+    for (const e of z.enemies) {
+      e.root.parent?.remove(e.root);
+      const index = world.enemies.indexOf(e);
+      if (index >= 0) world.enemies.splice(index, 1);
+    }
+    z.enemies = [];
+    z.state = m.fights[z.def.id];
+    rt.state.fights[z.def.id] = z.state;
+  }
+
+  const takenGears = new Set(m.gears);
+  for (const [i, g] of rt.vis.gears.entries()) {
+    g.taken = takenGears.has(i);
+    g.model.visible = !g.taken;
+    for (const gb of getGrabbables(world)) if (gb.obj === g.model) gb.enabled = !g.taken;
+  }
+  rt.state.gears = takenGears.size;
+  world.level.data.gears = rt.state.gears;
+
+  const takenKits = new Set(m.kits);
+  for (let i = rt.vis.kits.length - 1; i >= 0; i--) {
+    const kit = rt.vis.kits[i];
+    const original = rt.plan.kits.findIndex((k) => k.x === kit.x && k.y === kit.y && k.z === kit.z);
+    if (takenKits.has(original)) {
+      kit.group.parent?.remove(kit.group);
+      rt.vis.kits.splice(i, 1);
+    }
+  }
+
+  rt.state.powered = m.powered;
+  rt.state.powerVia = m.powerVia;
+  rt.state.powerT = m.powerT;
+  for (const s of getSockets(world)) if (s.pos.distanceTo(new THREE.Vector3(rt.plan.power.x, rt.plan.power.y, rt.plan.power.z)) < 0.1) s.enabled = !m.powered;
+  rt.state.gates = { ...m.gates };
+  for (const g of rt.vis.gates) {
+    const open = m.gates[g.def.id];
+    g.open = open;
+    g.k = open ? 1 : 0;
+    g.collider.active = !open;
+    g.shutter.position.y = open ? 5.1 : 0;
+    rt.want.set(g.def.id, m.gateWants[g.def.id]);
+  }
+  rt.sideVisited = m.sideVisited;
+  rt.passedExit = m.passedExit;
+  rt.padRemain = [...m.padRemain];
+  rt.padSaveMarks = [...m.padRemain];
+  rt.roomSeen = [...m.roomSeen];
+  world.level.rooms.forEach((room, i) => { room.entered = rt.roomSeen[i]; });
+  rt.state.doorOpen = m.doorOpen;
+  rt.state.cleared = m.cleared;
+  rt.state.lockdown = rt.zones.some((z) => z.def.mode === 'trap' && z.state === 'active');
+  world.level.bossDefeated = m.cleared;
+  if (m.cleared) world.level.data.nextFloor = 2;
+  world.player.pos.set(p.x, p.y, p.z);
+  world.player.yaw = p.yaw;
+  world.player.pitch = p.pitch;
+
+  const activeTrap = rt.zones.find((z) => z.def.mode === 'trap' && z.state === 'active');
+  if (activeTrap) rt.beaconAt = activeTrap.def.id === 'final' ? { x: 0, z: -62 } : zoneCenter(activeTrap.def);
+  for (const z of rt.zones) {
+    if (z.state === 'done') continue;
+    z.enemies = spawnList(world, rt, z.def); // active encounters intentionally restart with full HP
+    if (z.state === 'active') wakeAll(world, z, 0.1);
+  }
+  rt.started = true;
+  rt.litPrev = rt.state.powered && rt.state.powerT * 14 >= rt.vis.cableTotal;
+  rt.inCarT = 0;
+  const doorSlide = rt.state.doorOpen * ((rt.plan.elevator.doorX1 - rt.plan.elevator.doorX0) / 2 - 0.05);
+  rt.vis.leaves[0].position.x = -((rt.plan.elevator.doorX1 - rt.plan.elevator.doorX0) / 4) - doorSlide;
+  rt.vis.leaves[1].position.x = (rt.plan.elevator.doorX1 - rt.plan.elevator.doorX0) / 4 + doorSlide;
+  rt.vis.doorCollider.active = rt.state.doorOpen < 0.9;
+}
+
+function markSaveDirty(world: World): void { world.level.data.saveDirty = true; }
 
 export function getFloor1(world: World): { plan: Plan; state: Floor1State } | null {
   const rt = runtimes.get(world);
@@ -165,10 +334,11 @@ export function buildFloor1(world: World): void {
   clearSockets(world);
   clearGrapplePoints(world);
   const rt: Runtime = {
-    plan, vis, state, slots, elevLight, batLight, fill, hemi, beacon, want, alarm: 0, beaconAt: { x: 0, z: -60 },
+    world, plan, vis, state, slots, elevLight, batLight, fill, hemi, beacon, want, alarm: 0, beaconAt: { x: 0, z: -60 },
     zones: plan.zones.map((def) => ({ def, enemies: [], state: 'idle' })),
     clock: 0, started: false, lockMsgT: 0, inCarT: 0, warned: false,
     padRemain: plan.pads.map(() => LEVEL.chargePadCapacity),
+    padSaveMarks: plan.pads.map(() => LEVEL.chargePadCapacity),
     roomSeen: plan.rooms.map(() => false),
     promptOn: false, litPrev: false, padEmptyOn: false, sideVisited: false, passedExit: false, powerSocketOn: false,
   };
@@ -209,6 +379,7 @@ function takeGear(world: World, rt: Runtime, g: Runtime['vis']['gears'][number])
   world.events.emit('gearPickup', {});
   toast(world, `強化素材（歯車）を入手 ×${state.gears}`, 3);
   for (const gb of getGrabbables(world)) if (gb.obj === g.model) gb.enabled = false;
+  markSaveDirty(world);
 }
 
 /**
@@ -243,6 +414,7 @@ function activatePower(world: World, rt: Runtime, via: 'shot' | 'arm'): void {
   state.powered = true;
   state.powerVia = via;
   for (const s of getSockets(world)) s.enabled = false;
+  markSaveDirty(world);
   toast(world, 'エレベーターに電力が戻った', 4);
   toast(world, '大広間の北、エレベーターへ向かえ', 4);
   world.events.emit('switchOn', { pos: new THREE.Vector3(plan.power.x, 1.4, plan.power.z) });
@@ -347,7 +519,11 @@ function batLightUpdate(rt: Runtime, t: number): void {
 // ---------------------------------------------------------------- ゲート
 const gateById = (rt: Runtime, id: string): GateVis => rt.vis.gates.find((g) => g.def.id === id)!;
 /** ゲートの開閉を要求する。閉める時は敵／プレイヤーが挟まらないように、範囲が空くまで待つ */
-function setGate(rt: Runtime, id: string, open: boolean): void { rt.want.set(id, open); }
+function setGate(rt: Runtime, id: string, open: boolean): void {
+  if (rt.want.get(id) === open) return;
+  rt.want.set(id, open);
+  markSaveDirty(rt.world);
+}
 
 function blocked(world: World, g: GateVis): boolean {
   const d = g.def, m = 0.8;
@@ -366,10 +542,12 @@ function updateGates(world: World, rt: Runtime, dt: number, t: number): void {
     const want = rt.want.get(g.def.id) ?? g.open;
     if (want && !g.open) {
       g.open = true;
+      markSaveDirty(world);
       world.events.emit('doorOpen', { pos: new THREE.Vector3(g.cx, 1.5, g.cz) });
     } else if (!want && g.open && !blocked(world, g)) {
       g.open = false;
       g.collider.active = true;
+      markSaveDirty(world);
       world.events.emit('doorClose', { pos: new THREE.Vector3(g.cx, 1.5, g.cz) });
     }
     g.k = Math.max(0, Math.min(1, g.k + (g.open ? 1 : -1) * dt / 0.9));
@@ -396,6 +574,7 @@ function startTrap(world: World, rt: Runtime, id: string, closes: string[], msg:
   if (f.state !== 'idle') return;
   f.state = 'active';
   rt.state.fights[id] = 'active';
+  markSaveDirty(world);
   for (const g of closes) setGate(rt, g, false);
   wakeAll(world, f, 0.1);
   const c = zoneCenter(f.def);
@@ -409,6 +588,7 @@ function endTrap(world: World, rt: Runtime, id: string, opens: string[], msg: st
   const f = fightOf(rt, id);
   f.state = 'done';
   rt.state.fights[id] = 'done';
+  markSaveDirty(world);
   for (const g of opens) setGate(rt, g, true);
   rt.state.lockdown = rt.zones.some((z) => z.def.mode === 'trap' && z.state === 'active');
   world.events.emit('lockdownEnd', { zone: id });
@@ -426,12 +606,14 @@ function updateFights(world: World, rt: Runtime): void {
     if (f.state === 'idle' && f.enemies.some((e) => !e.ai.dormant && e.status !== 'dead')) {
       f.state = 'active';
       state.fights[f.def.id] = 'active';
+      markSaveDirty(world);
       wakeAll(world, f, 0.12);
       if (f.def.id === 'start') toast(world, '敵が目覚めた！ 全滅させるまでゲートは開かない', 3.5);
     }
     if (f.enemies.length && alive(f.enemies) === 0) {
       f.state = 'done';
       state.fights[f.def.id] = 'done';
+      markSaveDirty(world);
       if (f.def.id === 'start') {
         setGate(rt, 'start', true);
         toast(world, 'ゲートが開いた。先へ進もう', 3.5);
@@ -458,11 +640,15 @@ function updateFights(world: World, rt: Runtime): void {
   // 出口を抜けて大広間に入ったら閉じる（一方通行）
   if (ru.state === 'done' && !rt.passedExit && inBox(-22, 20.5, -69, -37)) {
     rt.passedExit = true;
+    markSaveDirty(world);
     setGate(rt, 'rexit', false);
   }
 
   // ---- 左下の罠：電源を入れたあと脇の部屋から戻ってくると閉じ込められる
-  if (state.powered && inBox(-31, -23.5, -36, -20)) rt.sideVisited = true;
+  if (state.powered && !rt.sideVisited && inBox(-31, -23.5, -36, -20)) {
+    rt.sideVisited = true;
+    markSaveDirty(world);
+  }
   const l3 = fightOf(rt, 'L3');
   if (l3.state === 'idle' && state.powered && rt.sideVisited && inBox(-51.5, -34, -34.5, -21.5)) {
     startTrap(world, rt, 'L3', ['l3n', 'side'], '扉が閉まった！ 敵が出てきた！');
@@ -526,6 +712,7 @@ export function updateFloor1(world: World, dt: number): void {
     if (!rt.roomSeen[cur]) {
       rt.roomSeen[cur] = true;
       world.level.rooms[cur].entered = true;
+      markSaveDirty(world);
       world.events.emit('roomEnter', { index: cur, name: plan.rooms[cur].name });
     }
   }
@@ -602,6 +789,7 @@ export function updateFloor1(world: World, dt: number): void {
   if (lit && finalDone && inCar) rt.inCarT += dt; else rt.inCarT = 0;
   if (!state.cleared && rt.inCarT > 0.7) {
     state.cleared = true;
+    markSaveDirty(world);
     toast(world, '1階クリア！ エレベーターで上の階へ', 4);
     world.level.bossDefeated = true;
     world.level.data.nextFloor = 2; // main.ts が見て2階へ移る
@@ -626,7 +814,15 @@ export function updateFloor1(world: World, dt: number): void {
     else if (!on) rt.padEmptyOn = false;
     if (on && remain > 0 && p.energy < p.maxEnergy && p.hp > 0) {
       const gained = addEnergy(world, Math.min(LEVEL.chargePadRate * dt, remain));
-      if (gained > 0) { rt.padRemain[i] -= gained; charging = true; if (Math.random() < dt * 3) world.events.emit('charging', { amount: gained }); }
+      if (gained > 0) {
+        rt.padRemain[i] -= gained;
+        charging = true;
+        if (rt.padSaveMarks[i] - rt.padRemain[i] >= 5 || rt.padRemain[i] <= 0) {
+          rt.padSaveMarks[i] = rt.padRemain[i];
+          markSaveDirty(world);
+        }
+        if (Math.random() < dt * 3) world.events.emit('charging', { amount: gained });
+      }
     }
     const k = Math.max(0, Math.min(1, rt.padRemain[i] / cap));
     pad.disc.color.copy(GRAY).lerp(CYAN, Math.pow(k, 0.6));
@@ -644,6 +840,7 @@ export function updateFloor1(world: World, dt: number): void {
     if (dx * dx + dz * dz < 1.4 * 1.4 && Math.abs(kit.group.position.y - (p.pos.y + PLAYER.height * 0.5)) < 1.6) {
       kit.group.parent?.remove(kit.group);
       vis.kits.splice(i, 1);
+      markSaveDirty(world);
       const before = p.hp;
       healPlayer(world, LEVEL.repairKitHeal);
       world.events.emit('repair', { amount: p.hp - before });

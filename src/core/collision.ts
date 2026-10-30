@@ -51,10 +51,11 @@ export function segmentSphere(p0: THREE.Vector3, p1: THREE.Vector3, c: THREE.Vec
 }
 
 /** レベル（静的コライダー）に対する線分判定。最も近いヒットの t (0..1) を返す */
-export function raycastLevel(colliders: AABB[], p0: THREE.Vector3, p1: THREE.Vector3): number | null {
+export function raycastLevel(colliders: AABB[], p0: THREE.Vector3, p1: THREE.Vector3, opts?: { camera?: boolean }): number | null {
   let best: number | null = null;
+  const cam = !!opts?.camera;
   for (const b of colliders) {
-    if (!b.active) continue;
+    if (!b.active || (cam && b.seeThrough)) continue;
     const t = segmentAABB(p0, p1, b);
     if (t !== null && (best === null || t < best)) best = t;
   }

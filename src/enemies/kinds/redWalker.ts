@@ -88,6 +88,20 @@ export const redWalker: KindModule = {
         fireAllyBolt(world, e, from, target, spec.damage * REDWALKER_ALLY.damageMul);
         ai.atkTimer = REDWALKER_ALLY.interval * (0.9 + Math.random() * 0.2);
       }
+    } else if (ai.guideTo) {
+      // 案内中（レベルが ai.guideTo = {x, z} を置く）：その地点まで歩いて、着いたら待つ
+      const g = ai.guideTo as { x: number; z: number; arrive?: number };
+      const dx = g.x - e.pos.x, dz = g.z - e.pos.z;
+      const d = Math.hypot(dx, dz) || 1;
+      if (d > (g.arrive ?? 1)) {
+        faceToward(e, dx / d, dz / d, dt, 4);
+        wishX = (dx / d) * spec.speed; wishZ = (dz / d) * spec.speed;
+      } else {
+        // 着いた：プレイヤーのほうを向いて待つ
+        const px = c.pc.x - e.pos.x, pz = c.pc.z - e.pos.z, pd = Math.hypot(px, pz) || 1;
+        faceToward(e, px / pd, pz / pd, dt, 3);
+      }
+      ai.atkTimer = Math.max(ai.atkTimer ?? 0, 0.3);
     } else {
       // 敵がいない：プレイヤーのほうへ
       const dx = c.pc.x - e.pos.x, dz = c.pc.z - e.pos.z;

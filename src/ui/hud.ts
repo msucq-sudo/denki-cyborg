@@ -5,16 +5,21 @@ import { ENEMIES, HACK } from '../config/balance';
 import { absorbEnergyPerSec, dodgeCost, gunTapCost } from '../progression/effects';
 import type { EnemyKind } from '../config/balance';
 import { ENEMY_INFO } from '../config/enemyInfo';
+import { SKILLS, SKILL_SLOTS, isSkillUnlocked } from '../abilities/skills';
+import { WEAPON_NAMES, WEAPON_ORDER } from '../player/weaponSwitch';
+import type { SkillId } from '../core/types';
 import { clamp, formatRate, formatTime, pct, projectToScreen, stepRate } from './format';
 import type { RateState } from './format';
 
-export interface HudCallbacks { onStart(): void; onRetry(): void; onResume(): void; onTitle(): void }
+export interface HudCallbacks { onStart(): void; onContinue?(): void; onRetry(): void; onResume(): void; onTitle(): void }
 export interface HudWeapon { name: string; owned: boolean; icon?: string }
 export interface Hud {
   update(world: World, dt: number): void;
   showScreen(world: World): void;
   /** 武器リストを差し替える（selected は選択中の index） */
   setWeapons(list: HudWeapon[], selected: number): void;
+  /** タイトル画面の「つづきから」ボタン。label が null なら隠す（セーブが無い） */
+  setContinue(label: string | null): void;
 }
 
 const KIND_NAME = Object.fromEntries(
@@ -46,6 +51,10 @@ const ICON_AIM = '<svg viewBox="0 0 32 32"><circle cx="16" cy="16" r="10" fill="
 const ICON_GEAR = '<svg viewBox="0 0 32 32"><path d="M14 3h4l.8 3.6 2.6 1.1 3.1-2 2.8 2.8-2 3.1 1.1 2.6L30 14v4l-3.6.8-1.1 2.6 2 3.1-2.8 2.8-3.1-2-2.6 1.1L18 30h-4l-.8-3.6-2.6-1.1-3.1 2-2.8-2.8 2-3.1-1.1-2.6L2 18v-4l3.6-.8 1.1-2.6-2-3.1 2.8-2.8 3.1 2 2.6-1.1z" fill="#e0a800" stroke="#ffd83a" stroke-width="1"/><circle cx="16" cy="16" r="4.5" fill="#2ee6ff"/></svg>';
 const ICON_METAL = '<svg viewBox="0 0 32 32"><path d="M16 4l10.4 6v12L16 28 5.6 22V10z" fill="#c9d3e0" stroke="#5ab8ff" stroke-width="1.6"/><circle cx="16" cy="16" r="4.2" fill="#12214d" stroke="#5ab8ff" stroke-width="1.4"/></svg>';
 const ICON_GUN ='<svg viewBox="0 0 32 32"><path d="M4 12h18l4 3v4h-9l-2 7h-5l1.5-7H4z" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round"/><path d="M22 6l-3 5h4l-3 5" fill="none" stroke="#ffd83a" stroke-width="1.8" stroke-linejoin="round"/></svg>';
+
+const ICON_VACUUM = '<svg viewBox="0 0 32 32"><path d="M16 16m-1.5 0a1.5 1.5 0 1 0 3 0a3.5 3.5 0 1 0-7 0a5.5 5.5 0 1 0 11 0a7.5 7.5 0 1 0-15 0a9.5 9.5 0 1 0 19 0" fill="none" stroke="#2ee6ff" stroke-width="2" stroke-linecap="round"/><path d="M27 6l-3 3M5 26l3-3M27 26l-3-3M5 6l3 3" stroke="#ffd83a" stroke-width="1.8" stroke-linecap="round"/></svg>';
+const ICON_LOCK = '<svg viewBox="0 0 32 32"><rect x="8" y="14" width="16" height="12" rx="2.5" fill="none" stroke="#8fa6cf" stroke-width="2"/><path d="M11.5 14v-3.5a4.5 4.5 0 0 1 9 0V14" fill="none" stroke="#8fa6cf" stroke-width="2"/></svg>';
+const SKILL_ICONS: Record<SkillId, string> = { vacuum: ICON_VACUUM };
 
 interface SlotDef { id: 'scouter' | 'jet' | 'aim'; key: string; label: string; icon: string }
 
@@ -108,8 +117,9 @@ const KEY_ROWS: KeyRow[] = [
   { id: 'dash', keys: 'Shift', pad: 'L押込', label: 'ダッシュ（移動中のみ低消費）' },
   { id: 'space', keys: 'Space', pad: 'A', label: 'ジャンプ' },
   { id: 'jet', keys: 'Space長押し（空中）', pad: 'A長押し', label: 'ジェット（ホバー）' },
-  { id: 'k1', keys: '1', pad: '十字左', label: 'スカウター' },
   { id: 'k2', keys: '2', pad: '十字上', label: 'オートエイム' },
+  { id: 'wswap', keys: '1 / 3', pad: '十字左右', label: '武器の切り替え（前 / 次）' },
+  { id: 'skill', keys: 'Y', pad: '十字下＋Rスティック → Y', label: 'スキル（選ぶ → 発動）' },
   { id: 'p', keys: 'P', pad: 'Start', label: '一時停止' },
   { id: 'h', keys: 'H', pad: '—', label: '操作表示の切替' },
 ];
@@ -359,6 +369,107 @@ export function createHUD(root: HTMLElement, cb: HudCallbacks): Hud {
     { name: 'ショットガン', owned: false },
     { name: 'アサルト', owned: false },
   ], 0);
+  /** world.loadout から作った武器表示の鍵（変わったときだけ作り直す） */
+  let wpnKey = '';
+  function syncWeapons(world: World): void {
+    const lo = world.loadout;
+    const key = `${lo.current}|${lo.owned.join(',')}`;
+    if (key === wpnKey) return;
+    const first = wpnKey === '';
+    wpnKey = key;
+    setWeapons(WEAPON_ORDER.map((id) => ({ name: WEAPON_NAMES[id] ?? id, owned: lo.owned.includes(id) })), WEAPON_ORDER.indexOf(lo.current as typeof WEAPON_ORDER[number]));
+    if (!first) flash(wpn, 'pop');
+  }
+
+  // 右下（武器の上）：選択中のスキルとクールダウン
+  const skBox = el('div', 'panel skill-box');
+  skBox.append(el('div', 'pn-title', 'スキル'));
+  const skRow = el('div', 'sk-row');
+  const skIcon = el('div', 'sk-icon');
+  const skInfo = el('div', 'sk-info');
+  const skName = el('div', 'sk-name');
+  const skState = el('div', 'sk-state');
+  const skBar = el('div', 'sk-bar');
+  const skFill = el('div', 'sk-fill');
+  skBar.append(skFill);
+  skInfo.append(skName, skState, skBar);
+  skRow.append(skIcon, skInfo);
+  skBox.append(skRow);
+  let skIconKey = '';
+
+  // 画面中央：スキル選択のリング（十字キー下を押している間）。上の枠から時計回り
+  const wheel = el('div', 'skill-wheel off');
+  const wheelSvg = svgEl('svg', 'sw-svg');
+  wheelSvg.setAttribute('viewBox', '-100 -100 200 200');
+  const wheelSegs: SVGElement[] = [];
+  const wheelLabels: HTMLElement[] = [];
+  const NS = SKILL_SLOTS.length;
+  const SEG_STEP = (Math.PI * 2) / NS;
+  const R0 = 46, R1 = 96;
+  for (let i = 0; i < NS; i++) {
+    const a0 = i * SEG_STEP - SEG_STEP / 2 + 0.04, a1 = i * SEG_STEP + SEG_STEP / 2 - 0.04;
+    const pt = (r: number, a: number) => `${(Math.sin(a) * r).toFixed(2)} ${(-Math.cos(a) * r).toFixed(2)}`;
+    const large = a1 - a0 > Math.PI ? 1 : 0;
+    const seg = svgEl('path', 'sw-seg');
+    seg.setAttribute('d', `M ${pt(R1, a0)} A ${R1} ${R1} 0 ${large} 1 ${pt(R1, a1)} L ${pt(R0, a1)} A ${R0} ${R0} 0 ${large} 0 ${pt(R0, a0)} Z`);
+    wheelSvg.append(seg);
+    wheelSegs.push(seg);
+    const lab = el('div', 'sw-label');
+    const rm = ((R0 + R1) / 2 / 200) * 100; // リングの大きさに対する %
+    lab.style.left = `${50 + Math.sin(i * SEG_STEP) * rm}%`;
+    lab.style.top = `${50 - Math.cos(i * SEG_STEP) * rm}%`;
+    const id = SKILL_SLOTS[i];
+    lab.append(el('div', 'sw-icon'), el('div', 'sw-name', id ? SKILLS[id].name : '—'));
+    wheelLabels.push(lab);
+  }
+  const wheelPtr = el('div', 'sw-ptr');
+  const wheelCenter = el('div', 'sw-center');
+  const wcName = el('div', 'sw-c-name');
+  const wcHint = el('div', 'sw-c-hint', 'Rスティックで選ぶ ・ Y で発動');
+  wheelCenter.append(wcName, wcHint);
+  wheel.append(wheelSvg, ...wheelLabels, wheelPtr, wheelCenter);
+
+  function syncSkills(world: World): void {
+    const sk = world.skills;
+    const sel = sk.selected;
+    const def = SKILLS[sel];
+    const unlocked = isSkillUnlocked(world, sel);
+    const cd = sk.cooldown[sel] ?? 0;
+    const active = sel === 'vacuum' && sk.vacuum.active;
+    const iconKey = unlocked ? sel : 'lock';
+    if (iconKey !== skIconKey) { skIconKey = iconKey; skIcon.innerHTML = unlocked ? SKILL_ICONS[sel] : ICON_LOCK; }
+    setText(skName, def.name);
+    setText(skState, !unlocked ? '未入手' : active ? '吸い込み中' : cd > 0 ? `${cd.toFixed(1)} 秒` : `準備OK（${world.input.lastDevice === 'pad' ? 'Y' : 'Yキー'}）`);
+    setW(skFill, unlocked ? 100 - pct(cd, def.cooldown) : 0);
+    setCls(skBox, 'locked', !unlocked);
+    setCls(skBox, 'ready', unlocked && cd <= 0 && !active);
+    setCls(skBox, 'active', active);
+
+    // リング
+    const show = world.state === 'playing' && !!world.input.skillMenuHeld;
+    setCls(wheel, 'off', !show);
+    if (!show) return;
+    for (let i = 0; i < NS; i++) {
+      const id = SKILL_SLOTS[i];
+      const lockedSlot = !id || !isSkillUnlocked(world, id);
+      setCls(wheelSegs[i], 'sel', id === sel && !lockedSlot);
+      setCls(wheelSegs[i], 'hover', sk.hover === i);
+      setCls(wheelSegs[i], 'locked', lockedSlot);
+      setCls(wheelLabels[i], 'locked', lockedSlot);
+      setCls(wheelLabels[i], 'sel', id === sel && !lockedSlot);
+      const ic = wheelLabels[i].firstElementChild as HTMLElement;
+      const k = `${id}|${lockedSlot}`;
+      if (ic.dataset.k !== k) { ic.dataset.k = k; ic.innerHTML = id ? (lockedSlot ? ICON_LOCK : SKILL_ICONS[id]) : ''; }
+    }
+    const hx = world.input.skillStickX ?? 0, hy = world.input.skillStickY ?? 0;
+    const m = Math.min(1, Math.hypot(hx, hy));
+    const ang = Math.atan2(hx, -hy);
+    wheelPtr.style.transform = `translate(-50%, -50%) translate(${(Math.sin(ang) * m * 40).toFixed(1)}px, ${(-Math.cos(ang) * m * 40).toFixed(1)}px)`;
+    const hoverId = sk.hover === null ? null : SKILL_SLOTS[sk.hover];
+    const hoverLocked = sk.hover !== null && (!hoverId || !isSkillUnlocked(world, hoverId));
+    setText(wcName, hoverLocked ? (hoverId ? `${SKILLS[hoverId].name}（未入手）` : '空き') : unlocked ? def.name : `${def.name}（未入手）`);
+    setCls(wcName, 'locked', hoverLocked || (!unlocked && sk.hover === null));
+  }
 
   // 右上：ミニマップ（スカウター連動）
   const mapBox = el('div', 'panel mini sc-only');
@@ -411,7 +522,7 @@ export function createHUD(root: HTMLElement, cb: HudCallbacks): Hud {
 
   playRoot.append(
     vignette, scouterFx, crosshair, lockon, hitmark, dmgBox, bossBox, objBox,
-    controls, toastBox, absBox, hackBox, hackOk, allyBox, energyHint, bleft, funcs, wpn, topRight, comm,
+    controls, toastBox, absBox, hackBox, hackOk, allyBox, energyHint, bleft, funcs, wpn, skBox, topRight, comm, wheel,
   );
 
   // ----- タイトル -----
@@ -424,8 +535,8 @@ export function createHUD(root: HTMLElement, cb: HudCallbacks): Hud {
     '移動 WASD ・ 視点 マウス',
     '左クリック 射撃（長押しで溜め撃ち）',
     'E 吸収アーム（敵から電力を吸う） ・ 右クリック 照準',
-    '1 スカウター ON/OFF ・ Space長押し（空中）ジェットパック ・ C 回避 ・ Shift ダッシュ ・ H 操作表示',
-    'Xboxパッド: Lスティック移動 ・ Rスティック視点 ・ RT射撃 ・ LT照準 ・ LB吸収 ・ A ジャンプ（空中で長押し＝ジェット） ・ RB 回避 ・ B インタラクト ・ Lスティック押込 ダッシュ ・ X 逆流 ・ 十字キー左 スカウター ・ Start ポーズ',
+    'Space長押し（空中）ジェットパック ・ C 回避 ・ Shift ダッシュ ・ 1 / 3 武器の切り替え ・ Y スキル ・ H 操作表示',
+    'Xboxパッド: Lスティック移動 ・ Rスティック視点 ・ RT射撃 ・ LT照準 ・ LB吸収 ・ A ジャンプ（空中で長押し＝ジェット） ・ RB 回避 ・ B インタラクト ・ Lスティック押込 ダッシュ ・ X 逆流 ・ 十字キー左右 武器 ・ 十字キー下＋Rスティック スキル選択 → Y 発動 ・ Start ポーズ',
   ]) tTips.append(el('li', '', t));
   const tRow = el('div', 'btn-row');
   tPanel.append(tTitle, tSub, tTips, tRow);
@@ -474,7 +585,17 @@ export function createHUD(root: HTMLElement, cb: HudCallbacks): Hud {
     return b;
   }
 
-  tRow.append(btn('スタート', 'btn-primary', () => cb.onStart()));
+  const contBtn = btn('つづきから', 'btn-primary', () => cb.onContinue?.());
+  contBtn.style.display = 'none';
+  const startBtn = btn('スタート', 'btn-primary', () => cb.onStart());
+  tRow.append(contBtn, startBtn);
+  function setContinue(label: string | null): void {
+    contBtn.style.display = label ? '' : 'none';
+    if (label) contBtn.textContent = label;
+    // セーブがあるときは「はじめから」にして、つづきからを主ボタンにする
+    startBtn.textContent = label ? 'はじめから' : 'スタート';
+    startBtn.classList.toggle('btn-primary', !label);
+  }
   pRow.append(
     btn('再開', 'btn-primary', () => cb.onResume()),
     btn('タイトルへ', '', () => cb.onTitle()),
@@ -846,9 +967,17 @@ export function createHUD(root: HTMLElement, cb: HudCallbacks): Hud {
       const left = Math.min(...allies.map((e) => Math.max(0, e.ai.allyT ?? 0)));
       const first = allies.reduce((a, b) => ((a.ai.allyT ?? 0) <= (b.ai.allyT ?? 0) ? a : b));
       setText(allyName, `味方：${KIND_NAME[first.kind]}${allies.length > 1 ? ` ほか${allies.length - 1}` : ''}`);
-      setText(allyTime, `あと ${left.toFixed(1)} 秒`);
-      setW(allyFill, pct(left, first.ai.allyMax ?? HACK.allyTime));
-      setCls(allyBox, 'low', left < 5);
+      if (allies.every((e) => e.ai.allyPermanent)) {
+        // 恒久の仲間（収容所1階）：残り時間の代わりに体力を出す
+        const hpK = first.maxHp > 0 ? first.hp / first.maxHp : 0;
+        setText(allyTime, `体力 ${Math.round(hpK * 100)}%`);
+        setW(allyFill, pct(first.hp, first.maxHp));
+        setCls(allyBox, 'low', hpK < 0.25);
+      } else {
+        setText(allyTime, `あと ${left.toFixed(1)} 秒`);
+        setW(allyFill, pct(left, first.ai.allyMax ?? HACK.allyTime));
+        setCls(allyBox, 'low', left < 5);
+      }
     }
 
     // 電力切れで吸収もしていない時の案内
@@ -901,6 +1030,10 @@ export function createHUD(root: HTMLElement, cb: HudCallbacks): Hud {
       setText(sl.state, slotOn[d.id] ? 'ON' : 'OFF');
     }
 
+    // 武器・スキル
+    syncWeapons(world);
+    syncSkills(world);
+
     // 状況に応じた操作キーのハイライト
     setCls(keyEls.f, 'hl', attached && !hk.active);
     setCls(keyEls.hack, 'hl', hk.active);
@@ -908,13 +1041,14 @@ export function createHUD(root: HTMLElement, cb: HudCallbacks): Hud {
     setCls(keyEls.jet, 'hl', p.flying);
     setCls(keyEls.shift, 'dim', p.energy < dodgeCost(world));
     setCls(keyEls.lmb, 'dim', p.energy < gunTapCost(world));
-    setCls(keyEls.k1, 'dim', false); // スカウターは電力不要
     setCls(keyEls.k2, 'off', !world.unlocks.autoAim); // 未解放の機能は操作一覧にも出さない
     setCls(keyEls.k2, 'dim', empty);
+    setCls(keyEls.wswap, 'off', world.loadout.owned.length < 2); // 武器が1つなら切り替えは出さない
+    setCls(keyEls.skill, 'hl', !!world.input.skillMenuHeld);
 
     // トースト
     syncToasts(world);
   }
 
-  return { update, showScreen, setWeapons };
+  return { update, showScreen, setWeapons, setContinue };
 }

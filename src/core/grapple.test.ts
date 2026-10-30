@@ -5,6 +5,7 @@ import { EventBus } from './events';
 import { makeAABB } from './collision';
 import type { World } from './types';
 import { GRAPPLE, PLAYER } from '../config/balance';
+GRAPPLE.enabled = true; // 本番では無効。ここでは機構自体を検証する
 
 vi.mock('../enemies/api', () => ({ drainEnemy: vi.fn(), overloadEnemy: vi.fn() }));
 

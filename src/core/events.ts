@@ -134,6 +134,15 @@ export interface GameEvents {
   grappleArrive: { pos: THREE.Vector3 };
   /** 吸収アームでアイテム（歯車・メタル）を掴んだ */
   armGrab: { pos: THREE.Vector3 };
+  /** 武器を切り替えた（十字キー左右 / キーボード 1・3） */
+  weaponSwitch: { id: string };
+  /** スキル選択の画面で選択が変わった */
+  skillSelect: { id: string };
+  /** スキルを使えなかった（未入手・クールダウン中・電力不足） */
+  skillDenied: { id: string; reason: 'locked' | 'cooldown' | 'energy' };
+  /** バキューム：吸い込み開始（pos=プレイヤーの体の中心）／終了（gained=得た電力、count=吸った敵の数） */
+  vacuumStart: { pos: THREE.Vector3; radius: number; duration: number };
+  vacuumEnd: { pos: THREE.Vector3; gained: number; count: number };
   /** 無線通信（スパーク等）。duration 秒で自動で消える（省略時は文字数から） */
   comm: { speaker: string; text: string; duration?: number };
 }

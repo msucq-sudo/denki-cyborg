@@ -115,7 +115,8 @@ export function poseCharacter(world: World, v: PlayerVisual, a: AnimState, dt: n
   a.shotHold = Math.max(0, a.shotHold - dt);
   const recoil = a.recoilT / G.recoilTime;
 
-  const aimWant = playing && !dodging && (inp.mouse(0) || inp.mouse(2) || p.charging || a.shotHold > 0 || absorbActive);
+  // world.level.data.poseAim=true：ムービーなどで入力なしに銃を構えさせる
+  const aimWant = playing && !dodging && (inp.mouse(0) || inp.mouse(2) || p.charging || a.shotHold > 0 || absorbActive || world.level.data.poseAim === true);
   a.aimK = smooth(a.aimK, aimWant ? 1 : 0, A.aimRate, dt);
   a.supportK = smooth(a.supportK, aimWant && !absorbActive && !flying ? 1 : 0, A.aimRate, dt);
   const absWant = playing && (absorbActive || (inp.isDown('KeyE') && absPhase === 'idle'));

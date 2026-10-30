@@ -125,7 +125,9 @@ export function beginAllyFrame(world: World, e: Enemy, dt: number): boolean {
     ai.atkTimer = ALLY.firstShot;
     ai.windup = 0;
   }
-  ai.allyT = (ai.allyT ?? 0) - dt;
+  // ai.allyPermanent：時間切れで元に戻らない味方（サージ収容所1階の赤ウォーカー）。残り時間は満タンのまま
+  if (ai.allyPermanent) ai.allyT = ai.allyMax ?? ai.allyT ?? 1;
+  else ai.allyT = (ai.allyT ?? 0) - dt;
   updateAllyBolts(world, e, dt);
   if (ai.allyT <= 0) {
     // 時間切れ：撃破扱いにせず停止

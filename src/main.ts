@@ -11,23 +11,32 @@ import { initAbsorb, updateAbsorb } from './abilities/absorb';
 import { initHack, updateHack } from './abilities/hack';
 import { updateGrapple } from './core/grapple';
 import { initFunctions, updateFunctions } from './abilities/functions';
+import { updateSkills } from './abilities/skills';
+import { updateWeaponSwitch, giveWeapon, WEAPON_ORDER } from './player/weaponSwitch';
 import { updateEnemies } from './enemies/api';
 import { buildDungeon, updateLevel } from './level/dungeon';
-import { buildFloor1, buildFloor1Revisit, updateFloor1, FLOOR1_EXPOSURE } from './level/floor1';
-import { buildFloor2, updateFloor2, floor2Hooks, wakeFromRest, FLOOR2_EXPOSURE } from './level/floor2';
+import { buildFloor1, buildFloor1Revisit, updateFloor1, FLOOR1_EXPOSURE, getFloor1Memo, restoreFloor1Memo } from './level/floor1';
+import { buildFloor2, updateFloor2, floor2Hooks, wakeFromRest, FLOOR2_EXPOSURE, type Floor2State } from './level/floor2';
 import { buildSurge, updateSurge, SURGE_EXPOSURE } from './level/surge';
+import { buildCamp1, updateCamp1, CAMP1_EXPOSURE, getCamp1Memo, setCamp1Memo } from './level/camp1';
+import { readSave, writeSave, describeSave, SAVE_VERSION } from './core/save';
+import { toast } from './core/combat';
+import { buildCamp2, updateCamp2, CAMP2_EXPOSURE } from './level/camp2';
 import { CAMERA, CHARACTER } from './config/balance';
+import { syncPlayerStats } from './progression/effects';
 import { createHUD } from './ui/hud';
 import { createUpgradeScreen } from './ui/upgradeScreen';
 import { initAudio, resumeAudio, updateAudio } from './audio/sfx';
 import './ui/style.css';
 
 // ?level=floor1 で研究所1階、?level=floor2 で2階（サイボーグ改造室）、?level=surge でガレージ→サージ収容所への道。
+// ?level=camp1 でサージ収容所 1階（&start=boss で中ボス戦の前から）。
 // 既定はアルファ版ダンジョン。?start=drive のように開始地点を指定できる（レベルが world.level.data.startAt を読む）
-type LevelId = 'dungeon' | 'floor1' | 'floor2' | 'surge';
+type LevelId = 'dungeon' | 'floor1' | 'floor2' | 'surge' | 'camp1' | 'camp2';
 const urlQ = new URLSearchParams(location.search);
 const levelParam = urlQ.get('level');
-let levelId: LevelId = levelParam === 'floor1' || levelParam === 'floor2' || levelParam === 'surge' ? levelParam : 'dungeon';
+let levelId: LevelId = levelParam === 'floor1' || levelParam === 'floor2' || levelParam === 'surge' || levelParam === 'camp1' || levelParam === 'camp2' ? levelParam : 'dungeon';
+const initialLevelId = levelId;
 /** 次に作る World の開始地点（レベルごとの意味。リトライ地点にも使う） */
 let startAt: string | undefined = urlQ.get('start') ?? undefined;
 /** 2階から1階へ戻ってきた（戦闘は解決済みの状態で始める） */
@@ -37,6 +46,8 @@ const LEVELS: Record<LevelId, { build: (w: World) => void; tick: (w: World, dt: 
   floor1: { build: (w) => (floor1Revisit ? buildFloor1Revisit(w) : buildFloor1(w)), tick: updateFloor1, exposure: FLOOR1_EXPOSURE },
   floor2: { build: buildFloor2, tick: updateFloor2, exposure: FLOOR2_EXPOSURE },
   surge: { build: buildSurge, tick: updateSurge, exposure: SURGE_EXPOSURE },
+  camp1: { build: buildCamp1, tick: updateCamp1, exposure: CAMP1_EXPOSURE },
+  camp2: { build: buildCamp2, tick: updateCamp2, exposure: CAMP2_EXPOSURE },
 };
 const container = document.getElementById('app')!;
 const renderer = new THREE.WebGLRenderer({ antialias: true, powerPreference: 'high-performance' });
@@ -61,17 +72,113 @@ floor2Hooks.onSleepComplete = (w) => {
 };
 // ?gears=N で歯車 N 個から始める（強化画面の確認用）
 const gearsParam = Number(new URLSearchParams(location.search).get('gears'));
+// ?unlock=vacuum,autoAim,shotgun,assault（または ?unlock=all）で解放した状態から始める（開発中の確認用）
+const unlockParam = (urlQ.get('unlock') ?? '').split(',').map((x) => x.trim()).filter(Boolean);
+function applyUnlocks(w: World, list: string[]): void {
+  const all = list.includes('all');
+  if (all || list.includes('vacuum')) w.unlocks.vacuum = true;
+  if (all || list.includes('autoAim')) w.unlocks.autoAim = true;
+  for (const id of WEAPON_ORDER) if (all || list.includes(id)) giveWeapon(w, id);
+}
+// 武器の切り替え（十字キー左右 / 1・3）→ 見た目の武器を差し替える
+events.on('weaponSwitch', (p) => setPlayerWeapon(world, p.id));
 
 let world: World = newWorld();
 let hadLock = false;
 
 const hud = createHUD(document.getElementById('hud')!, {
-  onStart: () => startGame(),
+  onStart: () => freshGame(),
+  onContinue: () => continueGame(),
   onRetry: () => retry(),
   onResume: () => resume(),
-  onTitle: () => { world = newWorld(); hud.showScreen(world); },
+  onTitle: () => { flushSave(); world = newWorld(); refreshContinue(); hud.showScreen(world); },
 });
+refreshContinue();
 hud.showScreen(world);
+
+// ---- セーブ（core/save.ts）：ステージに入った・チェックポイントを通った・レベルが saveDirty を立てたときに自動で書く
+/** 保存に成功した永続状態。失敗した場合は更新せず再試行する。 */
+let saveKey = '';
+let saveRetryAt = 0;
+function savePlace(): string {
+  return `${levelId}|${(world.level.data.retryAt as string | undefined) ?? startAt ?? ''}`;
+}
+function currentSaveKey(): string {
+  return `${savePlace()}|${JSON.stringify({
+    inventory: world.inventory, upgrades: world.upgrades, functions: world.functions,
+    unlocks: world.unlocks, loadout: world.loadout, selectedSkill: world.skills.selected,
+    rested: levelId === 'floor2' && (world.level.data.floor2 as Floor2State).sleeps > 0,
+  })}`;
+}
+function saveNow(): boolean {
+  return writeSave({
+    v: SAVE_VERSION, savedAt: Date.now(), level: levelId,
+    startAt: (world.level.data.retryAt as string | undefined) ?? startAt,
+    floor1Revisit: levelId === 'floor1' && floor1Revisit,
+    inventory: { ...world.inventory }, upgrades: { ...world.upgrades }, functions: { ...world.functions },
+    unlocks: { ...world.unlocks }, loadout: { ...world.loadout, owned: [...world.loadout.owned] }, selectedSkill: world.skills.selected,
+    levelMemo: levelId === 'camp1' ? getCamp1Memo()
+      : levelId === 'floor1' && !floor1Revisit ? getFloor1Memo(world)
+      : levelId === 'floor2' ? { rested: (world.level.data.floor2 as Floor2State).sleeps > 0 } : undefined,
+  });
+}
+/** 毎フレーム（プレイ中）：セーブ地点が変わったか、レベルが記録を更新したらセーブ */
+function autoSave(): void {
+  const key = currentSaveKey();
+  if ((key !== saveKey || world.level.data.saveDirty) && Date.now() >= saveRetryAt) {
+    const placeChanged = key.split('|').slice(0, 2).join('|') !== saveKey.split('|').slice(0, 2).join('|');
+    if (!saveNow()) {
+      saveRetryAt = Date.now() + 3000;
+      toast(world, 'セーブできませんでした。ブラウザの保存設定・空き容量を確認してください', 4);
+      return;
+    }
+    saveKey = key;
+    saveRetryAt = 0;
+    world.level.data.saveDirty = false;
+    if (placeChanged) toast(world, 'セーブしました', 1.6);
+  }
+}
+/** タイトルへ戻る・タブを閉じる際にも変更済みの進行を確定する。 */
+function flushSave(): void {
+  if ((world.state === 'playing' || world.state === 'paused') && world.player.hp > 0 && !pendingFloor) {
+    saveRetryAt = 0;
+    autoSave();
+  }
+}
+window.addEventListener('pagehide', flushSave);
+document.addEventListener('visibilitychange', () => { if (document.hidden) flushSave(); });
+/** タイトル画面の「つづきから」ボタン */
+function refreshContinue(): void {
+  const s = readSave();
+  hud.setContinue(s && s.level in LEVELS ? `つづきから（${describeSave(s)}）` : null);
+}
+/** つづきから：セーブした地点のステージを作り直し、所持品・強化・解放を戻して始める */
+function continueGame(): void {
+  const s = readSave();
+  if (!s || !(s.level in LEVELS)) { refreshContinue(); return; }
+  floor1Revisit = !!s.floor1Revisit;
+  if (s.level === 'camp1') setCamp1Memo(s.levelMemo);
+  levelId = s.level as LevelId;
+  startAt = s.startAt;
+  renderer.toneMappingExposure = LEVELS[levelId].exposure;
+  world = newWorld();
+  world.inventory = { ...world.inventory, ...s.inventory };
+  world.upgrades = { ...world.upgrades, ...s.upgrades };
+  world.functions = { ...world.functions, ...s.functions };
+  world.unlocks = { ...world.unlocks, ...s.unlocks };
+  world.loadout = { ...s.loadout, owned: [...s.loadout.owned] };
+  world.skills.selected = s.selectedSkill;
+  syncPlayerStats(world);
+  world.player.hp = world.player.maxHp;
+  if (levelId === 'floor1' && !floor1Revisit) restoreFloor1Memo(world, s.levelMemo);
+  if (levelId === 'floor2' && s.levelMemo && typeof s.levelMemo === 'object' && 'rested' in s.levelMemo && s.levelMemo.rested === true) {
+    const state = world.level.data.floor2 as Floor2State;
+    state.sleeps = 1;
+    state.exitUnlocked = true;
+  }
+  if (world.loadout.current !== 'pistol') setPlayerWeapon(world, world.loadout.current);
+  startGame();
+}
 
 function newWorld(): World {
   // 古いワールドの後始末
@@ -80,6 +187,7 @@ function newWorld(): World {
   if (startAt) w.level.data.startAt = startAt;
   LEVELS[levelId].build(w);
   if (Number.isFinite(gearsParam) && gearsParam > 0) w.inventory.gears = Math.floor(gearsParam);
+  applyUnlocks(w, unlockParam);
   initPlayer(w);
   initAbsorb(w);
   initHack(w);
@@ -105,6 +213,7 @@ function changeLevel(to: LevelId, start?: string, opts: { keepHp?: boolean } = {
   const keep = {
     hp: prev.player.hp, energy: prev.player.energy, inventory: { ...prev.inventory }, upgrades: { ...prev.upgrades }, functions: { ...prev.functions },
     stats: { ...prev.stats },
+    unlocks: { ...prev.unlocks }, loadout: { ...prev.loadout, owned: [...prev.loadout.owned] }, selectedSkill: prev.skills.selected,
   };
   levelId = to;
   startAt = start;
@@ -115,6 +224,10 @@ function changeLevel(to: LevelId, start?: string, opts: { keepHp?: boolean } = {
   world.upgrades = keep.upgrades;
   world.functions = keep.functions;
   Object.assign(world.stats, keep.stats);
+  world.unlocks = keep.unlocks;
+  world.loadout = keep.loadout;
+  world.skills.selected = keep.selectedSkill;
+  if (world.loadout.current !== 'pistol') setPlayerWeapon(world, world.loadout.current);
 }
 
 /**
@@ -156,8 +269,23 @@ function startGame(): void {
   input.enabled = true;
   input.requestLock();
   events.emit('gameStart', {});
+  // 既存セーブは新規開始だけでは上書きしない。初回プレイは開始地点を確保する。
+  saveKey = currentSaveKey();
+  saveRetryAt = 0;
+  world.level.data.saveDirty = false;
+  if (!readSave()) { saveKey = ''; autoSave(); }
   hud.showScreen(world);
   // スパークとの会話（'comm' イベント）は後で実装。仕組みだけ HUD にある
+}
+
+function freshGame(): void {
+  levelId = initialLevelId;
+  startAt = urlQ.get('start') ?? undefined;
+  floor1Revisit = false;
+  setCamp1Memo(null);
+  renderer.toneMappingExposure = LEVELS[levelId].exposure;
+  world = newWorld();
+  startGame();
 }
 
 function resume(): void {
@@ -169,6 +297,7 @@ function resume(): void {
 
 function pause(): void {
   if (world.state !== 'playing') return;
+  flushSave();
   world.state = 'paused';
   input.resetAll();
   input.exitLock();
@@ -218,11 +347,14 @@ function step(dt: number): void {
     updateHack(world, dt);
     updateGrapple(world, dt);
     updateEnemies(world, dt);
+    updateSkills(world, dt); // 敵の更新の後（バキュームで吸われている敵の見た目を上書きする）
+    updateWeaponSwitch(world);
     updateProjectiles(world, dt);
     updatePickups(world, dt);
     LEVELS[levelId].tick(world, dt);
     for (const t of world.toasts) t.timer -= dt;
     world.toasts = world.toasts.filter((t) => t.timer > 0);
+    if (!pendingFloor && world.player.hp > 0) autoSave();
 
     // エレベーターに乗った：暗転してから次の階へ
     const nf = world.level.data.nextFloor;
@@ -272,7 +404,9 @@ function step(dt: number): void {
   } else if (world.state === 'title') {
     // タイトル背景：カメラをゆっくり回す
     updatePlayer(world, 0);
-    if (input.pressed('PadA') || input.pressed('KeyP')) startGame();
+    if (input.pressed('PadA') || input.pressed('KeyP')) {
+      if (readSave()) continueGame(); else startGame();
+    }
   } else if (world.state === 'gameover' || world.state === 'clear') {
     // リトライ（設定されていればリトライ地点から。例：サージの道は車に乗ったところ）
     if (input.pressed('PadA')) retry();
@@ -294,6 +428,8 @@ function exposeDebug(w: World): void {
     camera: CAMERA,
     character: CHARACTER, // 見た目調整のデバッグ用（実行時に数値を触れる）
     setWeapon: (id: string) => setPlayerWeapon(world, id),
+    /** 解放（例：__game.unlock('vacuum') / __game.unlock('all')）。武器 id なら所持に加える */
+    unlock: (...ids: string[]) => applyUnlocks(world, ids),
     render: () => drawScene(),
     /** 強化画面を開く（確認用。ベッドを使わずに開ける。閉じても起き上がりの処理は無い） */
     openUpgrade: () => upgradeScreen.open(world),

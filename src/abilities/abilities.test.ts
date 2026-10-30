@@ -5,6 +5,7 @@ import { EventBus } from '../core/events';
 import { makeAABB } from '../core/collision';
 import type { Enemy, World } from '../core/types';
 import { ABSORB, OVERLOAD, FUNCTIONS, GRAPPLE } from '../config/balance';
+GRAPPLE.enabled = true; // 本番では無効。ここでは機構自体を検証する
 import { currentGrapple, isGrappling } from '../core/grapple';
 import { registerGrabbable } from '../core/armGrab';
 
@@ -268,10 +269,11 @@ describe('functions', () => {
     step(1 / 60, 60);
     const expected = FUNCTIONS.scouter.drainPerSec;
     expect(e0 - world.player.energy).toBeCloseTo(expected, 1);
+    // スカウターは常にON：1キーを押しても切れない
     input.pressedK.add('Digit1'); input.pressedK.add('Digit3'); step();
-    expect(world.functions.scouter).toBe(false);
+    expect(world.functions.scouter).toBe(true);
     expect(world.functions.flight).toBe(true);
-    expect(tg).toHaveBeenCalledTimes(1);
+    expect(tg).toHaveBeenCalledTimes(0);
   });
 
   it('cannot turn on with no energy, auto-off at zero', () => {
@@ -310,11 +312,12 @@ describe('functions', () => {
     expect(world.aimTarget).toBeNull();
   });
 
-  it('scouter enhances weak point and restores on off; markers follow enemies', () => {
+  it('scouter is always on, enhances weak point and markers follow enemies', () => {
     const e = mkEnemy(world, new THREE.Vector3(0, 1.5, -8));
     const mesh = e.weakPoints[0].mesh;
     const mat = mesh.material as THREE.MeshStandardMaterial;
-    input.pressedK.add('Digit1'); step();
+    step(); // functions.scouter=false で始めても、常にONに戻る
+    expect(world.functions.scouter).toBe(true);
     expect(mat.emissiveIntensity).toBeGreaterThan(0.4);
     expect(mesh.children.length).toBe(1);
     const markers = world.scene.getObjectByName('scouterMarkers')!;
@@ -325,10 +328,9 @@ describe('functions', () => {
     world.enemies.push(e);
     step();
     expect(markers.children.length).toBe(1);
+    // 1キーを押してもOFFにならない
     input.pressedK.add('Digit1'); step();
-    expect(mat.emissiveIntensity).toBeCloseTo(0.4, 5);
-    expect(mesh.scale.x).toBeCloseTo(1, 5);
-    expect(mesh.children.length).toBe(0);
-    expect(markers.children.length).toBe(0);
+    expect(world.functions.scouter).toBe(true);
+    expect(markers.children.length).toBe(1);
   });
 });

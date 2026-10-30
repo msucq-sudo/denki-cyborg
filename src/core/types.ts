@@ -11,6 +11,8 @@ export interface AABB {
   max: THREE.Vector3;
   active: boolean;
   tag?: string;
+  /** すき間のある物（檻の格子など）。体や弾は止めるが、三人称カメラの壁よけは通り抜ける */
+  seeThrough?: boolean;
 }
 
 export interface Player {
@@ -210,13 +212,36 @@ export interface World {
    * 後から解放する特殊機能（スカウター・ジェットパックは最初から使える基本機能なので含めない）。
    * どれも未解放のうちは左上の「特殊機能」パネルを出さない
    */
-  unlocks: { autoAim: boolean };
+  unlocks: { autoAim: boolean; vacuum: boolean };
+  /** 武器の所持と装備中の武器（player/weaponSwitch.ts が切り替える） */
+  loadout: LoadoutState;
+  /** スキル（バキュームなど）の選択・クールダウン（abilities/skills.ts / vacuum.ts が使う） */
+  skills: SkillState;
   /** 強化素材の所持数（歯車＝探索で拾う／メタル＝敵が落とす） */
   inventory: { gears: number; metal: number };
   /** 強化のレベル（項目 id → レベル。無ければ1）。progression/upgrades.ts が使う */
   upgrades: Record<string, number>;
   /** 床に落ちているメタル（pickups.ts が管理） */
   drops: import('./pickups').MetalDrop[];
+}
+
+/** 武器の所持。owned は WEAPON_ORDER の並び（切り替えの順番）。current は装備中の武器 id */
+export interface LoadoutState {
+  owned: string[];
+  current: string;
+}
+
+export type SkillId = 'vacuum';
+
+export interface SkillState {
+  /** 選択中のスキル（Y / キーボードの Y で発動する） */
+  selected: SkillId;
+  /** スキル選択の画面で右スティックが指している枠（0..）。指していなければ null（HUD 表示用） */
+  hover: number | null;
+  /** 残りクールダウン（秒） */
+  cooldown: Record<SkillId, number>;
+  /** バキュームの実行中の状態 */
+  vacuum: { active: boolean; t: number; gained: number; downed: number };
 }
 
 export interface EffectInstance {

@@ -6,9 +6,9 @@ import { createWorld } from '../core/world';
 import { moveCharacter } from '../core/collision';
 import { getSockets } from '../core/sockets';
 import { PLAYER } from '../config/balance';
-import { buildSurge, getSurge, SHUTTER_TIME, updateSurge } from './surge';
+import { buildSurge, getSurge, isWalkingOut, SHUTTER_TIME, updateSurge } from './surge';
 import { dentWall } from './surge/compound';
-import { COMPOUND, GARAGE, ROAD, STAIRS } from './surge/layout';
+import { COMPOUND, ENTRANCE, GARAGE, ROAD, STAIRS } from './surge/layout';
 
 const DT = 1 / 30;
 
@@ -164,5 +164,35 @@ describe('surge level', () => {
     const lid = new THREE.Vector3(-100, 0, ROAD.junctionZ), v = new THREE.Vector3(0, 40, 0);
     for (let i = 0; i < 240; i++) { v.y = 40; moveCharacter(w.colliders, lid, v, 1 / 60, PLAYER.radius, PLAYER.height); }
     expect(lid.y).toBeLessThan(50);
+  });
+
+  it('after the crash cutscene the player gets out next to the car and walks to the left entrance, which leads to camp1', () => {
+    const { w, run } = mk('drive');
+    run(0.1);
+    const d = w.level.data.drive;
+    expect(d).toBeTruthy();
+    // 激突の演出が終わった状態にする（車は壁の前）
+    d.phase = 'done';
+    d.result = 'success';
+    d.pos.set(COMPOUND.wallX + 3, 0, ROAD.junctionZ);
+    d.car.root.position.copy(d.pos);
+    w.input.locked = true;
+    w.toasts.push({ text: 'サージ収容所に潜入！（続きは今後）', timer: 6 });
+    run(0.1);
+    expect(isWalkingOut(w)).toBe(true);
+    expect(w.input.locked).toBe(false);
+    expect(w.player.root.visible).toBe(true);
+    expect(w.toasts.some((t) => t.text.includes('続きは今後'))).toBe(false);
+    expect(w.level.data.objective).toContain('左側');
+    // 南の庭を通って入口まで歩ける（柵の外の道へは出られない）
+    const p = walk(w, [w.player.pos.x, 0, w.player.pos.z], [ENTRANCE.x + 1, ENTRANCE.z], 30);
+    expect(Math.abs(p.z - ENTRANCE.z)).toBeLessThan(1);
+    expect(p.x).toBeLessThan(ENTRANCE.x + ENTRANCE.reach);
+    w.player.pos.copy(p);
+    run(0.1);
+    expect(w.level.data.nextLevel).toEqual({ level: 'camp1' });
+    // 庭の南端より先へは行けない
+    const s = walk(w, [COMPOUND.wallX + 10, 0, ROAD.junctionZ + 40], [COMPOUND.wallX + 10, ROAD.junctionZ + 120], 10);
+    expect(s.z).toBeLessThan(ENTRANCE.yardZ1);
   });
 });

@@ -1,9 +1,9 @@
 import * as THREE from 'three';
 import type { Enemy, World } from '../core/types';
-import type { EnemyKind } from '../config/balance';
+import { ENEMIES, GENERATOR, type EnemyKind } from '../config/balance';
 import { hasLineOfSight, raycastLevel, segmentSphere, pointInAABB } from '../core/collision';
 import { damagePlayer, PLAYER_HIT_RADIUS } from '../core/combat';
-import { spawnBurst, spawnShockwave } from '../core/effects';
+import { addEffect, spawnBurst, spawnFlash, spawnShockwave } from '../core/effects';
 import { unitCylinder } from './models';
 import { faceToward, moveFlyer, type Ctx } from './common';
 import { fireAt } from './ai';
@@ -31,8 +31,8 @@ const MINION_KINDS: EnemyKind[] = ['drone', 'crawler', 'gunner', 'heavy'];
 export function minionCount(world: World, self: Enemy): number {
   let n = 0;
   for (const o of world.enemies) {
-    if (o === self || o.kind === 'boss') continue;
-    if (MINION_KINDS.includes(o.kind) && (o.status === 'active' || o.status === 'stunned')) n++;
+    if (o === self || o.kind === 'boss' || o.allied) continue;
+    if ((MINION_KINDS.includes(o.kind) || o.ai.summoned) && (o.status === 'active' || o.status === 'stunned')) n++;
   }
   return n;
 }
@@ -51,6 +51,9 @@ export function initBossAI(world: World, e: Enemy): void {
   ai.orbit = Math.random() * Math.PI * 2;
   ai.room = world.level.rooms.find((r) => pointInAABB(e.pos, r)) ?? null;
   ai.openAmt = 0;
+  ai.summon = null;            // 呼ぶ動作中 { t, pts, kinds }
+  ai.charge = null;            // 突進中 { state: 'tele' | 'dash', t, dir, hit }
+  ai.chargeT = GENERATOR.chargeFirst;
 }
 
 function setOpen(e: Enemy, open: boolean): void {
@@ -64,35 +67,107 @@ export function bossFindFloor(world: World, x: number, z: number, fromY: number,
   return t === null ? null : fromY + (toY - fromY) * t;
 }
 
-function summon(c: Ctx, spawn: SpawnFn, kinds: EnemyKind[]): void {
+/** 召喚する雑魚の出現地点（床の高さ）を決める。部屋の中・ボスの周り */
+function summonPoints(c: Ctx, kinds: EnemyKind[]): THREE.Vector3[] {
   const { world, e } = c;
   const room = e.ai.room as { min: THREE.Vector3; max: THREE.Vector3 } | null;
-  const room_free = BOSS_AI.minionCap - minionCount(world, e);
-  const n = Math.min(kinds.length, room_free);
-  for (let i = 0; i < n; i++) {
-    const kind = kinds[i];
-    const a = Math.random() * Math.PI * 2;
-    const r = 4 + Math.random() * 4;
-    let x = e.pos.x + Math.cos(a) * r, z = e.pos.z + Math.sin(a) * r;
+  const out: THREE.Vector3[] = [];
+  const base = Math.random() * Math.PI * 2;
+  for (let i = 0; i < kinds.length; i++) {
+    const a = base + (i / Math.max(1, kinds.length)) * Math.PI * 2 + (Math.random() - 0.5) * 0.6;
+    const r = 4 + Math.random() * 3;
+    let x = e.pos.x + Math.sin(a) * r, z = e.pos.z + Math.cos(a) * r;
     if (room) {
       x = THREE.MathUtils.clamp(x, room.min.x + 1.5, room.max.x - 1.5);
       z = THREE.MathUtils.clamp(z, room.min.z + 1.5, room.max.z - 1.5);
     }
-    let y: number;
-    if (kind === 'drone') {
-      y = e.pos.y + 0.5;
-      if (room) y = THREE.MathUtils.clamp(y, room.min.y + 1.5, room.max.y - 1.5);
-    } else {
-      const fromY = room ? room.max.y - 0.5 : e.pos.y + 4;
-      const toY = room ? room.min.y - 1 : e.pos.y - 30;
-      const fy = bossFindFloor(world, x, z, fromY, toY);
-      y = (fy ?? (room ? room.min.y : e.pos.y - 5)) + 1.0;
-    }
-    const pos = new THREE.Vector3(x, y, z);
-    spawn(world, kind, pos);
-    spawnBurst(world, pos, 0xffa24d, 10, 4);
-    spawnShockwave(world, pos, 0xffb070, 1.5, 0.3);
+    const fromY = room ? room.max.y - 0.5 : e.pos.y + 4;
+    const toY = room ? room.min.y - 1 : e.pos.y - 30;
+    const fy = bossFindFloor(world, x, z, fromY, toY) ?? (room ? room.min.y : e.pos.y - 5);
+    out.push(new THREE.Vector3(x, fy, z));
   }
+  return out;
+}
+
+/**
+ * 仲間召喚の開始（呼ぶ動作）。出現地点に光の柱と床の輪を立てる。
+ * 柱は演出（effects）なので、途中でボスが倒れたりショートしたりしても自然に消える
+ */
+function beginSummon(c: Ctx, kinds: EnemyKind[]): void {
+  const { world, e } = c;
+  const free = BOSS_AI.minionCap - minionCount(world, e);
+  const list = kinds.slice(0, Math.max(0, free));
+  if (!list.length) return;
+  const pts = summonPoints(c, list);
+  e.ai.summon = { t: 0, pts, kinds: list };
+  const T = GENERATOR.summonWindup;
+  for (const p of pts) {
+    const g = new THREE.Group();
+    g.position.copy(p);
+    const pillarMat = new THREE.MeshBasicMaterial({ color: 0xffb04a, transparent: true, opacity: 0, depthWrite: false, blending: THREE.AdditiveBlending, side: THREE.DoubleSide });
+    const pillar = new THREE.Mesh(new THREE.CylinderGeometry(0.55, 0.75, 6, 18, 1, true), pillarMat);
+    const ringMat = new THREE.MeshBasicMaterial({ color: 0xffd27a, transparent: true, opacity: 0, depthWrite: false, blending: THREE.AdditiveBlending, side: THREE.DoubleSide });
+    const ring = new THREE.Mesh(new THREE.RingGeometry(0.9, 1.25, 32), ringMat);
+    ring.rotation.x = -Math.PI / 2;
+    ring.position.y = 0.04;
+    g.add(pillar, ring);
+    world.scene.add(g);
+    const life = T + 0.35;
+    addEffect(world, g, life, (fx) => {
+      const k = 1 - fx.life / fx.maxLife;            // 0→1（全体）
+      const u = Math.min(1, (k * life) / T);          // 呼ぶ動作の進み
+      const out = k > 0.8 ? Math.max(0, (1 - k) / 0.2) : 1;
+      pillarMat.opacity = (0.15 + 0.5 * u) * out * (0.8 + 0.2 * Math.sin(fx.life * 30));
+      const sy = 0.2 + 0.8 * Math.min(1, u * 1.6);
+      pillar.scale.set(1 - 0.6 * u, sy, 1 - 0.6 * u);
+      pillar.position.y = 3 * sy;
+      ringMat.opacity = 0.9 * Math.min(1, u * 3) * out;
+      ring.scale.setScalar(1.6 - 0.8 * u);
+    }, true);
+  }
+  spawnShockwave(world, e.pos, 0xffc070, 4.5, 0.5);
+  world.events.emit('enemyAction', { kind: 'boss', pos: e.pos.clone(), action: 'summon', value: 0 });
+}
+
+/** 呼ぶ動作の進行。終わったら雑魚を出す。呼ぶ動作中は true（その間は弾幕・レーザーを止める） */
+function updateSummon(c: Ctx, spawn: SpawnFn): boolean {
+  const { world, e, dt } = c;
+  const S = e.ai.summon as { t: number; pts: THREE.Vector3[]; kinds: EnemyKind[] } | null;
+  if (!S) return false;
+  S.t += dt;
+  const k = Math.min(1, S.t / GENERATOR.summonWindup);
+  e.ai.warn = Math.max(e.ai.warn ?? 0, 0.35 + 0.5 * k);
+  e.ai.summonGlow = k;
+  // 呼ぶ動作：体から光の粒が上がる（装甲の回転は animate 側で summonGlow を見て速くする）
+  if (Math.random() < 0.6) {
+    const p = e.pos.clone().add(new THREE.Vector3((Math.random() - 0.5) * 3, -1 + Math.random() * 2, (Math.random() - 0.5) * 3));
+    spawnBurst(world, p, 0xffc070, 2, 2.5, 0.4);
+  }
+  e.vel.y = Math.max(e.vel.y, 0.8);                 // 少し浮き上がる
+  if (S.t < GENERATOR.summonWindup) return true;
+  e.ai.summon = null;
+  e.ai.summonGlow = 0;
+  const room = e.ai.room as { min: THREE.Vector3; max: THREE.Vector3 } | null;
+  for (let i = 0; i < S.kinds.length; i++) {
+    const kind = S.kinds[i];
+    const p = S.pts[i];
+    let y: number;
+    if (kind === 'drone' || kind === 'redDrone' || kind === 'missileDrone') {
+      y = p.y + 3;
+      if (room) y = THREE.MathUtils.clamp(y, room.min.y + 1.5, room.max.y - 1.5);
+    } else y = p.y + ENEMIES[kind].radius + 0.1;
+    const pos = new THREE.Vector3(p.x, y, p.z);
+    const m = spawn(world, kind, pos);
+    m.ai.summoned = true;
+    m.ai.alert = 4;
+    m.ai.yaw = Math.atan2(world.player.pos.x - p.x, world.player.pos.z - p.z);
+    spawnFlash(world, pos, 0xffc060, 8, 12, 0.3);
+    spawnBurst(world, pos, 0xffa24d, 16, 5);
+    spawnBurst(world, pos, 0xfff2b0, 8, 3);
+    spawnShockwave(world, new THREE.Vector3(p.x, p.y + 0.1, p.z), 0xffb070, 2.4, 0.4);
+  }
+  world.events.emit('enemyAction', { kind: 'boss', pos: e.pos.clone(), action: 'summon', value: 1 });
+  return false;
 }
 
 function ensureBeam(e: Enemy, world: World): THREE.Mesh {
@@ -172,10 +247,20 @@ export function updateBoss(c: Ctx, spawn: SpawnFn): void {
   } else {
     wish.y = Math.sin(world.time * 0.8) * 0.3;
   }
-  moveFlyer(world, e, dt, wish, 3, e.radius * 0.85);
-  if (ai.alert > 0) faceToward(e, c.dirXZ.x, c.dirXZ.z, dt, stunned ? 0.5 : 2);
+  // 突進中の移動は updateCharge が行う
+  if (!ai.charge || stunned) moveFlyer(world, e, dt, wish, 3, e.radius * 0.85);
+  if (ai.alert > 0 && !ai.charge) faceToward(e, c.dirXZ.x, c.dirXZ.z, dt, stunned ? 0.5 : 2);
 
-  if (ai.alert <= 0 || stunned) { endLaser(e); return; }
+  if (ai.alert <= 0 || stunned) { endLaser(e); endCharge(e); ai.summon = null; ai.summonGlow = 0; return; }
+
+  // ---- 突進（第2形態）
+  if (ai.charge) {
+    updateCharge(c);
+    return;
+  }
+
+  // ---- 仲間召喚：呼ぶ動作の間は弾幕・レーザーを止める
+  if (updateSummon(c, spawn)) return;
 
   // ---- レーザー（第2形態）
   if (ai.laser) {
@@ -187,7 +272,9 @@ export function updateBoss(c: Ctx, spawn: SpawnFn): void {
   ai.summonT -= dt;
   if (ai.summonT <= 0) {
     ai.summonT = phase2 ? BOSS_AI.summonEvery2 : BOSS_AI.summonEvery;
-    summon(c, spawn, phase2 ? ['crawler', 'crawler'] : ['drone', 'drone']);
+    const kinds: EnemyKind[] = (phase2 ? ai.summonKinds2 : ai.summonKinds1) ?? (phase2 ? GENERATOR.summonKinds2 : GENERATOR.summonKinds1);
+    beginSummon(c, kinds);
+    if (ai.summon) return;
   }
 
   // ---- 弾幕
@@ -205,9 +292,82 @@ export function updateBoss(c: Ctx, spawn: SpawnFn): void {
       ai.laserT = BOSS_AI.laserEvery;
       ai.laser = { t: 0, state: 'tele', lastHit: -1, dir: pc.clone().sub(e.pos).normalize() };
       ensureBeam(e, world);
+      return;
+    }
+    // ---- 突進開始（レーザーの直前は控える）
+    ai.chargeT -= dt;
+    if (ai.chargeT <= 0 && c.los && ai.laserT > 2) {
+      ai.chargeT = GENERATOR.chargeEvery;
+      ai.charge = { state: 'tele', t: 0, dir: pc.clone().sub(e.pos).normalize(), hit: false };
+      ensureBeam(e, world);
+      world.events.emit('enemyAction', { kind: 'boss', pos: e.pos.clone(), action: 'chargeStart' });
     }
   }
 }
+
+function endCharge(e: Enemy): void {
+  if (!e.ai.charge) return;
+  e.ai.charge = null;
+  if (e.ai.beam && !e.ai.laser) e.ai.beam.visible = false;
+}
+
+/** 突進（第2形態）：予告（赤い帯でコースを示し、少し下がって溜める）→ まっすぐ体当たり。壁に当たると止まる */
+function updateCharge(c: Ctx): void {
+  const { world, e, dt, pc } = c;
+  const C = e.ai.charge as { state: 'tele' | 'dash'; t: number; dir: THREE.Vector3; hit: boolean };
+  C.t += dt;
+  const beam = ensureBeam(e, world);
+  const mat = beam.material as THREE.MeshBasicMaterial;
+  if (C.state === 'tele') {
+    // 最後の 0.3 秒は向きを固定
+    if (C.t < GENERATOR.chargeTelegraph - 0.3) turnToward(C.dir, pc.clone().sub(e.pos).normalize(), 3 * dt);
+    const k = Math.min(1, C.t / GENERATOR.chargeTelegraph);
+    e.ai.warn = 0.4 + 0.6 * k;
+    e.vel.multiplyScalar(Math.max(0, 1 - 6 * dt));
+    moveFlyer(world, e, dt, C.dir.clone().multiplyScalar(-1.2), 20, e.radius * 0.85); // 溜め：少し下がる
+    const end = laserEnd(world, e.pos, C.dir);
+    beam.visible = true;
+    mat.opacity = 0.22 + 0.3 * Math.abs(Math.sin(C.t * 18));
+    mat.color.setHex(0xff2a1a);
+    if (e.ai.beamCore) e.ai.beamCore.visible = false;
+    placeBeam(beam, e.pos, end, e.radius * 0.6 * (0.4 + 0.6 * k));
+    faceToward(e, C.dir.x, C.dir.z, dt, 6);
+    if (C.t >= GENERATOR.chargeTelegraph) {
+      C.state = 'dash';
+      C.t = 0;
+      beam.visible = false;
+      spawnShockwave(world, e.pos, 0xff5a3a, 4, 0.35);
+      world.events.emit('enemyAttack', { kind: 'boss', pos: e.pos.clone() });
+    }
+    return;
+  }
+  // 体当たり
+  e.ai.warn = 0.8;
+  const wish = C.dir.clone().multiplyScalar(GENERATOR.chargeSpeed);
+  e.vel.copy(wish);
+  const hitWall = moveFlyer(world, e, dt, wish, 1000, e.radius * 0.85);
+  if (Math.random() < 0.7) spawnBurst(world, e.pos.clone().addScaledVector(C.dir, -e.radius), 0xff8a4a, 2, 2, 0.3);
+  if (!C.hit && e.pos.distanceTo(pc) < e.radius + PLAYER_HIT_RADIUS + 0.2) {
+    C.hit = true;
+    damagePlayer(world, GENERATOR.chargeDamage);
+    // はね飛ばす
+    const push = new THREE.Vector3(C.dir.x, 0, C.dir.z);
+    if (push.lengthSq() > 1e-6) world.player.vel.addScaledVector(push.normalize(), 9);
+    world.player.vel.y = Math.max(world.player.vel.y, 4);
+  }
+  if (hitWall || C.t >= GENERATOR.chargeTime) {
+    if (hitWall) {
+      spawnShockwave(world, e.pos, 0xffb070, 5, 0.45);
+      spawnBurst(world, e.pos, 0xffd27a, 14, 6);
+      world.events.emit('enemyAction', { kind: 'boss', pos: e.pos.clone(), action: 'wallCrash' });
+    }
+    e.vel.multiplyScalar(0.2);
+    e.ai.charge = null;
+    e.ai.atkTimer = Math.max(e.ai.atkTimer, 1.2);
+  }
+}
+
+
 
 function approach01(cur: number, target: number, d: number): number {
   return cur < target ? Math.min(target, cur + d) : Math.max(target, cur - d);
