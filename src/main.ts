@@ -25,6 +25,7 @@ import { buildCamp2, updateCamp2, CAMP2_EXPOSURE } from './level/camp2';
 import { CAMERA, CHARACTER } from './config/balance';
 import { syncPlayerStats } from './progression/effects';
 import { createHUD } from './ui/hud';
+import { getDriveHud } from './ui/driveHud';
 import { createUpgradeScreen } from './ui/upgradeScreen';
 import { initAudio, resumeAudio, updateAudio } from './audio/sfx';
 import './ui/style.css';
@@ -181,6 +182,8 @@ function continueGame(): void {
 }
 
 function newWorld(): World {
+  // ワールド切替では運転 HUD の表示状態も戻す（#hud.driving の残留を防ぐ）
+  getDriveHud().reset();
   // 古いワールドの後始末
   if ((globalThis as any).__oldWorld) disposeWorld((globalThis as any).__oldWorld);
   const w = createWorld(input, events, window.innerWidth / window.innerHeight);
@@ -239,6 +242,9 @@ function retry(): void {
   if (at) changeLevel(levelId, at, { keepHp: false });
   else world = newWorld();
   startGame();
+  // 死亡フレームで到達した地点は未保存の場合がある。生存状態へ戻したリトライ地点を確定する。
+  world.level.data.saveDirty = true;
+  autoSave();
 }
 
 function changeFloor(to: 1 | 2): void {

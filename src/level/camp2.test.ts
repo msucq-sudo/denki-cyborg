@@ -239,6 +239,7 @@ describe('camp2 (サージ収容所 2階)', () => {
     damageEnemy(w, boss, 99999, { how: 'shot' });
     run(CAMP2.openDelay - 0.5);
     expect(c.state.phase).toBe('fight');
+    expect(w.level.data.objective).toBe('檻のロックを解除中…');
     expect(c.doorCollider.active).toBe(true);
     run(1 + CAMP2.doorOpenTime);
     expect(c.state.phase).toBe('freed');

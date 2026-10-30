@@ -1,0 +1,11 @@
+{
+  "checks": [
+    "normal HUD returns immediately after leaving car",
+    "floor2 upgrade -> surge success -> camp1 keeps HUD visible",
+    "camp1 vacuum pickup, Y activation and 14 second cooldown display work",
+    "camp2 entry also shows HP and weapon HUD",
+    "retry after simultaneous death/unlock saves freed checkpoint and continues correctly",
+    "skipping driving cutscene completes crash, restores HUD and allows camp1 entry"
+  ],
+  "errors": []
+}

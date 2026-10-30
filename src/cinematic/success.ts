@@ -46,7 +46,6 @@ export function successScript(rt: Runtime, drive: DriveState, probe?: SuccessPro
   const V = Math.min(110, Math.max(300 * KMH, drive.speed));
   const front = car.m.frontDist;
   const flying: Flying[] = [];
-  const hiddenPanels: THREE.Object3D[] = [];
   // 演出で走る範囲にある障害物・雑魚は隠す（車が突き抜けて見えないように）
   const restoreProps = hideDriveProps(drive, -850);
   const st = { carX: drive.pos.x, speed: V, fenceBroken: false, crashed: false, crashReal: 0, rebound: 0, dented: 0, fadeStarted: false };
@@ -59,6 +58,27 @@ export function successScript(rt: Runtime, drive: DriveState, probe?: SuccessPro
   const dWall = () => st.carX - front - wallX;
 
   const finish = () => { if (probe) { probe.d = dFence(); probe.carX = st.carX; probe.carSpeed = st.speed; probe.fenceBroken = st.fenceBroken; probe.crashed = st.crashed; probe.dented = st.dented; probe.flying = flying.length; } };
+
+  function updateFlying(dt: number): void {
+    for (const f of flying) {
+      if (f.rested) continue;
+      f.vel.y -= 14 * dt;
+      f.obj.position.addScaledVector(f.vel, dt);
+      f.obj.rotation.x += f.spin.x * dt;
+      f.obj.rotation.y += f.spin.y * dt;
+      f.obj.rotation.z += f.spin.z * dt;
+      if (f.obj.position.y < 0.15) {
+        f.obj.position.y = 0.15;
+        if (Math.abs(f.vel.y) < 2) { f.rested = true; continue; }
+        f.vel.y *= -0.35; f.vel.x *= 0.55; f.vel.z *= 0.55; f.spin.multiplyScalar(0.5);
+      }
+    }
+  }
+
+  function settleFlying(): void {
+    const step = 1 / 60;
+    for (let i = 0; i < 180 && flying.some((f) => !f.rested); i++) updateFlying(step);
+  }
 
   function breakFence(): void {
     st.fenceBroken = true;
@@ -200,11 +220,6 @@ export function successScript(rt: Runtime, drive: DriveState, probe?: SuccessPro
         rt.speedLines = 0.18;
         drive.car.setDriverPose('drive');
         car.setDriverVisible(true);
-        // カメラと車の間にある柵の板は隠す（見えなくなるので）
-        for (const p of stage.fencePanels) {
-          p.getWorldPosition(tmpA);
-          if (tmpA.z > carZ + 3.2 && tmpA.z < carZ + 16 && p.visible) { p.visible = false; hiddenPanels.push(p); }
-        }
       },
       timeScale() {
         if (st.crashed) {
@@ -221,12 +236,11 @@ export function successScript(rt: Runtime, drive: DriveState, probe?: SuccessPro
       },
       end() { return st.crashed && st.crashReal >= 2.4; },
       camera(u, t, pose) {
-        // 柵の少し手前（東）に据えて、車が通り抜けるのを真横に近い角度で撮る。通り過ぎたら車を追って壁まで並走
-        const plantX = fenceX + 4.5;
-        const camX = Math.max(wallX + 11, Math.min(plantX, st.carX + 8));
+        // 車の東側から並走し、柵の柱に視界を遮られず壁まで追う
+        const camX = Math.max(wallX + 11, st.carX + 8);
         const k = st.crashed ? smooth(st.crashReal / 1.9) : 0;
         pose.pos.set(camX + 14 * k, 2.0 + 0.3 * k, carZ + 10.5 + 3 * k);
-        const tx = st.crashed ? lerp(st.carX, wallX + 1, k) : Math.min(fenceX - 0.5, st.carX - 1);
+        const tx = st.crashed ? lerp(st.carX, wallX + 1, k) : st.carX - 1;
         pose.target.set(tx, lerp(1.4, 2.6, k), carZ);
         pose.fov = st.crashed ? lerp(46, 40, k) : 46;
         pose.roll = 0;
@@ -239,6 +253,19 @@ export function successScript(rt: Runtime, drive: DriveState, probe?: SuccessPro
 
   const script: Script = {
     shots,
+    complete() {
+      if (st.crashed) return;
+      if (!st.fenceBroken) breakFence();
+      wallCrash();
+      st.carX = wallX + front;
+      st.speed = 0;
+      car.x = st.carX;
+      car.z = zc;
+      car.yaw = Math.PI / 2;
+      car.place(0);
+      settleFlying();
+      finish();
+    },
     sim(dt, rdt) {
       const si = rt.shotIndex;
       // --- 車の動き
@@ -282,19 +309,7 @@ export function successScript(rt: Runtime, drive: DriveState, probe?: SuccessPro
       drive.car.update(dt, st.speed);
 
       // --- 飛んでいく柵の板
-      for (const f of flying) {
-        if (f.rested) continue;
-        f.vel.y -= 14 * dt;
-        f.obj.position.addScaledVector(f.vel, dt);
-        f.obj.rotation.x += f.spin.x * dt;
-        f.obj.rotation.y += f.spin.y * dt;
-        f.obj.rotation.z += f.spin.z * dt;
-        if (f.obj.position.y < 0.15) {
-          f.obj.position.y = 0.15;
-          if (Math.abs(f.vel.y) < 2) { f.rested = true; continue; }
-          f.vel.y *= -0.35; f.vel.x *= 0.55; f.vel.z *= 0.55; f.spin.multiplyScalar(0.5);
-        }
-      }
+      updateFlying(dt);
 
       // --- 速度線（道沿い）
       car.forward(fwd);
@@ -302,7 +317,6 @@ export function successScript(rt: Runtime, drive: DriveState, probe?: SuccessPro
       finish();
     },
     dispose() {
-      for (const p of hiddenPanels) p.visible = true;
       restoreProps();
       car.restore();
       stage.dispose();

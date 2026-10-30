@@ -1,0 +1,59 @@
+stage { real: true, realCar: true }
+PASS 成功: 6ショット ["前方斜め","道ばた","車内","後ろの引き","正面の顔","真横"]
+shot success_01_front34
+shot success_02_roadside
+shot success_02b_roadside_pass
+shot success_03_incar
+shot success_04_wide
+shot success_05_face
+PASS 演出中は #hud に cutscene クラス "cutscene"
+shot success_06a_approach
+shot success_06b_slow_before
+shot success_06c_slow_break
+shot success_06d_slow_after
+shot success_06d2_slow_later
+PASS 柵破りはスロー（倍率 < 0.2） 0.13
+shot success_06e_fast_to_wall
+shot success_07a_crash_flash
+shot success_07b_dent
+{"ev":["slowmo:true","fenceBreak","slowmo:false","carWallCrash","slowmo:true","slowmo:false"],"done":1,"probe":{"fenceBroken":true,"crashed":true,"d":-118.64402681678143,"carX":-1615.8900268682798,"carSpeed":0.0068947833913728775,"dented":76,"flying":2},"hud":"","cs":true}
+PASS 成功: onDone 1回
+PASS 成功: 柵・壁のイベント ["slowmo:true","fenceBreak","slowmo:false","carWallCrash","slowmo:true","slowmo:false"]
+PASS 成功: 壁が凹んだ 76
+PASS 成功: 終了後に黒帯 DOM と HUD クラスが残らない ""
+PASS 失敗: 5ショット ["車内・ヘビー出現","顔・身を乗り出す","主人公の視点","俯瞰","真横・衝突"]
+shot fail_01_incar
+shot fail_02_face
+shot fail_03_pov
+shot fail_04_aerial
+shot fail_05a_side_before
+shot fail_05b_impact
+shot fail_05c_push
+shot fail_05d_stopped
+{"ev":["slowmo:true","slowmo:true","carCaught","carCaught","slowmo:false","slowmo:false"],"done":1,"probe":{"heavies":3,"caught":true,"stopped":true,"carX":-1436.540934288416,"carSpeed":0,"pushed":1.0829081387321366},"x":-1436.540934288416}
+PASS 失敗: onDone 1回
+PASS 失敗: carCaught が出た ["slowmo:true","slowmo:true","carCaught","carCaught","slowmo:false","slowmo:false"]
+PASS 失敗: 柵まで届かない -1436.540934288416
+PASS 失敗: ヘビー片付け
+PASS 統合(success): 運転中から始める {"phase":"driving","hp":100}
+PASS 統合(success): 判定地点で演出が始まる {"phase":"cutscene","result":"success","kmh":327.2401889597819,"hasCut":true}
+shot integ_success_mid
+PASS 統合(success): 演出中は本編 HUD・運転 HUD が隠れる {"hud":"driving cutscene","dv":"none","cs":true}
+{"phase":"done","hp":100,"state":"playing","ev":["driveCheckpoint:true","slowmo:true","fenceBreak","slowmo:false","carWallCrash","slowmo:true","slowmo:false"]}
+PASS 統合(success): 演出のあと phase=done "done"
+PASS 統合(success): 柵・壁のイベントが出る ["driveCheckpoint:true","slowmo:true","fenceBreak","slowmo:false","carWallCrash","slowmo:true","slowmo:false"]
+shot integ_success_end
+PASS 統合(fail): 運転中から始める {"phase":"driving","hp":100}
+PASS 統合(fail): 判定地点で演出が始まる {"phase":"cutscene","result":"fail","kmh":170.4429216274741,"hasCut":true}
+shot integ_fail_mid
+PASS 統合(fail): 演出中は本編 HUD・運転 HUD が隠れる {"hud":"driving cutscene","dv":"none","cs":true}
+{"phase":"done","hp":0,"state":"gameover","ev":["driveCheckpoint:false","slowmo:true","carCaught","slowmo:false"]}
+PASS 統合(fail): 演出のあと phase=done "done"
+PASS 統合(fail): carCaught が出て、死亡画面へ {"phase":"done","hp":0,"state":"gameover","ev":["driveCheckpoint:false","slowmo:true","carCaught","slowmo:false"]}
+shot integ_fail_end
+PASS hp 0 で gameover "gameover"
+shot death
+PASS 死亡画面は YOU DIED "YOU DIED"
+PASS ボタンは リトライ／終了 ["リトライ","終了"]
+PASS エラーなし []
+ALL PASS

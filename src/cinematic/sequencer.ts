@@ -39,6 +39,8 @@ export interface Script {
   shots: Shot[];
   /** スケール済みの dt で世界（車・ヘビー・柵）を進める */
   sim(simDt: number, realDt: number): void;
+  /** 正常終了・スキップ時に、演出を完了状態へ確定する */
+  complete?(): void;
   dispose(): void;
 }
 
@@ -278,6 +280,7 @@ export class Cutscene implements CutsceneHandle, Runtime {
       if (this.onKey) window.removeEventListener('keydown', this.onKey);
       if (this.onKeyUp) window.removeEventListener('keyup', this.onKeyUp);
     }
+    if (!stale) this.script.complete?.();
     this.script.dispose();
     this.fx.dispose();
     this.lines.dispose();

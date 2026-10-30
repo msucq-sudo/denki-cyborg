@@ -1,0 +1,25 @@
+stage { real: true, realCar: true }
+PASS 成功: 6ショット ["前方斜め","道ばた","車内","後ろの引き","正面の顔","真横"]
+shot success_01_front34
+shot success_02_roadside
+shot success_02b_roadside_pass
+shot success_03_incar
+shot success_04_wide
+shot success_05_face
+PASS 演出中は #hud に cutscene クラス "cutscene"
+shot success_06a_approach
+shot success_06b_slow_before
+shot success_06c_slow_break
+shot success_06d_slow_after
+shot success_06d2_slow_later
+PASS 柵破りはスロー（倍率 < 0.2） 0.13
+shot success_06e_fast_to_wall
+shot success_07a_crash_flash
+shot success_07b_dent
+{"ev":["slowmo:true","fenceBreak","slowmo:false","carWallCrash","slowmo:true","slowmo:false"],"done":1,"probe":{"fenceBroken":true,"crashed":true,"d":-118.64402681678143,"carX":-1615.8900268682798,"carSpeed":0.0068947833913728775,"dented":76,"flying":2},"hud":"","cs":true}
+PASS 成功: onDone 1回
+PASS 成功: 柵・壁のイベント ["slowmo:true","fenceBreak","slowmo:false","carWallCrash","slowmo:true","slowmo:false"]
+PASS 成功: 壁が凹んだ 76
+PASS 成功: 終了後に黒帯 DOM と HUD クラスが残らない ""
+PASS エラーなし []
+ALL PASS

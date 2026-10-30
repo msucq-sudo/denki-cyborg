@@ -4,7 +4,8 @@ import type { AABB } from '../../core/types';
 import { hazardTex } from '../floor1/visuals';
 import { Batch, rng } from './batch';
 import { COMPOUND, ROAD } from './layout';
-import { beamTex, compoundWallTex, fenceTex, sidewalkTex, signTex } from './textures';
+import { beamTex, compoundWallTex, sidewalkTex, signTex } from './textures';
+import { createFenceWireGeometry } from './wire';
 
 const v3 = (x: number, y: number, z: number) => new THREE.Vector3(x, y, z);
 const col = (x0: number, x1: number, y0: number, y1: number, z0: number, z1: number, tag: string): AABB => ({ min: v3(x0, y0, z0), max: v3(x1, y1, z1), active: true, tag });
@@ -59,8 +60,7 @@ export function buildCompound(): CompoundParts {
   const zN = jz - COMPOUND.fenceHalf, zS = jz + COMPOUND.fenceHalf;   // 柵の北端・南端
   const rand = rng(404);
 
-  const fT = fenceTex();
-  const meshMat = new THREE.MeshStandardMaterial({ ...(fT ? { map: fT } : { color: 0x99a3ae }), color: 0xc4ced8, alphaTest: 0.5, side: THREE.DoubleSide, metalness: 0.6, roughness: 0.5 });
+  const meshMat = new THREE.MeshStandardMaterial({ color: 0xc4ced8, metalness: 0.6, roughness: 0.5 });
   const frameMat = new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.45, metalness: 0.65 });
   const concreteMat = new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.9, metalness: 0.05 });
   const glowMat = new THREE.MeshBasicMaterial({ vertexColors: true });
@@ -68,14 +68,9 @@ export function buildCompound(): CompoundParts {
   const hz = hazardTex();
   const hazardMat = new THREE.MeshStandardMaterial({ vertexColors: true, ...(hz ? { map: hz } : {}), roughness: 0.7, metalness: 0 });
 
-  /** 金網の面（YZ 平面、東向き）。len×h を 1.6m の網目で */
-  const meshPlane = (len: number, h: number): THREE.PlaneGeometry => {
-    const g = new THREE.PlaneGeometry(len, h);
-    g.rotateY(Math.PI / 2);
-    const uv = g.getAttribute('uv') as THREE.BufferAttribute;
-    for (let i = 0; i < uv.count; i++) uv.setXY(i, (uv.getX(i) * len) / 1.6, (uv.getY(i) * h) / 1.6);
-    return g;
-  };
+  const netH = FENCE_H - 1.2;
+  const roadNetGeo = createFenceWireGeometry(COMPOUND.fenceHalf - 12, netH);
+  const sideNetGeo = createFenceWireGeometry(fx - wx, netH);
 
   // ================================================================ 柵
   const fence = new THREE.Group();
@@ -85,7 +80,8 @@ export function buildCompound(): CompoundParts {
   const sb = new Batch();                // 柱・横棒・有刺鉄線（静的部分）
   const staticSeg = (za: number, zb: number): void => {
     const len = zb - za, zc = (za + zb) / 2;
-    const m = new THREE.Mesh(meshPlane(len, FENCE_H - 1.2), meshMat);
+    const m = new THREE.Mesh(roadNetGeo, meshMat);
+    m.rotation.y = Math.PI / 2;
     m.position.set(0, 0.4 + (FENCE_H - 1.2) / 2, zc);
     m.receiveShadow = true;
     fence.add(m);
@@ -104,7 +100,7 @@ export function buildCompound(): CompoundParts {
   // 庭の南北の側面の柵（柵から壁まで）
   for (const zz of [zN, zS]) {
     const len = fx - wx;
-    const m = new THREE.Mesh(meshPlane(len, FENCE_H - 1.2).rotateY(-Math.PI / 2), meshMat);
+    const m = new THREE.Mesh(sideNetGeo, meshMat);
     m.position.set(-len / 2, 0.4 + (FENCE_H - 1.2) / 2, zz);
     fence.add(m);
     for (let x = 0; x > -len; x -= 6) sb.box(x, FENCE_H / 2 + 0.3, zz, 0.35, FENCE_H + 0.6, 0.35, 0x59636f, false);
@@ -112,7 +108,7 @@ export function buildCompound(): CompoundParts {
   }
   // 道の幅のパネル（突き破れる）
   const panelW = 3;
-  const panelMeshGeo = meshPlane(panelW, FENCE_H - 1.2);
+  const panelMeshGeo = createFenceWireGeometry(panelW, netH);
   const pb = new Batch();
   pb.box(0, FENCE_H / 2 + 0.3, -panelW / 2, 0.35, FENCE_H + 0.6, 0.3, 0x59636f, false);
   pb.box(0.5, FENCE_H + 0.7, -panelW / 2, 1.2, 0.12, 0.12, 0x59636f, false, 0, 0, 0.5);
@@ -131,6 +127,7 @@ export function buildCompound(): CompoundParts {
     const frame = new THREE.Mesh(panelFrameGeo, frameMat);
     frame.castShadow = true;
     const net = new THREE.Mesh(panelMeshGeo, meshMat);
+    net.rotation.y = Math.PI / 2;
     net.position.set(0, 0.4 + (FENCE_H - 1.2) / 2, 0);
     g.add(frame, net);
     fence.add(g);
@@ -345,8 +342,9 @@ export function buildCompound(): CompoundParts {
       eb.box(ex - 0.2, 1.15, z, 0.6, 0.2, 4.0, 0x6d6a6c, false);
     }
     // 金網の柵（高さ 6m）と柱
-    const g = meshPlane(zB - zA, 5);
+    const g = createFenceWireGeometry(zB - zA, 5);
     const fm = new THREE.Mesh(g, meshMat);
+    fm.rotation.y = Math.PI / 2;
     fm.position.set(ex + 0.4, 3.7, (zA + zB) / 2);
     root.add(fm);
     for (let z = zA; z <= zB + 0.01; z += 4) {

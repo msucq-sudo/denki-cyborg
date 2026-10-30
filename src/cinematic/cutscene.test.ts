@@ -57,6 +57,9 @@ test('success: shot order, timing, events, slow motion, wall dent, onDone once',
   const before = (wall.geometry.attributes.position.array as Float32Array).slice();
   const total = run(h, w, () => {
     if (h.shotName && order[order.length - 1] !== h.shotName) order.push(h.shotName);
+    if (h.shotIndex === 5 && !probe.fenceBroken) {
+      expect((w.level.data.surge.fencePanels as THREE.Object3D[]).every((panel) => panel.visible)).toBe(true);
+    }
     if (!probe.crashed) minScale = Math.min(minScale, h.timeScale);
     const dx = Math.abs(drive.pos.x - lastX);
     lastX = drive.pos.x;
@@ -166,8 +169,14 @@ test('fail via api: result and phase', () => {
 test('skip ends immediately, once, and cleans up', () => {
   const { w, drive } = mk();
   buildDemoStage(w);
+  const panels = w.level.data.surge.fencePanels as THREE.Object3D[];
+  const centerPanels = panels.map((panel) => {
+    const pos = panel.getWorldPosition(new THREE.Vector3());
+    return { panel, offset: Math.abs(pos.z - ROAD.junctionZ) };
+  }).sort((a, b) => a.offset - b.offset).slice(0, 2).map(({ panel }) => panel);
+  const probe: SuccessProbe = { fenceBroken: false, crashed: false, d: 0, carX: 0, carSpeed: 0, dented: 0, flying: 0 };
   let done = 0;
-  const h = new Cutscene(w, (rt) => successScript(rt, drive), () => { done++; });
+  const h = new Cutscene(w, (rt) => successScript(rt, drive, probe), () => { done++; });
   for (let i = 0; i < 90; i++) h.update(w, 1 / 60);
   expect(h.done).toBe(false);
   h.skip();
@@ -176,6 +185,22 @@ test('skip ends immediately, once, and cleans up', () => {
   h.skip();
   h.update(w, 1 / 60);
   expect(done).toBe(1);
+  expect(probe.fenceBroken).toBe(true);
+  expect(probe.crashed).toBe(true);
+  expect(probe.dented).toBeGreaterThan(50);
+  expect(probe.flying).toBeGreaterThan(0);
+  expect(probe.carX).toBeGreaterThan(COMPOUND.wallX);
+  expect(probe.carX).toBeLessThan(COMPOUND.wallX + 10);
+  expect(probe.carSpeed).toBe(0);
+  expect(drive.pos.x).toBeCloseTo(probe.carX);
+  expect(drive.pos.z).toBeCloseTo(ROAD.junctionZ);
+  expect(drive.yaw).toBeCloseTo(Math.PI / 2);
+  const panelPos = new THREE.Vector3();
+  expect(centerPanels.length).toBeGreaterThan(0);
+  expect(centerPanels.every((panel) => {
+    panel.getWorldPosition(panelPos);
+    return panelPos.x < COMPOUND.fenceX - 5;
+  })).toBe(true);
   expect(w.scene.children.some((c) => c instanceof THREE.InstancedMesh)).toBe(false);
 });
 

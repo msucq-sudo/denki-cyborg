@@ -18,6 +18,7 @@ import { toast } from '../core/combat';
 import { clearSockets, getSockets } from '../core/sockets';
 import { initDrive, startDrive, updateDrive } from '../vehicle/drive';
 import type { DriveState } from '../vehicle/types';
+import { getDriveHud } from '../ui/driveHud';
 import { showPrompt } from './floor1';
 import { buildCity, FOG_COLOR, SUN_DIR, WALK } from './surge/city';
 import { buildCompound } from './surge/compound';
@@ -341,6 +342,8 @@ function buildEntranceMarker(): { group: THREE.Group; light: THREE.PointLight } 
 
 function beginWalkOut(world: World, rt: Runtime, d: DriveState): void {
   rt.walkOut = true;
+  // 成功演出が終わって徒歩へ戻る時点で通常 HUD を復帰させる
+  getDriveHud().reset();
   // 車担当の仮の文言は消す（このステージで続きが遊べる）
   world.toasts = world.toasts.filter((t) => !t.text.includes('続きは今後'));
   const p = world.player;

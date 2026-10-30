@@ -260,6 +260,7 @@ export function updateCamp2(world: World, dt: number): void {
     const boss = rt.boss;
     const gone = !boss || boss.status === 'dead' || boss.status === 'down' || !world.enemies.includes(boss);
     if (gone) {
+      world.level.data.objective = '檻のロックを解除中…';
       st.bossDeadT += dt;
       if (st.bossDeadT >= CAMP2.openDelay) freeResidents(world, rt);
     }
