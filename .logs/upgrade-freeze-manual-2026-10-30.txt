@@ -1,0 +1,35 @@
+PASS ?gears=10 で歯車10個 10
+PASS 眠り終わると強化画面が開く {"phase":"rest","cat":"gun","row":0,"shownGears":10,"open":true,"gears":10,"up":{},"locked":true,"held":true,"hp":100,"maxHp":100}
+PASS 操作はロックされている
+PASS 画面が開いている間は自動で起きない "rest"
+PASS 歯車の表示 ["10"]
+PASS タブ順 GUN BODY ARM SKILL ["GUN","BODY","ARM","SKILL"]
+shot 01_gun
+PASS GUN は行1つ（ピストル） ["ピストル"]
+PASS D で BODY へ "body"
+shot 02_body
+shot 03_arm
+PASS SKILL の2行目 {"phase":"rest","cat":"skill","row":1,"shownGears":10,"open":true,"gears":10,"up":{},"locked":true,"held":true,"hp":100,"maxHp":100}
+PASS SKILL は4行
+shot 04_skill
+PASS 強化で歯車が減りレベルが上がる {"before":10,"s":8,"up":{"skill.speed":2}}
+PASS 歯車表示が減る ["8"]
+shot 05_levelup
+PASS 歯車不足ではレベルが上がらない {"skill.speed":2}
+PASS 拒否音 1
+PASS BODY を最大まで上げる（最大HPが増える） {"up":{"skill.speed":2,"body":5},"maxHp":160}
+shot 07_body_max
+PASS 最大では「これ以上」と出る ["これ以上は強化できません"]
+shot 08_gun_lv3
+shot 09_pad_hints
+PASS 閉じると画面が消える {"phase":"wake","cat":"gun","row":0,"shownGears":68,"open":false,"gears":86,"up":{"skill.speed":2,"body":5,"gun.pistol":3},"locked":true,"held":false,"hp":160,"maxHp":160}
+PASS 起き上がりが始まる "wake"
+PASS 起きて自由に動ける状態に戻る {"phase":"free","cat":"gun","row":0,"shownGears":68,"open":false,"gears":86,"up":{"skill.speed":2,"body":5,"gun.pistol":3},"locked":false,"held":false,"hp":160,"maxHp":160}
+PASS Space でジャンプできる 7.299999999999999
+PASS 強化は残る
+shot 11_small_skill
+PASS 960x540 で横スクロールなし
+shot 12_small_gun
+PASS openUpgrade() で開いた画面も閉じられる {"phase":"free","cat":"gun","row":0,"shownGears":5,"open":false,"gears":5,"up":{"skill.speed":2,"body":5,"gun.pistol":3},"locked":false,"held":false,"hp":160,"maxHp":160}
+console errors: none
+PASS コンソールエラーなし

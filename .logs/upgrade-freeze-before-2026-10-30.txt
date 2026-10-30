@@ -1,0 +1,16 @@
+PASS ?gears=10 で歯車10個 10
+ERROR page.evaluate: TypeError: Cannot read properties of undefined (reading 'data')
+    at poseCharacter (http://localhost:5321/src/player/pose.ts:117:135)
+    at update (http://localhost:5321/src/ui/upgradeStage.ts:158:5)
+    at createUpgradeStage (http://localhost:5321/src/ui/upgradeStage.ts:200:3)
+    at Object.open (http://localhost:5321/src/ui/upgradeScreen.ts:305:15)
+    at floor2Hooks.onSleepComplete (http://localhost:5321/src/main.ts:59:17)
+    at updateSleep (http://localhost:5321/src/level/floor2.ts:210:34)
+    at Object.updateFloor2 [as tick] (http://localhost:5321/src/level/floor2.ts:251:5)
+    at step (http://localhost:5321/src/main.ts:336:21)
+    at Object.step (http://localhost:5321/src/main.ts:413:35)
+    at eval (eval at evaluate (:234:30), <anonymous>:1:28)
+    at run (C:\Users\masa_\Game Projects\ToGameDesigner\電気の大切さ吸収と攻撃\tests\e2e\upgrade_check.mjs:23:38)
+    at C:\Users\masa_\Game Projects\ToGameDesigner\電気の大切さ吸収と攻撃\tests\e2e\upgrade_check.mjs:57:9
+console errors: none
+PASS コンソールエラーなし

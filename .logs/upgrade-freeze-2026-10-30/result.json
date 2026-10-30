@@ -1,0 +1,10 @@
+{
+  "checks": [
+    "real frame loop reaches upgrade screen through bed without exception",
+    "keyboard upgrades gun and body and deducts gears",
+    "closing wakes player, releases input and allows movement on real frame loop",
+    "reopening and upgrading/closing through simulated standard gamepad succeeds",
+    "upgrades remain saved after closing"
+  ],
+  "errors": []
+}

@@ -4,7 +4,9 @@
 // 作るのは最初に開いたとき1回だけ。閉じても持ち続けて使い回す（開閉のたびに GPU リソースを作り直さない）。
 import * as THREE from 'three';
 import { CHARACTER } from '../config/balance';
-import type { World } from '../core/types';
+import { EventBus } from '../core/events';
+import type { Input } from '../core/input';
+import { createWorld } from '../core/world';
 import { buildPlayerVisual, type PlayerVisual } from '../player/visual';
 import { createAnimState, poseCharacter, type AnimState } from '../player/pose';
 import { DEFAULT_WEAPON, WEAPONS } from '../player/weapons';
@@ -121,22 +123,21 @@ export function createUpgradeStage(): UpgradeStage {
   vis.jets.visible = false;
   vis.chargeGroup.visible = false;
 
-  // poseCharacter は World を読むので、必要な項目だけの見せかけのワールドを渡す
+  // poseCharacter は World 全体を読むので、展示用も共通初期化して必須状態を欠かさない。
   const input = { aim: false };
-  const fake = {
-    time: 0,
-    state: 'playing',
-    player: {
-      root, vel: new THREE.Vector3(), onGround: true, flying: false, dodgeTimer: 0, dodgeDir: new THREE.Vector3(),
-      charging: false, overloading: false, pitch: 0, hp: 100, maxHp: 100, energy: 100, maxEnergy: 100,
-    },
-    input: { mouse: (b: number) => input.aim && b === 2, isDown: () => false },
-    absorb: { phase: 'idle', tip: new THREE.Vector3(), dir: new THREE.Vector3(0, 0, -1) },
-    aimDir: new THREE.Vector3(0, 0, -1),
-    stats: { shots: 0 },
-    functions: { scouter: true },
-    upgrades: {}, // pose.ts が移動速度の強化を読む（見せるだけなので全部レベル1）
-  } as unknown as World;
+  // この入力は照準ポーズの右クリックだけを模倣する。ゲーム入力は生成しない。
+  const poseInput = {
+    mouse: (button: number) => input.aim && button === 2,
+    isDown: () => false,
+  } as unknown as Input;
+  const fake = createWorld(poseInput, new EventBus(), 16 / 9);
+  fake.scene.remove(fake.player.root);
+  fake.player.root = root;
+  fake.state = 'playing';
+  fake.player.onGround = true;
+  fake.player.hp = fake.player.maxHp = 100;
+  fake.player.energy = fake.player.maxEnergy = 100;
+  fake.aimDir.set(0, 0, -1);
   const anim: AnimState = createAnimState(fake);
 
   let mode: StageMode = 'neutral';
@@ -162,7 +163,7 @@ export function createUpgradeStage(): UpgradeStage {
 
   function pulse(kind: 'gun' | 'other'): void {
     waveT = 0;
-    if (kind === 'gun') (fake.stats as { shots: number }).shots++;
+    if (kind === 'gun') fake.stats.shots++;
   }
 
   function rotate(d: number): void {
@@ -173,7 +174,7 @@ export function createUpgradeStage(): UpgradeStage {
   function update(dt: number): void {
     t += dt;
     idle += dt;
-    (fake as unknown as { time: number }).time = t;
+    fake.time = t;
     // 向き：基本の向き＋ゆっくりした揺れ＋ドラッグ分（触らないと戻る）
     yawBase += (BASE_YAW[mode] - yawBase) * (1 - Math.exp(-5 * dt));
     if (idle > 3) userYaw *= Math.exp(-1.2 * dt);
