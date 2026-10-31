@@ -3,7 +3,8 @@ import type { EnemyKind } from '../config/balance';
 
 export type EnemyAction =
   | 'crawlerDodge' | 'stompWindup' | 'stomp' | 'chargeStart' | 'wallCrash'
-  | 'summon' | 'missileLoad' | 'missileBeep' | 'missileDisrupt' | 'bombBlast' | 'jumperLand';
+  | 'summon' | 'missileLoad' | 'missileBeep' | 'missileDisrupt' | 'bombBlast' | 'jumperLand'
+  | 'domeDeploy' | 'domeBreak' | 'ringWarn' | 'ringFire' | 'healStart';
 
 /** ゲーム内イベント。SE・UI・演出はこれを購読する。発行側は emit するだけ。 */
 export interface GameEvents {

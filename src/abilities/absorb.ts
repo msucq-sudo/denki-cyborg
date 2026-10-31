@@ -8,6 +8,7 @@ import { raycastEnemies, isTargetable } from '../core/enemyUtil';
 import { addEnergy, drainEnergy } from '../core/energy';
 import { spawnBurst } from '../core/effects';
 import { drainEnemy, overloadEnemy } from '../enemies/api';
+import { damageBarrier, hitBarriers } from '../enemies/barrier';
 import { getAbsorbArmRoot } from '../player/player';
 import { getSockets, type PowerSocket } from '../core/sockets';
 import { shootDown } from '../core/projectiles';
@@ -235,6 +236,14 @@ export function updateAbsorb(world: World, dt: number): void {
         }
       }
       const lvT = (lt ?? Infinity) + 1e-6, enT = eh ? eh.t : Infinity;
+      // ドームシールド：外から伸ばしたアームは表面ではじかれて戻る（ドームに少しダメージ）
+      const bh = hitBarriers(world, p0, p1, TIP_RADIUS);
+      if (bh && bh.t <= lvT && bh.t <= enT && bh.t <= it && bh.t <= st && bh.t <= gt && bh.t <= alT && bh.t <= pt) {
+        a.tip.copy(bh.point);
+        a.phase = 'retracting';
+        damageBarrier(world, bh.enemy, ABSORB.barrierDamage, bh.point);
+        break;
+      }
       const srcFirst = ps !== null && pt <= lvT && pt <= enT && pt <= it && pt <= st && pt <= gt && pt <= alT;
       const allyFirst = !srcFirst && al !== null && alT <= lvT && alT <= enT && alT <= it && alT <= st && alT <= gt;
       const itemFirst = !srcFirst && !allyFirst && it < Infinity && it <= (lt ?? Infinity) + 1e-6 && it <= (eh ? eh.t : Infinity) && it <= st && it <= gt;

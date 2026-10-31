@@ -11,6 +11,10 @@ import { jumper } from './jumper';
 import { missileDrone } from './missileDrone';
 import { bomber } from './bomber';
 import { redDrone } from './redDrone';
+import { domer } from './domer';
+import { redCrawler } from './redCrawler';
+import { ringer } from './ringer';
+import { medic } from './medic';
 
 /** kinds/ に置いた敵の一覧。ここに足せば spawnEnemy・buildModel・敵図鑑で使える */
 export const KIND_MODULES: Partial<Record<EnemyKind, KindModule>> = {
@@ -24,6 +28,10 @@ export const KIND_MODULES: Partial<Record<EnemyKind, KindModule>> = {
   missileDrone,
   bomber,
   redDrone,
+  domer,
+  redCrawler,
+  ringer,
+  medic,
 };
 
 registerKindBuilders(Object.fromEntries(Object.entries(KIND_MODULES).map(([k, m]) => [k, () => m!.build()])));

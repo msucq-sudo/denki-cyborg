@@ -108,6 +108,26 @@ export function animateDrone(e: Enemy, dt: number, down: boolean): void {
   }
 }
 
+/** クローラーのアニメ（脚の歩き・予備動作で縮む・ひっくり返る）。赤クローラーも使う */
+export function animateCrawler(e: Enemy, dt: number, down: boolean): void {
+  const ai = e.ai;
+  const vis = ai.model.vis as THREE.Group;
+  const legs: THREE.Group[] = ai.model.parts.legs;
+  if (!down) {
+    const w = ai.walk ?? 0;
+    ai.phaseW = (ai.phaseW ?? 0) + dt * (4 + w * 2.5);
+    legs.forEach((l, i) => { l.rotation.x = Math.sin(ai.phaseW + (i % 2 ? Math.PI : 0) + (i > 1 ? 1 : 0)) * 0.6 * Math.min(1, w / 2); });
+    vis.position.y += Math.abs(Math.sin(ai.phaseW)) * 0.03 * Math.min(1, w / 2);
+    // 予備動作で縮む
+    if (ai.state === 'windup') { vis.scale.set(1.1, 0.8, 1.1); vis.position.y -= 0.1; }
+    if (ai.state === 'lunge') vis.scale.set(0.9, 0.9, 1.25);
+  } else {
+    vis.rotation.z = Math.PI * ai.collapse;       // ひっくり返る
+    vis.position.y = -0.15 * ai.collapse;
+    legs.forEach((l) => { l.rotation.x *= 0.9; });
+  }
+}
+
 // ---------------------------------------------------------------- crawler
 export const CRAWLER = {
   windup: 0.4,
