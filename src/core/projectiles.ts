@@ -5,6 +5,7 @@ import { getSockets } from './sockets';
 import { raycastEnemies } from './enemyUtil';
 import { damagePlayer, playerCenter, PLAYER_HIT_RADIUS } from './combat';
 import { damageEnemy } from '../enemies/api';
+import { damageBarrier, hitBarriers } from '../enemies/barrier';
 import { spawnBurst, spawnFlash, spawnShockwave } from './effects';
 import { GUN } from '../config/balance';
 
@@ -307,6 +308,13 @@ export function updateProjectiles(world: World, dt: number): void {
         if (q.dead || !q.shootable || q.owner !== 'enemy') continue;
         const t = segmentSphere(p.pos, next, q.pos, q.radius + p.radius + SHOOT_PAD);
         if (t !== null && t < tm) { tm = t; target = q; }
+      }
+      // ドームシールド：外から入る弾は表面で止まる（先に当たるものがあればそちら）
+      const bh = hitBarriers(world, p.pos, next, p.radius);
+      if (bh && bh.t <= tHit && bh.t <= tm && bh.t <= (hit ? hit.t : Infinity)) {
+        damageBarrier(world, bh.enemy, p.damage, bh.point);
+        p.dead = true;
+        continue;
       }
       if (target && tm <= tHit && tm <= (hit ? hit.t : Infinity)) {
         target.hp = (target.hp ?? 1) - p.damage;

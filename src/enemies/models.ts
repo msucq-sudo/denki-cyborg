@@ -247,17 +247,34 @@ export function buildDroneWith(
 
 function buildDrone(): Model { return buildDroneWith(); }
 
-function buildCrawler(): Model {
+/** クローラー系の配色（赤クローラーなどが差し替える） */
+export interface CrawlerPalette {
+  white: number; silver: number; dark: number; deep: number; blue: number;
+  /** 背中のストライプの発光色。省略すると標準の青 */
+  glow?: number;
+}
+export const CRAWLER_PALETTE: CrawlerPalette = { white: COLORS.white, silver: COLORS.silver, dark: COLORS.navy, deep: COLORS.deepBlue, blue: COLORS.blue };
+
+/** 色違いのクローラーを組み立てる。lamps には色を変えられるランプの材質を集める。decorate は仕上げ前に呼ばれる */
+export function buildCrawlerWith(
+  pal: CrawlerPalette = CRAWLER_PALETTE,
+  opts: { lamps?: THREE.MeshStandardMaterial[]; decorate?(b: Builder): void } = {},
+): Model {
   const b = new Builder();
-  const white = b.body(COLORS.white, 0.5, true), silver = b.body(COLORS.silver, 0.5, true), dark = b.body(COLORS.navy, 0.7, true);
-  const deep = b.body(COLORS.deepBlue, 0.6, true), blue = b.body(COLORS.blue, 0.5, true);
+  const white = b.body(pal.white, 0.5, true), silver = b.body(pal.silver, 0.5, true), dark = b.body(pal.dark, 0.7, true);
+  const deep = b.body(pal.deep, 0.6, true), blue = b.body(pal.blue, 0.5, true);
   // 低く構えた装甲ボディ
   b.block(0.8, 0.34, 1.05, white, b.vis, 0, 0.04, 0, 0.07);
   b.block(0.6, 0.1, 0.78, silver, b.vis, 0, 0.26, 0.03, 0.03);
   // 前面の傾斜アーマー
   b.mesh(wedgeGeo(0.5, 0.16, 0.2), silver, b.vis, 0, 0.26, 0.5);
   // 背中の青いストライプ
-  for (const sx of [-1, 1]) b.lamp(0.03, 0.02, 0.62, b.vis, sx * 0.17, 0.315, 0.02);
+  for (const sx of [-1, 1]) {
+    if (pal.glow === undefined) { b.lamp(0.03, 0.02, 0.62, b.vis, sx * 0.17, 0.315, 0.02); continue; }
+    const m = new THREE.MeshStandardMaterial({ color: 0xffffff, emissive: pal.glow, emissiveIntensity: 1.4, roughness: 0.4 });
+    opts.lamps?.push(m);
+    b.mesh(boxGeo(0.03, 0.02, 0.62), m, b.vis, sx * 0.17, 0.315, 0.02).castShadow = false;
+  }
   // 側面のパネルライン
   for (const sx of [-1, 1]) for (const z of [-0.25, 0.1, 0.4]) b.mesh(boxGeo(0.02, 0.2, 0.025), dark, b.vis, sx * 0.4, 0.04, z);
   // 脚（付け根で回る）：上腿 → 膝 → すね → 爪
@@ -286,8 +303,11 @@ function buildCrawler(): Model {
   b.block(0.36, 0.1, 0.52, dark, b.vis, 0, 0.36, -0.15, 0.03);
   for (const sx of [-1, 1]) for (const dz of [-0.22, 0.22]) b.mesh(boxGeo(0.04, 0.14, 0.04), dark, b.vis, sx * 0.17, 0.43, -0.15 + dz);
   b.weak(0, 0.46, -0.15, 0.24, [1, 0.7, 1.4], 0.19);
+  opts.decorate?.(b);
   return b.done();
 }
+
+function buildCrawler(): Model { return buildCrawlerWith(); }
 
 function buildGunner(): Model {
   const b = new Builder();

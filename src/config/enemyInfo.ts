@@ -18,6 +18,7 @@ export interface EnemyInfo {
 export const ENEMY_ORDER: EnemyKind[] = [
   'drone', 'crawler', 'gunner', 'walker', 'heavy', 'heavyWalker', 'missile', 'boss',
   'beamer', 'leech', 'redWalker', 'jumper', 'missileDrone', 'bomber', 'redDrone',
+  'domer', 'redCrawler', 'ringer', 'medic',
 ];
 
 /** 図鑑番号（ENEMY_ORDER の順に 1 から）。マップ・図鑑・データ一覧で共通 */
@@ -30,6 +31,7 @@ export const ENEMY_COLOR: Record<EnemyKind, string> = {
   heavy: '#d23c3c', heavyWalker: '#8a3cd2', missile: '#444c5c', boss: '#000000',
   beamer: '#0a6cc4', leech: '#c43ab0', redWalker: '#e0302a', jumper: '#2a6a8a',
   missileDrone: '#5a5aa0', bomber: '#c8a020', redDrone: '#e04848',
+  domer: '#2aa8c8', redCrawler: '#d8322c', ringer: '#e0508a', medic: '#3ac888',
 };
 
 export const ENEMY_INFO: Record<EnemyKind, EnemyInfo> = {
@@ -102,6 +104,26 @@ export const ENEMY_INFO: Record<EnemyKind, EnemyInfo> = {
     name: '赤ドローン', role: 'ハッキング可能',
     behavior: ['ドローンと同じく周回して射撃', '吸収アームをつなぐとハッキング開始（動きも射撃もにぶる）。8個のコードを入力すると味方になる', '味方の間はプレイヤーのまわりを飛び、ほかの敵を撃つ（20秒）'],
     weakness: '下のコア', area: 'ボルト研究室前', look: 'ドローンの赤い版。赤い六角の胴体に白銀の差し色。上面に皿型アンテナと接続ポートがあり、青緑に点滅する（ハッキングできる印）。味方になると青く光る',
+  },
+  domer: {
+    name: 'ドーマー', role: '陣地・ドームシールド',
+    behavior: ['気づくと足を踏ん張って半球のドームシールドを展開する', 'ドームは外からの弾・吸収アーム・バキュームを止める（ドームごしに撃たれる）', 'ドームの中に入れば普通に攻撃できる。ドームを撃って壊してもよい（壊れると少しひるむ）', '壊しても一定時間でまた張り直す'],
+    weakness: '背中の電池（ドームの中から）', area: 'ボルト研究室前', look: '六角の台座に四角い胴、四隅に光る柱。頭の砲塔に二連の砲身、頭上で輪が回る。ドームは水色の半球',
+  },
+  redCrawler: {
+    name: '赤クローラー', role: '近接・ハッキング可能',
+    behavior: ['クローラーと同じく走って体当たり、弾をよける', '吸収アームをつなぐとハッキング開始（動きがにぶる）。8個のコードを入力すると味方になる', '味方の間は近くの敵に飛びかかる（20秒）'],
+    weakness: '背中の電池', area: 'ボルト研究室前', look: 'クローラーの赤い版。赤い胴体に白銀の差し色。前の甲板にポート、背中の脇に皿型アンテナがあり青緑に点滅する（ハッキングできる印）',
+  },
+  ringer: {
+    name: 'リンガー', role: '範囲・輪っかビーム',
+    behavior: ['円盤が光って予告したあと、自分を中心に輪っかのビームを広げる', '輪は床すれすれに外へ走る。ジャンプ・ジェットパック・グラップル・回避ローリングで越える', '壁の向こうには届かない', '2連・3連で続けて来る（体力が減ると3連）'],
+    weakness: '上面のコア', area: 'ボルト研究室前', look: '白と青の円盤。外周に8個のピンクのランプが回る。発射のとき腰のリングが広がる',
+  },
+  medic: {
+    name: 'メディック', role: '小型・回復支援',
+    behavior: ['傷ついた仲間のそば（プレイヤーの反対側）へ行き、アームを伸ばして回復する', 'ドームが傷ついていればドームも直す', 'ドーマーのドームの中に隠れてついていく', 'プレイヤーが近づくと逃げる。先に倒さないと敵がどんどん元気になる'],
+    weakness: '背中の小さなタンク', area: 'ボルト研究室前', look: 'とても小さい白いまるい体。胸に緑の＋マーク。右肩から伸び縮みするアーム（回復中は緑に光る）',
   },
   boss: {
     name: 'ジェネレーター', role: 'ボス（サージ収容所）',

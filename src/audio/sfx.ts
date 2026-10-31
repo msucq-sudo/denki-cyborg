@@ -43,6 +43,11 @@ const SFX_POLICY: Record<string, SfxPolicy> = {
   missileDisrupt: { minInterval: 0.3 },
   summon: { minInterval: 0.3, maxVoices: 2 },
   crawlerDodge: { minInterval: 0.1, maxVoices: 3 },
+  domeDeploy: { minInterval: 0.3, maxVoices: 2 },
+  domeBreak: { minInterval: 0.2, maxVoices: 2 },
+  ringWarn: { minInterval: 0.3, maxVoices: 2 },
+  ringFire: { minInterval: 0.2, maxVoices: 3 },
+  healStart: { minInterval: 0.4, maxVoices: 2 },
   stompWindup: { maxVoices: 2 },
   stomp: { maxVoices: 2 },
   chargeStart: { maxVoices: 2 },
@@ -721,6 +726,54 @@ function onEnemyAction(p: GameEvents['enemyAction']): void {
       });
       break;
     }
+    case 'domeDeploy':
+      // ドームが広がる：低い立ち上がり＋上昇するうなり（value=1 が展開の瞬間）
+      if ((p.value ?? 0) >= 1) {
+        play('domeDeploy', 0.8, (x, t) => {
+          tone(x, t, { type: 'sine', f: 90, f2: 200, dur: 0.5, gain: 0.3 * a, attack: 0.01 });
+          tone(x, t, { type: 'sawtooth', f: 300, f2: 1400, dur: 0.45, gain: 0.07 * a, attack: 0.02, filter: { type: 'lowpass', f: 1200, f2: 4000 } });
+          noise(x, t, { dur: 0.4, gain: 0.07 * a, attack: 0.02, filter: { type: 'bandpass', f: 2500, q: 1.5 } });
+        });
+      } else {
+        play('domeDeploy', 0.8, (x, t) => {
+          tone(x, t, { type: 'sawtooth', f: 120, f2: 520, dur: 0.8, gain: 0.07 * a, attack: 0.1, filter: { type: 'lowpass', f: 600, f2: 2200 } });
+          tone(x, t, { type: 'square', f: 440, at: 0.2, dur: 0.06, gain: 0.04 * a });
+          tone(x, t, { type: 'square', f: 440, at: 0.4, dur: 0.06, gain: 0.04 * a });
+          tone(x, t, { type: 'square', f: 440, at: 0.6, dur: 0.06, gain: 0.04 * a });
+        });
+      }
+      break;
+    case 'domeBreak':
+      // ガラスのように割れる：ぱりん＋低いドン
+      play('domeBreak', 0.8, (x, t) => {
+        tone(x, t, { type: 'sine', f: 140, f2: 50, dur: 0.35, gain: 0.3 * a, attack: 0.002 });
+        noise(x, t, { dur: 0.35, gain: 0.2 * a, attack: 0.002, filter: { type: 'highpass', f: 2500 } });
+        for (let i = 0; i < 5; i++) tone(x, t, { type: 'triangle', f: 2200 + Math.random() * 2400, at: 0.02 + i * 0.045, dur: 0.12, gain: 0.05 * a });
+      });
+      break;
+    case 'ringWarn':
+      // 輪を出す前の充電：高くなっていくうなり
+      play('ringWarn', 1.1, (x, t) => {
+        tone(x, t, { type: 'sawtooth', f: 160, f2: 900, dur: 1.0, gain: 0.07 * a, attack: 0.15, filter: { type: 'lowpass', f: 700, f2: 3000 } });
+        tone(x, t, { type: 'sine', f: 80, f2: 240, dur: 1.0, gain: 0.14 * a, attack: 0.2 });
+      });
+      break;
+    case 'ringFire':
+      // 輪が広がる：ボンッ＋外へ走る波
+      play('ringFire', 0.7, (x, t) => {
+        tone(x, t, { type: 'sine', f: 180, f2: 50, dur: 0.35, gain: 0.32 * a, attack: 0.002 });
+        tone(x, t, { type: 'sawtooth', f: 1800, f2: 300, dur: 0.6, gain: 0.06 * a, attack: 0.005, filter: { type: 'bandpass', f: 1500, q: 2 } });
+        noise(x, t, { dur: 0.3, gain: 0.1 * a, filter: { type: 'bandpass', f: 1200, f2: 300, q: 1 } });
+      });
+      break;
+    case 'healStart':
+      // 回復の開始：やさしい上昇音
+      play('healStart', 0.4, (x, t) => {
+        tone(x, t, { type: 'sine', f: 660, dur: 0.1, gain: 0.07 * a });
+        tone(x, t, { type: 'sine', f: 880, at: 0.09, dur: 0.1, gain: 0.07 * a });
+        tone(x, t, { type: 'sine', f: 1320, at: 0.18, dur: 0.18, gain: 0.06 * a });
+      });
+      break;
     case 'jumperLand':
       // 重い着地のドスン＋装甲が開くカシャ
       play('jumperLand', 0.5, (x, t) => {
