@@ -10,6 +10,7 @@
 import * as THREE from 'three';
 import type { Enemy, World } from '../core/types';
 import { ENEMIES, VACUUM } from '../config/balance';
+import { isBarrierProtected } from '../enemies/barrier';
 import { addEnergy, spendEnergy } from '../core/energy';
 import { isTargetable } from '../core/enemyUtil';
 import { drainEnemy } from '../enemies/api';
@@ -62,7 +63,7 @@ export function vacuumTargets(world: World): Enemy[] {
   const c = vacuumCenter(world, _c);
   const out: Enemy[] = [];
   for (const e of world.enemies) {
-    if (!isTargetable(e) || e.allied || e.shielded) continue;
+    if (!isTargetable(e) || e.allied || e.shielded || isBarrierProtected(world, e, c)) continue;
     const dx = e.pos.x - c.x, dz = e.pos.z - c.z;
     if (Math.hypot(dx, dz) - e.radius > VACUUM.radius) continue;
     if (Math.abs(e.pos.y - c.y) - e.radius > VACUUM.height) continue;

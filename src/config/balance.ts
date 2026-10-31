@@ -68,6 +68,8 @@ export const ABSORB = {
   /** 吸収アーム自体は電力消費なし */
   cost: 0,
   range: 14,
+  /** 吸収アームがドームシールドに当たったときのドームへのダメージ */
+  barrierDamage: 6,
   extendSpeed: 45,
   retractSpeed: 60,
   cooldown: 0.8,
@@ -89,7 +91,7 @@ export const TRAVERSE = {
   /** 敵種ごとの方法：climb=壁登り（重力無視）/ jet=ジェットパック / leap=大ジャンプ */
   modes: {
     // 近づいて戦う地上の敵は壁登り、遠くから撃つ敵はジェットパック
-    crawler: 'climb', walker: 'climb', redWalker: 'climb', heavyWalker: 'climb', heavy: 'climb', jumper: 'climb',
+    crawler: 'climb', redCrawler: 'climb', walker: 'climb', redWalker: 'climb', heavyWalker: 'climb', heavy: 'climb', jumper: 'climb',
     gunner: 'jet', beamer: 'jet', missile: 'jet', bomber: 'jet',
   } as Partial<Record<string, TraverseMode>>,
   /** プレイヤーの体の中心がこれ以上高いと動き出す（m） */
@@ -104,7 +106,7 @@ export const TRAVERSE = {
   cooldown: 2,
   failCooldown: 5,
   climbSpeedDefault: 3,
-  climbSpeed: { crawler: 6, walker: 2.6, redWalker: 2.8, heavyWalker: 2.4, heavy: 2.6, jumper: 3.4 } as Record<string, number>,
+  climbSpeed: { crawler: 6, redCrawler: 6, walker: 2.6, redWalker: 2.8, heavyWalker: 2.4, heavy: 2.6, jumper: 3.4 } as Record<string, number>,
   jetSpeed: 6.5,
   /** 大ジャンプ：届く高さの上限、頂点の余裕、水平速度の上限 */
   leapMaxRise: 9,
@@ -164,7 +166,7 @@ export const FUNCTIONS = {
   flight: { flyingDrainPerSec: 6, engageVy: 0.5, hoverDamp: 10 },
 };
 
-export type EnemyKind = 'drone' | 'crawler' | 'gunner' | 'heavy' | 'walker' | 'redWalker' | 'heavyWalker' | 'missile' | 'beamer' | 'leech' | 'jumper' | 'missileDrone' | 'bomber' | 'redDrone' | 'boss';
+export type EnemyKind = 'drone' | 'crawler' | 'gunner' | 'heavy' | 'walker' | 'redWalker' | 'heavyWalker' | 'missile' | 'beamer' | 'leech' | 'jumper' | 'missileDrone' | 'bomber' | 'redDrone' | 'domer' | 'redCrawler' | 'ringer' | 'medic' | 'boss';
 
 export const ENEMIES: Record<EnemyKind, {
   hp: number; speed: number; radius: number; damage: number;
@@ -198,6 +200,14 @@ export const ENEMIES: Record<EnemyKind, {
   bomber:  { hp: 35,  speed: 3.2, radius: 0.45, damage: 11, attackInterval: 2.4, projectileSpeed: 12, weakMultiplier: 2, overloadCap: 12, sightRange: 26 },
   /** 赤ドローン：ドローンの赤い版。ハッキングできる。つなぐと吸収が遅くなる(HACK.drainMul)ので、コード入力の時間が取れるよう体力は多め */
   redDrone: { hp: 60, speed: 4,   radius: 0.55, damage: 3,  attackInterval: 1.8, projectileSpeed: 18, weakMultiplier: 2, overloadCap: 14, sightRange: 28 },
+  /** ドーマー：ドームシールドを展開して中から撃ってくる。ドームは外からの弾・アームを止める（敵の弾は中から外へ通す）。ドームを壊すか中に入るかして倒す */
+  domer:   { hp: 80,  speed: 1.8, radius: 0.75, damage: 3,  attackInterval: 2.2, projectileSpeed: 17, weakMultiplier: 2, overloadCap: 22, sightRange: 32 },
+  /** 赤クローラー：クローラーの赤い版。ハッキングできる（つなぐと動きがにぶる）。味方になると近くの敵に飛びかかる */
+  redCrawler: { hp: 55, speed: 6.5, radius: 0.6, damage: 5, attackInterval: 1.0, projectileSpeed: 0, weakMultiplier: 2, overloadCap: 16, sightRange: 24 },
+  /** リンガー：自分を中心に輪っかのビームを広げる。輪は低い所を走るので、ジャンプ・ジェット・グラップルで越える。damage=輪1回、projectileSpeed=輪の広がる速さ */
+  ringer:  { hp: 90,  speed: 1.8, radius: 0.8,  damage: 6,  attackInterval: 3.2, projectileSpeed: 7, weakMultiplier: 2.5, overloadCap: 24, sightRange: 30 },
+  /** メディック：とても小さい。アームを伸ばして仲間（とドーム）を回復する。攻撃はしない */
+  medic:   { hp: 26,  speed: 4.2, radius: 0.3,  damage: 0,  attackInterval: 0.5, projectileSpeed: 0, weakMultiplier: 2, overloadCap: 8, sightRange: 30 },
   boss:    { hp: 900, speed: 2.5, radius: 2.4,  damage: 3,  attackInterval: 2.0, projectileSpeed: 16, weakMultiplier: 2.5, overloadCap: 60, sightRange: 60 },
 };
 
@@ -216,7 +226,7 @@ export const ENEMY_NOTICE = {
  * drop=1体あたりの量。見た目のかけらは最大 maxPieces 個に分けて散らばる
  */
 export const METAL = {
-  drop: { drone: 1, crawler: 1, gunner: 2, walker: 2, heavy: 6, heavyWalker: 8, missile: 10, boss: 30 } as Record<EnemyKind, number>,
+  drop: { drone: 1, crawler: 1, redCrawler: 2, domer: 4, ringer: 4, medic: 2, gunner: 2, walker: 2, heavy: 6, heavyWalker: 8, missile: 10, boss: 30 } as Record<EnemyKind, number>,
   maxPieces: 6,
   /** 逆流（送電）で爆発させて倒したときの倍率（2＝通常の2倍） */
   overloadMul: 2,
