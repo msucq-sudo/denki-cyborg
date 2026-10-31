@@ -1,7 +1,7 @@
 // サージ収容所 2階（?level=camp2）の平面図。level/camp2/layout.ts の数値から描く。方眼＝5m
 import type { EnemyKind } from '../../config/balance';
 import { BOSS_LAND, CAGE, CAGE_Z, CRATES, DOOR, FIGHT_START, HALL, LOCK, PILLARS, SPAWNS, STAND, START } from '../../level/camp2/layout';
-import { Legend, Plot, WALL, dot, enemyMark, newCanvas, spawnBoxSize, FONT, INK, type EnemyMode, type PlacedEnemy, type StageSheet } from './common';
+import { Legend, Plot, WALL, dot, enemyMark, newCanvas, FONT, INK, type EnemyMode, type PlacedEnemy, type StageSheet } from './common';
 
 export function createCamp2Sheet(): StageSheet {
   const PX = 22, PAD = 70, LEGEND_W = 420, T = 1;
@@ -12,13 +12,12 @@ export function createCamp2Sheet(): StageSheet {
   const P = new Plot(c, PAD, PAD, PX, minX, maxX, minZ, maxZ, 5);
   const { X, Z } = P;
 
-  interface E { p: PlacedEnemy; mode: EnemyMode; box?: { w: number; d: number } }
+  interface E { p: PlacedEnemy; mode: EnemyMode }
   const enemies: E[] = SPAWNS.map((s, i) => {
     const fly = s.kind === 'drone';
-    const b = spawnBoxSize(s.kind);
-    const mode: EnemyMode = fly ? 'fly' : b.style === 'container' ? 'container' : 'box';
-    const how = fly ? '最初から飛んでいる' : b.style === 'container' ? 'コンテナから' : '木箱から';
-    return { mode, box: fly ? undefined : b, p: { id: i + 1, kind: s.kind, x: s.x, z: s.z, area: '前室', how, cell: P.cellOf(s.x, s.z) } };
+    const mode: EnemyMode = fly ? 'drop' : 'awake';
+    const how = fly ? '扉を調べた瞬間・天井から' : '扉を調べた瞬間・床に出る';
+    return { mode, p: { id: i + 1, kind: s.kind, x: s.x, z: s.z, area: '前室', how, cell: P.cellOf(s.x, s.z) } };
   });
   const boss: PlacedEnemy = { id: enemies.length + 1, kind: 'boss', x: BOSS_LAND.x, z: BOSS_LAND.z, area: '前室（檻を調べたあと）', how: 'ボス（天井から降りてくる）', cell: P.cellOf(BOSS_LAND.x, BOSS_LAND.z) };
 
@@ -48,14 +47,8 @@ export function createCamp2Sheet(): StageSheet {
     // 柱・箱
     for (const p of PILLARS) P.rect({ x0: p.x - p.w / 2, x1: p.x + p.w / 2, z0: p.z - p.w / 2, z1: p.z + p.w / 2 }, WALL);
     for (const b of CRATES) P.rect({ x0: b.x - b.w / 2, x1: b.x + b.w / 2, z0: b.z - b.d / 2, z1: b.z + b.d / 2 }, '#c9a36b', '#7a5a2c');
-    // 敵の隠れた箱
-    for (const e of enemies) {
-      if (!e.box) continue;
-      const { w, d } = e.box;
-      P.rect({ x0: e.p.x - w / 2, x1: e.p.x + w / 2, z0: e.p.z - d / 2, z1: e.p.z + d / 2 }, e.mode === 'container' ? 'rgba(74,85,98,0.35)' : 'rgba(185,138,90,0.45)', e.mode === 'container' ? '#4a5562' : '#8a5a26', 1.5);
-    }
     // 部屋名
-    P.label('前室（敵のいる区画・ボス戦の部屋）', 0, 16.5, INK, 16);
+    P.label('前室（ボス戦の部屋・敵は扉を調べた瞬間に出る）', 0, 16.5, INK, 16);
     P.label('檻（住民が捕まっている）', 0, (CAGE.z0 + CAGE.z1) / 2, '#7a5a2c', 16);
     // 敵
     for (const e of enemies) enemyMark(c, X(e.p.x), Z(e.p.z), e.p.kind, e.mode, e.p.id, focus);

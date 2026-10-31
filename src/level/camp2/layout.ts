@@ -5,7 +5,7 @@
 //           │                                          │
 //   z = -14 ├══════════════╡ 扉 ╞══════════════════════┤ ← 格子（CAGE_Z）
 //           │   ジェネレーターはこのあたりに降りてくる  │
-//           │      敵（No.1〜11 から 8 体）・柱・箱      │
+//           │  敵は最初いない。扉を調べた瞬間に出る      │
 //   z =  22 └──────────────── 入口（南） ───────────────┘
 //          x = -16                                   x = 16
 import type { EnemyKind } from '../../config/balance';
@@ -48,7 +48,7 @@ export const CRATES: { x: number; z: number; w: number; d: number; h: number }[]
   { x: -13, z: -9.5, w: 2.0, d: 1.4, h: 1.0 },
 ];
 
-/** 前室の敵（図鑑 No.1〜11 から。ボス No.8 は除く） */
+/** 扉を調べた瞬間にジェネレーターと一緒に出てくる雑魚（図鑑 No.1〜4 から。ボス No.8 は除く）。ドローンは天井から、ほかは床に現れる */
 export interface SpawnDef { kind: EnemyKind; x: number; z: number; floor?: number }
 export const SPAWNS: SpawnDef[] = [
   { kind: 'crawler', x: -11, z: 3 },     // No.2
@@ -57,6 +57,4 @@ export const SPAWNS: SpawnDef[] = [
   { kind: 'drone', x: -3, z: 1 },        // No.1
   { kind: 'drone', x: 4, z: -3 },        // No.1
   { kind: 'gunner', x: -10.5, z: -7 },   // No.3
-  { kind: 'redWalker', x: 10.5, z: -7 }, // No.11
-  { kind: 'heavy', x: 0, z: -8 },        // No.5
 ];

@@ -8,7 +8,6 @@ import { CAMP2, PLAYER } from '../config/balance';
 import { enemyNo } from '../config/enemyInfo';
 import { damageEnemy, updateEnemies } from '../enemies/api';
 import { buildCamp2, getCamp2, updateCamp2 } from './camp2';
-import { openSpawnBoxes } from './spawnBoxes';
 import { CUT_TOTAL } from './camp2/cutscene';
 import { BOSS_LAND, CAGE_Z, FIGHT_START, SPAWNS, STAND, START } from './camp2/layout';
 
@@ -33,31 +32,18 @@ function mk(startAt?: string) {
   return { w, input, run, press, tick };
 }
 
-/** 前室の箱を全部開けて、ドローンと箱から出た敵を倒す */
-function killFront(w: World): void {
-  const c = getCamp2(w)!;
-  openSpawnBoxes(w, c.boxes, 0);
-  for (let i = 0; i < 90 && c.boxes.some((b) => b.state !== 'open'); i++) { w.time += DT; updateEnemies(w, DT); updateCamp2(w, DT); }
-  for (const e of [...c.front, ...c.boxes.map((b) => b.enemy!)]) damageEnemy(w, e, 99999, { how: 'shot' });
-}
-
 describe('camp2 (サージ収容所 2階)', () => {
-  it('places 8 enemies from No.1-11 (no boss) in the front hall, and many residents in the cage', () => {
+  it('starts quiet: no enemies in the front hall until the door is examined; many residents in the cage', () => {
     const { w } = mk();
     const c = getCamp2(w)!;
-    // ドローンは最初から飛んでいる。地上の敵は箱の中（開くまで World にいない）
-    expect(c.front.length + c.boxes.length).toBe(SPAWNS.length);
-    expect(c.front.every((e) => e.kind === 'drone')).toBe(true);
-    expect(c.boxes.length).toBe(SPAWNS.filter((s) => s.kind !== 'drone').length);
-    expect(c.boxes.every((b) => b.state === 'closed' && b.enemy === null)).toBe(true);
-    expect(c.boxes.find((b) => b.def.kind === 'heavy')?.style).toBe('container');
-    expect(w.enemies.length).toBe(c.front.length);
-    for (const e of [...c.front, ...c.boxes.map((b) => ({ kind: b.def.kind, pos: b.group.position }))]) {
-      const no = enemyNo(e.kind);
+    expect(c.front.length).toBe(0);
+    expect(w.enemies.length).toBe(0);
+    for (const s of SPAWNS) {
+      const no = enemyNo(s.kind);
       expect(no).toBeGreaterThanOrEqual(1);
       expect(no).toBeLessThanOrEqual(11);
-      expect(e.kind).not.toBe('boss');
-      expect(e.pos.z).toBeGreaterThan(CAGE_Z);   // 檻の外（前室）
+      expect(s.kind).not.toBe('boss');
+      expect(s.z).toBeGreaterThan(CAGE_Z);   // 檻の外（前室）
     }
     expect(c.residents.count).toBe(CAMP2.residents);
     expect(c.state.phase).toBe('explore');
@@ -91,38 +77,24 @@ describe('camp2 (サージ収容所 2階)', () => {
     expect(pos.z).toBeGreaterThan(CAGE_Z);
   });
 
-  it('the door cannot be opened while front enemies remain', () => {
-    const { w, press } = mk();
-    w.player.pos.set(STAND.x, 0, STAND.z);
-    press('KeyR');
-    expect(getCamp2(w)!.state.phase).toBe('explore');
-    expect(getCamp2(w)!.state.nearDoor).toBe(false);
-  });
-
-  it('enemies come out of the boxes; one box opening opens the rest; unopened boxes block the door', () => {
+  it('the door can be examined right away, and the minions appear together with the boss', () => {
     const { w, press, run } = mk();
-    const c = getCamp2(w)!;
-    // ドローンだけ倒しても、閉じた箱が残っていれば扉は調べられない
-    for (const e of c.front) damageEnemy(w, e, 99999, { how: 'shot' });
     w.player.pos.set(STAND.x, 0, STAND.z);
     run(DT);
-    expect(c.state.nearDoor).toBe(false);
-    // 近くの箱（ヘビーのコンテナ）が開く → 残りも順に開いて全員出てくる
-    run(6);
-    expect(c.boxes.every((b) => b.state === 'open' && b.enemy)).toBe(true);
-    expect(w.enemies.filter((e) => e.status === 'active').length).toBe(c.boxes.length);
-    for (const b of c.boxes) damageEnemy(w, b.enemy!, 99999, { how: 'shot' });
-    run(0.5);
-    w.player.pos.set(STAND.x, 0, STAND.z);
-    run(DT);
-    expect(c.state.nearDoor).toBe(true);
+    expect(getCamp2(w)!.state.nearDoor).toBe(true);
     press('KeyR');
+    const c = getCamp2(w)!;
     expect(c.state.phase).toBe('cutscene');
+    expect(w.enemies.length).toBe(0);
+    c.cut!.skip();
+    expect(c.state.phase).toBe('fight');
+    expect(c.boss?.kind).toBe('boss');
+    expect(c.front.length).toBe(SPAWNS.length);
+    expect(c.front.every((e) => e.status !== 'dead' && e.ai.alert > 0 && e.pos.z > CAGE_Z)).toBe(true);
   });
 
   it('interacting with the door starts the cutscene; when it ends the fight starts and the boss acts', () => {
     const { w, input, press, run } = mk();
-    killFront(w);
     run(0.5);
     w.player.pos.set(STAND.x + 0.6, 0, STAND.z + 1);
     run(DT);
@@ -177,7 +149,6 @@ describe('camp2 (サージ収容所 2階)', () => {
 
   it('skipping the cutscene goes straight to the fight', () => {
     const { w, press, run } = mk();
-    killFront(w);
     w.player.pos.set(STAND.x, 0, STAND.z);
     run(DT);
     press('KeyR');
@@ -262,7 +233,7 @@ describe('camp2 (サージ収容所 2階)', () => {
     expect(c.state.phase).toBe('fight');
     expect(c.cut).toBeNull();
     expect(c.state.sawCutscene).toBe(false);
-    expect(c.front.length + c.boxes.length).toBe(0);
+    expect(c.front.length).toBe(SPAWNS.length);
     expect(c.boss?.kind).toBe('boss');
     expect(w.level.data.retryAt).toBe('boss');
     expect(input.locked).toBe(false);
@@ -276,7 +247,7 @@ describe('camp2 (サージ収容所 2階)', () => {
     const c = getCamp2(w)!;
     expect(c.state.phase).toBe('freed');
     expect(c.boss).toBeNull();
-    expect(c.front.length + c.boxes.length).toBe(0);
+    expect(c.front.length).toBe(0);
     expect(c.doorCollider.active).toBe(false);
     expect(w.level.data.retryAt).toBe('freed');
     run(1);

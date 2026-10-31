@@ -1,6 +1,6 @@
 // サージ収容所 2階（ボス戦）。使い方: URL に ?level=camp2（&start=boss で戦闘開始の地点から）
 // 南から入る。手前は敵のいる区画（前室）、奥は檻（火星の住民が大勢収容されている）。
-// 前室の敵を全滅させてから檻の扉に近づくと「調べる（B / R）：扉を開ける」→ ムービー（camp2/cutscene.ts）→ ボス「ジェネレーター」戦。
+// 前室は最初は静か。檻の扉に近づいて「調べる（B / R）：扉を開ける」→ ムービー（camp2/cutscene.ts）→ ジェネレーターが降りてきて、雑魚も一斉に出る。
 // ジェネレーターを倒すと檻の扉が開き「住民を解放した」。その先の流れは未定なので、ここで止まる（自由に歩ける・クリア画面は出さない）。
 // やられたら、ムービーのあと（戦闘開始時点）からリトライ（world.level.data.retryAt = 'boss'）。
 import * as THREE from 'three';
@@ -12,7 +12,6 @@ import { shutdownEnemy, spawnEnemy } from '../enemies/api';
 import { setPlayerFacing } from '../player/player';
 import { Cutscene } from '../cinematic/sequencer';
 import { showPrompt } from './floor1';
-import { createSpawnBoxes, openSpawnBoxes, spawnBoxAlive, updateSpawnBoxes, type SpawnBox } from './spawnBoxes';
 import { BOSS_LAND, CAGE, CAGE_Z, DOOR, FIGHT_START, HALL, SPAWNS, STAND, START } from './camp2/layout';
 import { buildCamp2Visuals, type Camp2Visuals } from './camp2/visuals';
 import { buildResidents, type Residents } from './camp2/residents';
@@ -37,10 +36,8 @@ interface Runtime {
   state: Camp2State;
   vis: Camp2Visuals;
   residents: Residents;
-  /** 前室のドローン（最初から飛んでいる） */
+  /** 戦闘開始と同時に出た雑魚 */
   front: Enemy[];
-  /** 前室の地上の敵が隠れている箱（近づくと開く。1つ開くと残りも順に開く） */
-  boxes: SpawnBox[];
   boss: Enemy | null;
   cut: Cutscene | null;
   probe: Camp2CutProbe;
@@ -50,11 +47,11 @@ interface Runtime {
 const runtimes = new WeakMap<World, Runtime>();
 
 /** テスト・デバッグ用 */
-export function getCamp2(world: World): { state: Camp2State; boss: Enemy | null; front: Enemy[]; boxes: SpawnBox[]; cut: Cutscene | null; residents: Residents; probe: Camp2CutProbe; doorCollider: { active: boolean } } | null {
+export function getCamp2(world: World): { state: Camp2State; boss: Enemy | null; front: Enemy[]; cut: Cutscene | null; residents: Residents; probe: Camp2CutProbe; doorCollider: { active: boolean } } | null {
   const rt = runtimes.get(world);
   if (!rt) return null;
   return {
-    state: rt.state, front: rt.front, boxes: rt.boxes, residents: rt.residents, probe: rt.probe, doorCollider: rt.vis.doorCollider,
+    state: rt.state, front: rt.front, residents: rt.residents, probe: rt.probe, doorCollider: rt.vis.doorCollider,
     get boss() { return rt.boss; },
     get cut() { return rt.cut; },
   };
@@ -93,7 +90,7 @@ export function buildCamp2(world: World): void {
 
   const state: Camp2State = { phase: 'explore', nearDoor: false, doorOpen: 0, bossDeadT: 0, sawCutscene: false };
   const rt: Runtime = {
-    state, vis, residents, front: [], boxes: [], boss: null, cut: null, clock: 0, promptOn: false,
+    state, vis, residents, front: [], boss: null, cut: null, clock: 0, promptOn: false,
     probe: { beat: 'reach', bossY: 0, facing: 0 },
   };
   runtimes.set(world, rt);
@@ -117,33 +114,12 @@ export function buildCamp2(world: World): void {
     p.pitch = FIGHT_START.pitch;
     startFight(world, rt);
   } else {
-    // ドローンは最初から飛んでいる。地上の敵は箱（ヘビーはコンテナ）から出てくる：近づいた箱が開き、1つ開いたら残りも順に開く
-    const boxDefs = [];
-    for (const s of SPAWNS) {
-      const fl = s.floor ?? 0;
-      if (s.kind === 'drone') {
-        const e = spawnEnemy(world, s.kind, new THREE.Vector3(s.x, fl + 3.2, s.z));
-        e.ai.yaw = Math.atan2(START.x - s.x, START.z - s.z);
-        rt.front.push(e);
-      } else {
-        boxDefs.push({
-          kind: s.kind, x: s.x, z: s.z, floor: fl, yaw: 0,   // 正面（敵が飛び出す向き）は入口側（+Z）
-          onOpen: () => openSpawnBoxes(world, rt.boxes, 0.6),
-        });
-      }
-    }
-    rt.boxes = createSpawnBoxes(world, boxDefs);
     p.pos.set(START.x, 0, START.z);
     p.yaw = START.yaw;
     p.pitch = -0.05;
-    world.level.data.objective = '前室の敵を倒し、檻の扉を調べろ';
+    world.level.data.objective = '檻の扉を調べろ';
   }
-  world.level.data.remaining = aliveFront(rt);
-}
-
-/** 前室の残りの敵（まだ開いていない箱の中身も数える） */
-function aliveFront(rt: Runtime): number {
-  return rt.front.filter((e) => e.status !== 'dead' && e.status !== 'down').length + spawnBoxAlive(rt.boxes);
+  world.level.data.remaining = 0;
 }
 
 // ---------------------------------------------------------------- ムービー → 戦闘
@@ -186,8 +162,18 @@ function startFight(world: World, rt: Runtime): void {
   boss.ai.summonKinds1 = [...CAMP2.summon1];
   boss.ai.summonKinds2 = [...CAMP2.summon2];
   boss.ai.atkTimer = 1.6;
-  boss.ai.summonT = 7;
+  boss.ai.summonT = 14;
   rt.boss = boss;
+  // 雑魚：ドローンは天井から、ほかは床に現れて、最初から戦闘態勢
+  for (const s of SPAWNS) {
+    const fly = s.kind === 'drone';
+    const pos = new THREE.Vector3(s.x, (s.floor ?? 0) + (fly ? 3.2 : 0), s.z);
+    const e = spawnEnemy(world, s.kind, pos);
+    e.ai.yaw = Math.atan2(FIGHT_START.x - s.x, FIGHT_START.z - s.z);
+    e.ai.alert = 1e9;
+    spawnBurst(world, pos.clone().setY(pos.y + 1), 0xff6a3a, 10, 4);
+    rt.front.push(e);
+  }
   world.level.bossSpawned = true;
   world.level.data.retryAt = 'boss';
   world.level.data.objective = 'ジェネレーターを倒せ';
@@ -221,9 +207,8 @@ export function updateCamp2(world: World, dt: number): void {
   const t = rt.clock;
 
   rt.residents.update(dt, t);
-  updateSpawnBoxes(world, dt);
   world.level.currentRoom = p.pos.z < CAGE_Z ? 1 : 0;
-  world.level.data.remaining = st.phase === 'explore' ? aliveFront(rt) : st.phase === 'fight' ? 1 : 0;
+  world.level.data.remaining = st.phase === 'fight' ? 1 : 0;
 
   // ---- 扉を調べる
   let hint: string | null = null;
@@ -232,13 +217,7 @@ export function updateCamp2(world: World, dt: number): void {
     const dx = p.pos.x - STAND.x, dz = p.pos.z - STAND.z;
     const near = Math.hypot(dx, dz) < CAMP2.doorReach && p.pos.z > CAGE_Z && p.pos.y < 1.5;
     if (near) {
-      const left = aliveFront(rt);
-      if (left > 0) hint = `先に前室の敵を片付けよう（残り ${left}）`;
-      else { hint = '調べる（B / R）：扉を開ける'; st.nearDoor = true; }
-    }
-    if (rt.front.length + rt.boxes.length > 0 && aliveFront(rt) === 0 && !world.level.rooms[0].cleared) {
-      world.level.rooms[0].cleared = true;
-      world.level.data.objective = '檻の扉を調べろ';
+      hint = '調べる（B / R）：扉を開ける'; st.nearDoor = true;
     }
   }
   world.level.data.interactNear = st.nearDoor;
