@@ -1,7 +1,7 @@
 import type * as THREE from 'three';
 import type { Enemy, Toast, World } from '../core/types';
 import type { EventBus } from '../core/events';
-import { ENEMIES, HACK } from '../config/balance';
+import { ENEMIES, HACK, SHIELD } from '../config/balance';
 import { absorbEnergyPerSec, dodgeCost, gunTapCost } from '../progression/effects';
 import type { EnemyKind } from '../config/balance';
 import { ENEMY_INFO } from '../config/enemyInfo';
@@ -318,6 +318,15 @@ export function createHUD(root: HTMLElement, cb: HudCallbacks): Hud {
   const hpFill = el('div', 'fill');
   hpBar.append(hpFill);
   hpBox.append(hpHead, hpBar);
+  // シールド（入手後だけ出る）。壊れている間は「回復中」
+  const shBox = el('div', 'shbar off');
+  const shHead = el('div', 'g-head');
+  const shNum = el('span', 'hp-num');
+  shHead.append(el('span', 'g-label sh-l', 'SHIELD'), shNum);
+  const shBar = el('div', 'bar sh');
+  const shFill = el('div', 'fill');
+  shBar.append(shFill);
+  shBox.append(shHead, shBar);
   const gauge = el('div', 'gauge');
   const gHead = el('div', 'g-head');
   const gLabel = el('span', 'g-label', '電力');
@@ -329,7 +338,7 @@ export function createHUD(root: HTMLElement, cb: HudCallbacks): Hud {
   const battNum = el('span', 'batt-num');
   batt.append(battFill, battNum);
   gauge.append(gHead, batt);
-  bleft.append(hpBox, gauge);
+  bleft.append(hpBox, shBox, gauge);
 
   // 揺れは一度だけ再生して外す
   const onShakeEnd = (e: Event) => (e.currentTarget as HTMLElement).classList.remove('shake');
@@ -1041,6 +1050,15 @@ export function createHUD(root: HTMLElement, cb: HudCallbacks): Hud {
     setText(gRate, rt.text);
     setCls(gRate, 'drain', rt.kind === 'drain');
     setCls(gRate, 'gain', rt.kind === 'gain');
+
+    // シールド
+    const shOn = world.unlocks.shield;
+    setCls(shBox, 'off', !shOn);
+    if (shOn) {
+      setW(shFill, pct(world.shield.hp, SHIELD.maxHp));
+      setCls(shBox, 'broken', world.shield.broken);
+      setText(shNum, world.shield.broken ? '回復中…' : `${Math.ceil(world.shield.hp)} / ${SHIELD.maxHp}`);
+    }
 
     // HP
     const hpPct = pct(p.hp, p.maxHp);

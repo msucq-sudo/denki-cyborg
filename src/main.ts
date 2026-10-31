@@ -12,6 +12,7 @@ import { initHack, updateHack } from './abilities/hack';
 import { updateGrapple } from './core/grapple';
 import { initFunctions, updateFunctions } from './abilities/functions';
 import { updateSkills } from './abilities/skills';
+import { updateShield } from './abilities/shield';
 import { updateWeaponSwitch, giveWeapon, WEAPON_ORDER } from './player/weaponSwitch';
 import { updateEnemies } from './enemies/api';
 import { buildDungeon, updateLevel } from './level/dungeon';
@@ -74,11 +75,12 @@ floor2Hooks.onSleepComplete = (w) => {
 };
 // ?gears=N で歯車 N 個から始める（強化画面の確認用）
 const gearsParam = Number(new URLSearchParams(location.search).get('gears'));
-// ?unlock=vacuum,autoAim,shotgun,assault（または ?unlock=all）で解放した状態から始める（開発中の確認用）
+// ?unlock=vacuum,shield,autoAim,shotgun,assault（または ?unlock=all）で解放した状態から始める（開発中の確認用）
 const unlockParam = (urlQ.get('unlock') ?? '').split(',').map((x) => x.trim()).filter(Boolean);
 function applyUnlocks(w: World, list: string[]): void {
   const all = list.includes('all');
   if (all || list.includes('vacuum')) w.unlocks.vacuum = true;
+  if (all || list.includes('shield')) w.unlocks.shield = true;
   if (all || list.includes('autoAim')) w.unlocks.autoAim = true;
   for (const id of WEAPON_ORDER) if (all || list.includes(id)) giveWeapon(w, id);
 }
@@ -222,7 +224,7 @@ function chooseCheckpoint(id: string): void {
     s.resume = undefined; s.checkpointId = id;
     s.levelMemo = target.level === 'floor2' ? { rested: id === 'floor2:rested' }
       : target.level === 'camp1' ? prior ?? {
-        gears: ['tunnel', 'E', 'I', 'J', 'duct', 'H'], keys: ['B', 'F'], vacuum: s.unlocks.vacuum,
+        gears: ['tunnel', 'E', 'I', 'J', 'H'], keys: ['B', 'F'], vacuum: s.unlocks.vacuum, shield: s.unlocks.shield,
         ally: 'enemy', allyHp: 0, hatchOpen: true, cLit: true, wallBroken: true,
         laserOff: true, drained: ['L1', 'L2'], boss: false,
       } : undefined;
@@ -414,6 +416,7 @@ function step(dt: number): void {
     updateHack(world, dt);
     updateGrapple(world, dt);
     updateEnemies(world, dt);
+    updateShield(world, dt);
     updateSkills(world, dt); // 敵の更新の後（バキュームで吸われている敵の見た目を上書きする）
     updateWeaponSwitch(world);
     updateProjectiles(world, dt);

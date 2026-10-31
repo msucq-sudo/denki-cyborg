@@ -2,6 +2,7 @@
 // 箱は材質ごとに Batch で1つのメッシュへ結合する。動く物（シャッター・ハッチ・脆い壁・レーザー網・電力源・キー・バキューム・歯車）は個別に作って返す。
 import * as THREE from 'three';
 import type { AABB } from '../../core/types';
+import { buildShieldPickup } from '../../abilities/shield';
 import { createGearModel, type GearModel } from '../gear';
 import { floorTex, hazardTex, makeSign, panelTex } from '../floor1/visuals';
 import { Batch, rng } from '../surge/batch';
@@ -31,6 +32,7 @@ export interface Camp1Visuals {
   gears: (PickVis & { id: string; model: GearModel })[];
   keys: (PickVis & { id: 'B' | 'F' })[];
   vacuum: PickVis;
+  shield: PickVis;
   checkpoints: { boss: THREE.MeshBasicMaterial };
   exitSign: THREE.Mesh;
 }
@@ -349,6 +351,14 @@ export function buildCamp1Visuals(plan: Plan): Camp1Visuals {
     return { group: g, x: V.x, y: V.y, z: V.z, taken: false };
   })();
 
+  const shield = (() => {
+    const S = plan.shield;
+    const g = buildShieldPickup();
+    g.position.set(S.x, S.y, S.z);
+    root.add(g);
+    return { group: g, x: S.x, y: S.y, z: S.z, taken: false };
+  })();
+
   // ---------------------------------------------------------------- チェックポイントの印・看板
   const cpMat = new THREE.MeshBasicMaterial({ color: 0x3dff7a, transparent: true, opacity: 0.35, depthWrite: false });
   for (const [id, c] of Object.entries(plan.checkpoints)) {
@@ -378,7 +388,7 @@ export function buildCamp1Visuals(plan: Plan): Camp1Visuals {
     root, colliders, glow, glowC, gates, hatch,
     brittle: { mesh: bMesh, mat: brittleMat, cracks, collider: brittleCol, glow: crackGlow, debris },
     laser: { group: laserGroup, beamMat, collider: laserCol, machineLamps },
-    sources, hatchSocket, cSocket, gears, keys, vacuum,
+    sources, hatchSocket, cSocket, gears, keys, vacuum, shield,
     checkpoints: { boss: cpMat },
     exitSign,
   };

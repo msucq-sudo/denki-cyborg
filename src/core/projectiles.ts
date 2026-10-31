@@ -274,7 +274,7 @@ function blastAt(world: World, p: Projectile, pos: THREE.Vector3): void {
   _bf.copy(pos); _bf.y += 0.2;
   const t = raycastLevel(world.colliders, _bf, pc);
   if (t !== null && t < 0.98) return;
-  damagePlayer(world, b.damage * mul);
+  damagePlayer(world, b.damage * mul, pos);
 }
 
 /** 弾の当たり判定にかける余裕（撃ち落としやすく） */
@@ -338,7 +338,7 @@ export function updateProjectiles(world: World, dt: number): void {
       if (t !== null && t <= tHit) {
         const area = p.blast?.damage !== undefined;
         // 範囲ダメージ弾は爆発の範囲ダメージだけ（直撃の二重取りはしない）
-        if (!area) damagePlayer(world, p.damage);
+        if (!area) damagePlayer(world, p.damage, p.pos);
         const hp = p.pos.clone().lerp(next, t);
         if (!area) spawnBurst(world, hp, 0xff7a3d, 6, 3);
         blastAt(world, p, hp);

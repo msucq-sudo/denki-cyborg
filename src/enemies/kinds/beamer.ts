@@ -305,7 +305,7 @@ function step(c: Ctx): void {
       // 当たり判定：1発につき1回だけ（壁で止まったビームは届かない）
       if (!ai.hitDone && segmentSphere(start, end, pc, PLAYER_HIT_RADIUS + B.beamWidth / 2) !== null) {
         ai.hitDone = true;
-        damagePlayer(world, spec.damage);
+        damagePlayer(world, spec.damage, start);
       }
       ai.warn = 0;
       if (ai.st >= B.fireTime) {

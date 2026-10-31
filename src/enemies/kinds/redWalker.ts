@@ -1,19 +1,21 @@
 // 赤ウォーカー：ウォーカーの赤い版。吸収アームをつなぐとハッキング（abilities/hack.ts）ができ、
 // 成功すると一定時間 味方になって、ほかの敵を撃つ
 import * as THREE from 'three';
-import { HACK } from '../../config/balance';
+import { HACK, PLAYER } from '../../config/balance';
 import { spawnBurst } from '../../core/effects';
 import { faceToward, moveGround } from '../common';
 import { animateWalker, buildWalker, updateWalker, type WalkerPalette } from './walker';
-import { addHackCue, animateAllyLook, beginAllyFrame, clearAllyBolts, fireAllyBolt, updateAllyTarget } from './allyBolts';
+import { addHackCue, allyFollowWaypoint, animateAllyLook, beginAllyFrame, clearAllyBolts, fireAllyBolt, recordAllyTrail, updateAllyTarget } from './allyBolts';
 import type { KindModule } from './kind';
 
 /** 赤ウォーカーの味方時の調整値（弾・点滅などの共通値は allyBolts.ts の ALLY） */
 export const REDWALKER_ALLY = {
   /** 敵に近づくのをやめる距離（m） */
   stopDist: 6,
-  /** プレイヤーからこれ以上離れたら、敵がいなくても追いかける（m） */
-  followDist: 7,
+  /** 追いつくときの最高速度（プレイヤーの走行速度を上回る） */
+  followSpeed: PLAYER.moveSpeed * 1.35,
+  /** 経路上の点へ向かう加速度 */
+  followAccel: 12,
   /** 撃つ間隔（秒） */
   interval: 0.9,
   /** 1発のダメージ = ENEMIES.redWalker.damage × この倍率 */
@@ -47,6 +49,7 @@ export const redWalker: KindModule = {
 
   update(c) {
     const { world, e, dt } = c;
+    recordAllyTrail(world, e);
     const jam = e.tethered;
     if (jam) {
       // つながれている間：ジャミングで動きも射撃もにぶる。火花が散る
@@ -64,9 +67,10 @@ export const redWalker: KindModule = {
 
   /** 味方になっている間：近くの敵を撃つ。敵がいなければプレイヤーについていく */
   updateAlly(c) {
-    const { world, e, dt, spec, dist2d } = c;
+    const { world, e, dt, spec } = c;
     const ai = e.ai;
     if (!beginAllyFrame(world, e, dt)) return;
+    recordAllyTrail(world, e);
     const target = updateAllyTarget(world, e, dt, spec.sightRange);
 
     let wishX = 0, wishZ = 0;
@@ -103,16 +107,20 @@ export const redWalker: KindModule = {
       }
       ai.atkTimer = Math.max(ai.atkTimer ?? 0, 0.3);
     } else {
-      // 敵がいない：プレイヤーのほうへ
-      const dx = c.pc.x - e.pos.x, dz = c.pc.z - e.pos.z;
-      const d = dist2d || 1;
-      if (d > REDWALKER_ALLY.followDist) {
-        faceToward(e, dx / d, dz / d, dt, 3);
-        wishX = (dx / d) * spec.speed; wishZ = (dz / d) * spec.speed;
+      // 敵がいない：プレイヤーの少し後ろを、記録した道順に沿って追う
+      const waypoint = allyFollowWaypoint(world, e);
+      const dx = waypoint.point.x - e.pos.x, dz = waypoint.point.z - e.pos.z;
+      const d = Math.hypot(dx, dz);
+      ai.allyFollowWaypointDistance = e.pos.distanceTo(waypoint.point);
+      if (d > 0.55) {
+        faceToward(e, dx / d, dz / d, dt, 6);
+        wishX = (dx / d) * REDWALKER_ALLY.followSpeed;
+        wishZ = (dz / d) * REDWALKER_ALLY.followSpeed;
       }
       ai.atkTimer = Math.max(ai.atkTimer ?? 0, 0.3);
     }
-    moveGround(world, e, dt, wishX, wishZ, 6);
+    const following = !target && !ai.guideTo;
+    moveGround(world, e, dt, wishX, wishZ, following ? REDWALKER_ALLY.followAccel : 6);
     ai.walk = Math.hypot(e.vel.x, e.vel.z);
   },
 

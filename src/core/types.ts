@@ -212,7 +212,9 @@ export interface World {
    * 後から解放する特殊機能（スカウター・ジェットパックは最初から使える基本機能なので含めない）。
    * どれも未解放のうちは左上の「特殊機能」パネルを出さない
    */
-  unlocks: { autoAim: boolean; vacuum: boolean };
+  unlocks: { autoAim: boolean; vacuum: boolean; shield: boolean };
+  /** シールド（abilities/shield.ts が更新）。hp が 0 になると broken で、電力を使って回復する */
+  shield: ShieldState;
   /** 武器の所持と装備中の武器（player/weaponSwitch.ts が切り替える） */
   loadout: LoadoutState;
   /** スキル（バキュームなど）の選択・クールダウン（abilities/skills.ts / vacuum.ts が使う） */
@@ -232,6 +234,16 @@ export interface LoadoutState {
 }
 
 export type SkillId = 'vacuum';
+
+export interface ShieldState {
+  hp: number;
+  /** 壊れている（回復し切るまで使えない） */
+  broken: boolean;
+  /** 構えている度合い 0..1（見た目用） */
+  k: number;
+  /** 直近で受け止めた時刻（光らせる用。world.time） */
+  hitAt: number;
+}
 
 export interface SkillState {
   /** 選択中のスキル（Y / キーボードの Y で発動する） */

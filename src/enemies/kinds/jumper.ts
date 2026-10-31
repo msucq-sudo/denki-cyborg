@@ -259,7 +259,7 @@ function thrust(world: World, e: Enemy, dirX: number, dirZ: number, dist2d: numb
   const inReach = dist2d < JUMPER.thrustReach + PLAYER_HIT_RADIUS + 0.1;
   const inFront = dist2d < e.radius * 0.8 || dirX * fx + dirZ * fz > JUMPER.thrustCos;
   if (inReach && inFront && Math.abs(pcY - e.pos.y) < 1.6) {
-    damagePlayer(world, damage);
+    damagePlayer(world, damage, e.pos);
   }
   spawnBurst(world, tip, 0xbfe8ff, 8, 5, 0.3);
   spawnShockwave(world, tip, 0x9fd8ff, 0.9, 0.25);

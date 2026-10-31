@@ -4,7 +4,7 @@ import { createWorld } from '../../core/world';
 import { EventBus } from '../../core/events';
 import { makeAABB } from '../../core/collision';
 import type { Enemy, World } from '../../core/types';
-import { ENEMIES, HACK } from '../../config/balance';
+import { ENEMIES, HACK, PLAYER } from '../../config/balance';
 import { spawnEnemy, updateEnemies } from '../enemies';
 import { KIND_MODULES } from '.';
 import { REDWALKER_ALLY } from './redWalker';
@@ -105,6 +105,32 @@ describe('redWalker', () => {
     world.player.pos.set(0, 0, -25);
     run(4);
     expect(a.pos.z).toBeLessThan(-3);
+  });
+
+  it('keeps up with a running player while following the recent route', () => {
+    const a = ally(V(0, 0.7, 0));
+    const dt = 1 / 30;
+    world.player.pos.set(0, 0, 0);
+    for (let i = 0; i < 5 * 30; i++) {
+      world.player.vel.set(0, 0, -PLAYER.moveSpeed);
+      world.player.pos.z -= PLAYER.moveSpeed * dt;
+      world.time += dt;
+      updateEnemies(world, dt);
+    }
+    expect(Math.abs(a.pos.z - world.player.pos.z)).toBeLessThan(8);
+    expect(a.pos.z).toBeGreaterThan(world.player.pos.z + 1); // 追い越さず、後ろを保つ
+  });
+
+  it('drops an ally target immediately when a wall blocks its line of sight', () => {
+    const a = ally(V(0, 0.7, 0));
+    const foe = spawnEnemy(world, 'heavy', V(0, 1, -8));
+    world.player.pos.set(0, 0, 12);
+    world.colliders.push(makeAABB(V(-2, 0, -5), V(2, 4, -4)));
+    a.ai.allyTarget = foe;
+    a.ai.scanT = 2;
+    run(0.2);
+    expect(a.ai.allyTarget).toBeUndefined();
+    expect(a.pos.z).toBeGreaterThan(0); // 見えない敵を追い続けず、プレイヤーへ戻る
   });
 
   it('shuts down after allyTime without counting as a kill, and cleans up its bolts', () => {

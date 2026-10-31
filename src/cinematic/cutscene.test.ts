@@ -143,6 +143,7 @@ test('fail: three heavies, carCaught, slow motion, car stops before the fence, c
   expect(maxHeavies).toBe(3);
   expect(probe.caught && probe.stopped).toBe(true);
   expect(probe.pushed).toBeGreaterThan(0.5);
+  expect(probe.pushed).toBeLessThan(6);
   expect(events).toContain('carCaught');
   expect(events).toContain('slowmo:true');
   expect(events[events.length - 1]).toBe('slowmo:false');

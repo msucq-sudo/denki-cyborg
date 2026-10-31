@@ -64,6 +64,9 @@ export interface GameEvents {
   allyExpire: { pos: THREE.Vector3 };
   /** 守られた敵に弾・アームがはじかれた */
   shieldBlock: { pos: THREE.Vector3 };
+  /** プレイヤーのシールドが壊れた／回復し切った */
+  shieldBreak: { pos: THREE.Vector3 };
+  shieldReady: {};
   gameStart: {};
   gameOver: {};
   gameClear: {};

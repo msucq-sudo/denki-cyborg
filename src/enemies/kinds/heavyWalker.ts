@@ -121,7 +121,7 @@ export const heavyWalker: KindModule = {
       const fd = Math.hypot(world.player.pos.x - ai.fieldPos.x, world.player.pos.z - ai.fieldPos.z);
       if (ai.fieldTick <= 0 && fd < H.stompRange && world.player.pos.y < ai.fieldPos.y + 0.5) {
         ai.fieldTick = H.fieldTick;
-        damagePlayer(world, H.fieldDamage);
+        damagePlayer(world, H.fieldDamage, ai.fieldPos);
       }
       if (Math.random() < 0.5) {
         const a = Math.random() * Math.PI * 2, r = Math.random() * H.stompRange;
@@ -174,7 +174,7 @@ export const heavyWalker: KindModule = {
           spawnBurst(world, floor, ELEC, 24, 6);
           world.events.emit('enemyAction', { kind: e.kind, pos: e.pos.clone(), action: 'stomp' });
           const hd = Math.hypot(world.player.pos.x - e.pos.x, world.player.pos.z - e.pos.z);
-          if (hd < H.stompRange + 0.3 && world.player.pos.y < feetY + H.stompSafeHeight) damagePlayer(world, spec.damage);
+          if (hd < H.stompRange + 0.3 && world.player.pos.y < feetY + H.stompSafeHeight) damagePlayer(world, spec.damage, e.pos);
           ai.fieldT = H.fieldTime; ai.fieldTick = H.fieldTick; ai.fieldPos = floor;
           ai.state = 'recover'; ai.stateT = H.recover; ai.atkTimer = spec.attackInterval * cdMul;
         }
@@ -202,7 +202,7 @@ export const heavyWalker: KindModule = {
         faceToward(e, ai.dir.x, ai.dir.z, dt, 8);
         const hd = Math.hypot(world.player.pos.x - e.pos.x, world.player.pos.z - e.pos.z);
         if (!ai.hitDone && hd < e.radius + PLAYER_HIT_RADIUS + 0.2 && Math.abs(c.pc.y - e.pos.y) < e.radius + 0.9) {
-          damagePlayer(world, spec.damage * H.chargeDamageMul);
+          damagePlayer(world, spec.damage * H.chargeDamageMul, e.pos);
           ai.hitDone = true;
           spawnBurst(world, c.pc, ELEC, 12, 4);
         }

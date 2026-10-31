@@ -100,7 +100,7 @@ export function checkBossPhase(world: World, e: Enemy): void {
     e.ai.phase = 2;
     e.ai.laserT = 4;
     e.ai.atkTimer = 1.5;
-    e.ai.summonT = 3;
+    e.ai.summonT = 6;
     e.ai.phaseFlash = 1;
     spawnShockwave(world, e.pos, 0xff4a30, 9, 0.7);
     spawnFlash(world, e.pos, 0xff3a20, 10, 16, 0.4);

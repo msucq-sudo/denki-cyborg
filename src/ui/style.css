@@ -331,6 +331,12 @@ html, body { margin: 0; height: 100%; overflow: hidden; background: #0d1420; }
 .hpbar.low .hp-num { color: #ffb0a0; }
 .hpbar.low .bar.hp .fill { animation: blink 0.9s ease-in-out infinite; }
 .bleft .bar.hp { height: 12px; }
+.shbar.off { display: none; }
+.g-label.sh-l { color: #66e6ff; }
+.bleft .bar.sh { height: 8px; }
+.bleft .bar.sh .fill { background: linear-gradient(90deg, #2ea8d8, #9af0ff); }
+.shbar.broken .g-label, .shbar.broken .hp-num { color: #ffb0a0; }
+.shbar.broken .bar.sh .fill { background: linear-gradient(90deg, #8a4a5a, #ff9fb4); animation: blink 0.9s ease-in-out infinite; }
 .bleft .bar.hp .fill { background: linear-gradient(90deg, #ff6b8a, #ff9fb4); }
 
 .batt {

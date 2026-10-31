@@ -182,7 +182,7 @@ export const ENEMIES: Record<EnemyKind, {
   walker:  { hp: 50,  speed: 1.6, radius: 0.7,  damage: 3,  attackInterval: 2.0, projectileSpeed: 16, weakMultiplier: 2, overloadCap: 18, sightRange: 30 },
   /** ヘビーウォーカー：突進＋踏みつけ電撃（範囲）。damage=踏みつけ */
   heavyWalker: { hp: 220, speed: 2.2, radius: 1.3, damage: 9, attackInterval: 3.0, projectileSpeed: 0, weakMultiplier: 2.5, overloadCap: 42, sightRange: 30 },
-  /** ミサイル溜めロボット：護衛を召喚→ミサイルを溜めて発射。damage=ミサイル1発、attackInterval=溜め時間 */
+  /** ミサイル溜めロボット：増援なしでミサイルを溜めて発射。damage=ミサイル1発、attackInterval=溜め時間 */
   missile: { hp: 160, speed: 1.8, radius: 1.1,  damage: 8, attackInterval: 7.0, projectileSpeed: 11, weakMultiplier: 2.5, overloadCap: 34, sightRange: 34 },
   /** 赤ウォーカー：ウォーカーの赤い版。ハッキングできる（吸収アームをつなぐとコード入力）。T3-C で調整 */
   redWalker: { hp: 60, speed: 1.8, radius: 0.7, damage: 3.5, attackInterval: 1.8, projectileSpeed: 17, weakMultiplier: 2, overloadCap: 20, sightRange: 30 },
@@ -409,6 +409,23 @@ export const HACK = {
 };
 
 /**
+ * シールド（world.unlocks.shield で解放）。LT（照準）を構えている間、プレイヤーの前に水色の盾が出て、前方からの攻撃だけを受け止める。
+ * 盾が壊れたら、電力をじわじわ使って自動で回復する（電力が尽きると回復も止まる）
+ */
+export const SHIELD = {
+  /** 盾の耐久（受け止められるダメージの合計） */
+  maxHp: 60,
+  /** 前方の判定：視線の水平方向からこの角度（度）以内の攻撃を受け止める */
+  halfAngleDeg: 75,
+  /** 壊れてから回復するまでに毎秒使う電力 */
+  recoverDrainPerSec: 4,
+  /** 壊れてから回復するまでに毎秒回復する耐久（電力が足りたぶんだけ進む）。maxHp / これ ＝ 回復にかかる秒数 */
+  recoverPerSec: 6,
+  /** 盾が出る・消えるときの速さ（1/秒） */
+  blendRate: 18,
+} as const;
+
+/**
  * バキューム（スキル。world.unlocks.vacuum で解放）。発動すると、自分を中心とした円の中にいる敵全員から
  * duration 秒かけて電力（敵HP）を吸い取り、自分の電力にする。吸収アーム（ABSORB）と同じく drainEnemy で吸う
  */
@@ -467,6 +484,9 @@ export const CAMP1 = {
   laserInterval: 0.6,
   /** 赤ウォーカーの案内：G に入ったら隠し通路の下へ歩く速さの倍率・到着とみなす距離 */
   guideArrive: 1.2,
+  /** 案内はG内で近くにいるときだけ。移動を再開したら追従を優先する */
+  guideMaxDistance: 12,
+  guideIdleSpeed: 0.5,
   /** 床のハッチが開くのにかかる時間（秒） */
   hatchTime: 1.2,
   /** 中ボス戦：2つ目の波を出す、1つ目の波の残り数 */

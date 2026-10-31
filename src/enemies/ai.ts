@@ -219,7 +219,7 @@ export function updateCrawler(c: Ctx): void {
       ai.stateT -= dt;
       wx = ai.lunge.x * 13; wz = ai.lunge.z * 13; accel = 200;
       if (!ai.hitDone && c.dist < e.radius + PLAYER_HIT_RADIUS + 0.15) {
-        damagePlayer(world, spec.damage);
+        damagePlayer(world, spec.damage, e.pos);
         ai.hitDone = true;
         spawnBurst(world, e.pos, 0xff7a3d, 6, 3);
       }
@@ -387,7 +387,7 @@ export function updateHeavy(c: Ctx): void {
         spawnBurst(world, floor, 0xffa24d, 14, 5);
         world.events.emit('enemyAttack', { kind: 'heavy', pos: e.pos.clone() });
         const hd = Math.hypot(world.player.pos.x - e.pos.x, world.player.pos.z - e.pos.z);
-        if (hd < HEAVY.slamRange + 0.3 && world.player.pos.y < floor.y + 1.6) damagePlayer(world, spec.damage);
+        if (hd < HEAVY.slamRange + 0.3 && world.player.pos.y < floor.y + 1.6) damagePlayer(world, spec.damage, e.pos);
         ai.state = 'recover'; ai.stateT = 0.9; ai.atkTimer = spec.attackInterval; ai.armsUp = 0;
         ai.slam = 1;
       }
@@ -415,7 +415,7 @@ export function updateHeavy(c: Ctx): void {
       faceToward(e, ai.dir.x, ai.dir.z, dt, 8);
       const hd = Math.hypot(world.player.pos.x - e.pos.x, world.player.pos.z - e.pos.z);
       if (!ai.hitDone && hd < e.radius + PLAYER_HIT_RADIUS + 0.2 && Math.abs(c.pc.y - e.pos.y) < e.radius + 0.9) {
-        damagePlayer(world, spec.damage);
+        damagePlayer(world, spec.damage, e.pos);
         ai.hitDone = true;
         spawnBurst(world, c.pc, 0xff7a3d, 10, 4);
       }

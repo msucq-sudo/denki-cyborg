@@ -20,16 +20,36 @@ function mkWorld(): World {
 function step(w: World, sec: number, dt = 1 / 30): void {
   for (let t = 0; t < sec; t += dt) { w.time += dt; updateEnemies(w, dt); updateProjectiles(w, dt); }
 }
+function stepEnemyAi(w: World, sec: number, dt = 1 / 30): void {
+  for (let t = 0; t < sec; t += dt) { w.time += dt; updateEnemies(w, dt); }
+}
 
-test('charge fills over attackInterval', () => {
+test('charge fills over attackInterval without summoning escorts', () => {
   const w = mkWorld();
   const e = spawnEnemy(w, 'missile', V(0, 1.1, 0));
   e.ai.alert = 100;
   step(w, ENEMIES.missile.attackInterval * 0.5);
   expect(e.ai.charge).toBeGreaterThan(0.4);
   expect(e.ai.charge).toBeLessThan(0.6);
-  // 護衛を召喚している
-  expect(e.ai.escorts.length).toBeGreaterThan(0);
+  expect(w.enemies).toHaveLength(1);
+  expect(e.ai.escorts).toBeUndefined();
+});
+
+test('repeated volleys keep attacking without summoning enemies', () => {
+  const w = mkWorld();
+  const e = spawnEnemy(w, 'missile', V(0, 1.1, 0));
+  e.ai.alert = 100;
+  const attacks: unknown[] = [];
+  const summons: unknown[] = [];
+  w.events.on('enemyAttack', (event) => { if (event.kind === 'missile') attacks.push(event); });
+  w.events.on('enemyAction', (event) => { if (event.kind === 'missile' && event.action === 'summon') summons.push(event); });
+
+  stepEnemyAi(w, 35);
+
+  expect(summons).toHaveLength(0);
+  expect(w.enemies).toHaveLength(1);
+  expect(e.ai.escorts).toBeUndefined();
+  expect(attacks.length).toBeGreaterThanOrEqual(MISSILE_BOT.missiles * 3);
 });
 
 test('damage burst disrupts charge, tether pauses it', () => {

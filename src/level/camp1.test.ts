@@ -3,7 +3,7 @@ import * as THREE from 'three';
 import { EventBus } from '../core/events';
 import type { World } from '../core/types';
 import { createWorld } from '../core/world';
-import { moveCharacter } from '../core/collision';
+import { makeAABB, moveCharacter, resolveSphere } from '../core/collision';
 import { getSockets } from '../core/sockets';
 import { getPowerSources, drainSource } from '../core/powerSources';
 import { getGrabbables } from '../core/armGrab';
@@ -11,6 +11,7 @@ import { CAMP1, ENEMY_NOTICE, PLAYER } from '../config/balance';
 import { ENEMY_ORDER, enemyNo } from '../config/enemyInfo';
 import { buildCamp1, getCamp1, getCamp1Memo, hitBrittleWall, pickKey, prepareCamp1RoomResume, setCamp1Memo, updateCamp1 } from './camp1';
 import { generateCamp1 } from './camp1/plan';
+import { updateEnemies } from '../enemies/enemies';
 
 const DT = 1 / 30;
 void ENEMY_NOTICE;
@@ -60,14 +61,16 @@ describe('camp1 (サージ収容所 1階)', () => {
     expect(ENEMY_ORDER.indexOf('redWalker') + 1).toBe(11);
     const boss = plan.zones.find((z) => z.id === 'boss')!;
     expect(boss.spawns.filter((s) => s.kind === 'beamer').length).toBe(2);
-    expect(boss.spawns.length + (boss.wave2?.length ?? 0)).toBeGreaterThanOrEqual(8);
+    expect(boss.spawns).toHaveLength(9);
+    expect(boss.wave2).toBeUndefined();
   });
 
-  it('has rooms A-J, six gears, two keys (B, F) and checkpoints at the entrance and before the boss', () => {
+  it('has rooms A-J, five gears, two keys (B, F) and checkpoints at the entrance and before the boss', () => {
     const ids = plan.rooms.map((r) => r.id);
     for (const id of 'ABCDEFGHIJ') expect(ids, id).toContain(id);
-    expect(plan.gears.length).toBe(6);
-    for (const area of ['地下通路', 'I 隠し部屋', 'J 隠し部屋', 'G→D 隠し通路']) expect(plan.gears.some((g) => g.area === area), area).toBe(true);
+    expect(plan.gears).toHaveLength(5);
+    expect(plan.gears.some((g) => g.id === 'duct')).toBe(false);
+    for (const area of ['地下通路', 'I 隠し部屋', 'J 隠し部屋']) expect(plan.gears.some((g) => g.area === area), area).toBe(true);
     expect(plan.gears.filter((g) => g.y > 5).length).toBeGreaterThanOrEqual(2); // 高い所の歯車
     expect(plan.keys.map((k) => k.id).sort()).toEqual(['B', 'F']);
     for (const k of plan.keys) expect(k.y).toBeGreaterThan(4); // 高い所（ジャンプでは届かない）
@@ -253,10 +256,18 @@ describe('camp1 (サージ収容所 1階)', () => {
     run(DT);
     expect(c.state.ally).toBe('ally');
     expect(e.ai.allyPermanent).toBe(true);
-    // G に入ると案内先が設定される
+    // 仲間が離れている間は案内で追従を妨げない。
     w.player.pos.set(69, 0, 39);
     run(DT);
+    expect(e.ai.guideTo).toBeUndefined();
+    e.pos.set(66, e.radius, 39);
+    run(DT);
     expect(e.ai.guideTo).toMatchObject({ x: plan.guide.x, z: plan.guide.z });
+    // プレイヤーが移動を再開したら、案内を中断して後ろへ追従する。
+    w.player.vel.set(0, 0, PLAYER.moveSpeed);
+    run(DT);
+    expect(e.ai.guideTo).toBeUndefined();
+    w.player.vel.set(0, 0, 0);
     w.player.pos.set(20, 0, 66);
     run(DT);
     expect(e.ai.guideTo).toBeUndefined();
@@ -266,6 +277,115 @@ describe('camp1 (サージ収容所 1階)', () => {
     expect(c.state.ally).toBe('dead');
   });
 
+  it('returns a stalled ally to a clear, supported trail point after a height change', () => {
+    const { w, run } = mk();
+    run(DT);
+    const e = getCamp1(w)!.walker!;
+    e.allied = true;
+    e.ai.allyT = e.ai.allyMax = 20;
+    w.player.pos.set(22, 0, 64);
+    w.player.onGround = true;
+    run(DT);
+
+    e.pos.set(22, -5, 64);
+    e.root.position.copy(e.pos);
+    run(6);
+
+    expect(e.pos.y).toBeCloseTo(e.radius + 0.05, 2);
+    expect(e.pos.x).toBeCloseTo(22, 2);
+    expect(e.pos.z).toBeCloseTo(64, 2);
+  });
+
+  it('keeps a returned ally on the catwalk instead of following its stale lower-floor trail', () => {
+    const { w, run } = mk();
+    run(DT);
+    const e = getCamp1(w)!.walker!;
+    for (const other of w.enemies) if (other !== e) other.status = 'dead';
+    e.allied = true;
+    e.ai.allyT = e.ai.allyMax = 20;
+    w.player.pos.set(20, 6, 9);
+    w.player.vel.set(0, 0, 0);
+    w.player.onGround = true;
+
+    const tick = (sec: number) => {
+      for (let i = 0; i < Math.round(sec / DT); i++) {
+        for (const other of w.enemies) if (other !== e) other.status = 'dead';
+        w.time += DT;
+        updateEnemies(w, DT);
+        updateCamp1(w, DT);
+      }
+    };
+    tick(DT);
+    e.pos.set(20, 0.7, 17.3);
+    e.root.position.copy(e.pos);
+    tick(8);
+    const recoveredY = e.pos.y;
+    tick(6);
+
+    expect(recoveredY).toBeGreaterThan(6.5);
+    expect(e.pos.y).toBeGreaterThan(6.5);
+    expect(Math.abs(e.pos.y - (w.player.pos.y + e.radius))).toBeLessThan(1);
+    const resolved = e.pos.clone();
+    resolveSphere(w.colliders, resolved, e.radius);
+    expect(resolved.distanceTo(e.pos), `${e.pos.toArray()} resolved ${resolved.toArray()}`).toBeLessThan(0.05);
+    expect((e.ai.allyTrail as THREE.Vector3[]).every((point) => point.y === 6)).toBe(true);
+  });
+
+  it('does not return an ally to an unsupported or blocked trail point', () => {
+    const { w, run } = mk();
+    run(DT);
+    const e = getCamp1(w)!.walker!;
+    e.allied = true;
+    e.ai.allyT = e.ai.allyMax = 20;
+    w.player.onGround = true;
+    w.player.pos.set(22, 0, 64);
+    w.colliders.push(makeAABB(new THREE.Vector3(21, 1.2, 63), new THREE.Vector3(23, 2.4, 65)));
+    run(DT);
+    e.pos.set(22, -5, 64);
+    e.root.position.copy(e.pos);
+    run(6);
+    expect(e.pos.y).toBeLessThan(-2);
+
+    // A stale onGround flag alone must not authorize a jump to a place without a floor.
+    w.player.pos.set(300, 0, 300);
+    e.pos.set(300, -5, 300);
+    e.root.position.copy(e.pos);
+    run(6);
+    expect(e.pos.y).toBeLessThan(-2);
+  });
+
+  it('waits until the player lands before returning a vertically separated ally', () => {
+    const { w, run } = mk();
+    run(DT);
+    const e = getCamp1(w)!.walker!;
+    e.allied = true;
+    e.ai.allyT = e.ai.allyMax = 20;
+    w.player.pos.set(22, 0, 64);
+    w.player.onGround = true;
+    run(2);
+    e.pos.set(22, -5, 64);
+    e.root.position.copy(e.pos);
+
+    w.player.onGround = false;
+    run(6);
+    expect(e.pos.y).toBeLessThan(-2);
+
+    w.player.onGround = true;
+    run(4);
+    expect(e.pos.y).toBeGreaterThan(0.5);
+  });
+
+  it('the shield pickup in J sets world.unlocks.shield and survives the memo', () => {
+    const { w, run } = mk();
+    expect(w.unlocks.shield).toBe(false);
+    expect(plan.shield.x).toBeGreaterThan(plan.brittle.x1);   // 脆い壁の奥（J）にある
+    w.player.pos.set(plan.shield.x, 0, plan.shield.z);
+    run(0.1);
+    expect(w.unlocks.shield).toBe(true);
+    expect(getCamp1(w)!.state.shield).toBe(true);
+    expect(getCamp1Memo()?.shield).toBe(true);
+  });
+
   it('the vacuum pickup sets world.unlocks.vacuum', () => {
     const { w, run } = mk();
     expect(w.unlocks.vacuum).toBe(false);
@@ -273,12 +393,14 @@ describe('camp1 (サージ収容所 1階)', () => {
     run(0.1);
     expect(w.unlocks.vacuum).toBe(true);
     expect(w.toasts.some((t) => t.text.includes('バキュームを手に入れた'))).toBe(true);
-    // アームで掴むものとして登録されている（歯車6・キー2・バキューム1）
+    // アームで掴むものとして登録されている（歯車5・キー2・バキューム1・シールド1）
     expect(getGrabbables(w).length).toBe(9);
   });
 
   it('the mid-boss fight locks H, and clearing it opens the 2F exit (→ camp2)', () => {
     const { w, run } = mk();
+    const waves: number[] = [];
+    w.events.on('zoneWave', (event) => waves.push(event.wave));
     run(DT);
     const c = getCamp1(w)!;
     // D に入るとチェックポイント
@@ -289,19 +411,19 @@ describe('camp1 (サージ収容所 1階)', () => {
     run(DT);
     expect(c.state.boss).toBe('active');
     expect(c.state.lockdown).toBe(true);
-    // 箱が揺れてから敵が出てくる（閉じた箱の中身も「生きている」と数える）
+    // 第1波の9体だけが出現し、閉じた箱の敵も残数に含む。
+    const boss = plan.zones.find((z) => z.id === 'boss')!;
+    expect(boss.spawns).toHaveLength(9);
     expect(w.level.data.remaining).toBeGreaterThan(0);
     const killH = () => { for (const e of w.enemies) if (!e.allied && e.kind !== 'redWalker' && e.pos.z < 27 && e.pos.x > 82) e.status = 'dead'; };
     run(3);
     killH();
     run(DT);
-    expect(c.state.wave2).toBe(true);
-    expect(c.state.boss).toBe('active');   // 2波目のコンテナはまだ開いていない
-    run(3);
-    killH();
-    run(DT);
     expect(c.state.boss).toBe('done');
+    expect(c.state.wave2).toBe(false);
     expect(c.state.exitOpen).toBe(true);
+    expect(waves).toEqual([1]);
+    expect(w.toasts.some((t) => t.text.includes('増援だ！'))).toBe(false);
     run(1.2);
     const exitGate = c.vis.gates.find((g) => g.def.id === 'exit')!;
     expect(exitGate.collider.active).toBe(false);
@@ -327,11 +449,24 @@ describe('camp1 (サージ収容所 1階)', () => {
     expect(resumedCamp.state.fights.boss).toBe('done');
   });
 
+  it('A: the start cell keeps enemies asleep until the player leaves it', () => {
+    const { w, run } = mk();
+    run(DT);
+    const drones = () => w.enemies.filter((e) => e.kind === 'drone' && e.pos.x > 17 && e.pos.x < 37 && e.pos.z > 56 && e.pos.z < 76);
+    expect(drones().length).toBe(2);
+    w.player.pos.set(14, 0, 66);   // 個室の中（戸口の手前）
+    run(1);
+    expect(drones().every((e) => e.ai.dormant?.wakeRadius === 0)).toBe(true);   // 近づいても起きない
+    w.player.pos.set(19, 0, 66);   // 戸口を出た
+    run(0.2);
+    expect(drones().every((e) => (e.ai.dormant?.wakeRadius ?? 0) > 1000)).toBe(true);   // 目覚め指示
+  });
+
   it('remembers completed ordinary fights and does not respawn them after loading', () => {
     const { w, run } = mk();
     run(DT); // spawn enemy actors
     for (const e of w.enemies) {
-      if (e.kind === 'drone' && e.pos.x > 10 && e.pos.x < 30 && e.pos.z > 58 && e.pos.z < 65) e.status = 'dead';
+      if (e.kind === 'drone' && e.pos.x > 17 && e.pos.x < 37 && e.pos.z > 56 && e.pos.z < 76) e.status = 'dead';
     }
     run(DT);
     expect(getCamp1(w)!.state.fights.A).toBe('done');
@@ -349,12 +484,12 @@ describe('camp1 (サージ収容所 1階)', () => {
   it('accepts v1 memos without fights and ignores malformed memo shapes safely', () => {
     // `fights` がなかった旧形式でも、拾った物と仕掛けは復元できる。
     setCamp1Memo({
-      gears: ['tunnel', 'tunnel'], keys: ['B'], vacuum: true, ally: 'dead', allyHp: 0,
+      gears: ['tunnel', 'duct', 'tunnel'], keys: ['B'], vacuum: true, ally: 'dead', allyHp: 0,
       hatchOpen: true, cLit: true, wallBroken: true, laserOff: false, drained: [], boss: false,
     });
     const legacy = mk('entrance');
     const legacyCamp = getCamp1(legacy.w)!;
-    expect(legacyCamp.state.gears).toEqual(['tunnel']);
+    expect(legacyCamp.state.gears).toEqual(['tunnel', 'duct']); // 旧セーブの取得記録は引き継ぐ。現行配置には再出現しない。
     expect(legacyCamp.state.keys).toEqual(['B']);
     expect(legacyCamp.state.vacuum).toBe(true);
     expect(legacyCamp.state.hatchOpen).toBe(true);

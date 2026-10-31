@@ -208,8 +208,11 @@ export function createCamp1Sheet(): StageSheet {
     // バキューム
     dot(c, X(plan.vacuum.x), Z(plan.vacuum.z), 12, '#c43ab0', 'V', '#fff', 14);
     P.label('バキューム（新アビリティ）', plan.vacuum.x + 10, plan.vacuum.z, '#8a1f80', 11, '#c43ab0');
+    // シールド
+    dot(c, X(plan.shield.x), Z(plan.shield.z), 12, '#1f9ad6', 'S', '#fff', 14);
+    P.label('シールド（新アビリティ）', plan.shield.x - 10, plan.shield.z, '#0f5f8f', 11, '#1f9ad6');
     // チェックポイント
-    const cp = (p: { x: number; z: number }, text: string, dx: number) => {
+    const cp =(p: { x: number; z: number }, text: string, dx: number) => {
       c.fillStyle = '#20a050'; c.beginPath(); c.moveTo(X(p.x), Z(p.z) + 10); c.lineTo(X(p.x), Z(p.z) - 14); c.lineTo(X(p.x) + 14, Z(p.z) - 8); c.lineTo(X(p.x), Z(p.z) - 2); c.fill();
       c.strokeStyle = '#0d5a2a'; c.lineWidth = 2; c.beginPath(); c.moveTo(X(p.x), Z(p.z) + 10); c.lineTo(X(p.x), Z(p.z) - 14); c.stroke();
       P.label(text, p.x + dx, p.z + 1.6, '#0d6a30', 11, '#20a050');
@@ -237,6 +240,7 @@ export function createCamp1Sheet(): StageSheet {
     L.item('歯車（強化素材）', (x, y) => dot(c, x, y, 9, '#e0a800'));
     L.item('鍵 セキュリティキー（2本で青い扉）', (x, y) => diamond(c, x, y, 9, '#3a7dff', '#0b2a70'));
     L.item('V バキューム（アイテム）', (x, y) => dot(c, x, y, 9, '#c43ab0'));
+    L.item('S シールド（アイテム・J 隠し部屋）', (x, y) => dot(c, x, y, 9, '#1f9ad6'));
     L.item('⚡ 送電ソケット（電気を送ると作動）', (x, y) => { c.fillStyle = '#18b6d6'; c.fillRect(x - 8, y - 8, 16, 16); });
     L.item('⚡ 電力源（吸収アームで吸う）', (x, y) => dot(c, x, y, 9, '#ff5a3a'));
     L.item('レーザー網', (x, y) => { c.fillStyle = '#ff2a2a'; c.fillRect(x - 10, y - 2, 20, 4); });

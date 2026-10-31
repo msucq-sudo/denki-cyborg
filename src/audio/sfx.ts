@@ -71,6 +71,8 @@ const SFX_POLICY: Record<string, SfxPolicy> = {
   slowmo: { maxVoices: 2 },
   vacuumStart: { maxVoices: 1 },
   vacuumEnd: { maxVoices: 1 },
+  shieldBreak: { maxVoices: 1 },
+  shieldReady: { maxVoices: 1 },
   skillSelect: { minInterval: 0.05, maxVoices: 2 },
   skillDenied: { minInterval: 0.2 },
   weaponSwitch: { minInterval: 0.06, maxVoices: 2 },
@@ -1073,6 +1075,16 @@ function subscribeSkill(events: EventBus): void {
       tone(x, t, { type: 'triangle', f: 1046, at: 0.12, dur: 0.22, gain: 0.1 });
       tone(x, t, { type: 'triangle', f: 1568, at: 0.2, dur: 0.28, gain: 0.08 });
     }
+  }));
+  // ---- プレイヤーのシールド：壊れる／回復し切る
+  sub(events, 'shieldBreak', (p) => play('shieldBreak', 0.3, (x, t) => {
+    const a = att(p.pos);
+    tone(x, t, { type: 'sawtooth', f: 900, f2: 120, dur: 0.35, gain: 0.12 * a, attack: 0.002, filter: { type: 'lowpass', f: 3000 } });
+    noise(x, t, { dur: 0.25, gain: 0.14 * a, filter: { type: 'highpass', f: 2500 } });
+  }));
+  sub(events, 'shieldReady', () => play('shieldReady', 0.2, (x, t) => {
+    tone(x, t, { type: 'triangle', f: 880, dur: 0.12, gain: 0.08, attack: 0.003 });
+    tone(x, t, { type: 'triangle', f: 1320, at: 0.1, dur: 0.2, gain: 0.08 });
   }));
   sub(events, 'skillSelect', () => play('skillSelect', 0.08, (x, t) => {
     tone(x, t, { type: 'sine', f: 980, f2: 1320, dur: 0.06, gain: 0.08, attack: 0.002 });
