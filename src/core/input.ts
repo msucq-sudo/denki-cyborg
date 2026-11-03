@@ -74,7 +74,7 @@ export class Input {
    * ゲームパッド（Xbox 配置）をキーボード/マウス入力に変換する。毎フレーム1回呼ぶ。
    * 左スティック=WASD、右スティック=視点、RT=射撃、LT=照準、LB=吸収(E)、A=ジャンプ/飛行、RB=回避(C)、Lスティック押込=ダッシュ(Shift)、
    * X=逆流(F)、B=インタラクト(PadB。ベッドなど)、Y=スキル発動(Skill)、十字キー上=オートエイム(2)、十字キー下=スキル選択（押している間は視点固定）、
-   * 十字キー左右=武器の切り替え（仮想キー WeaponPrev / WeaponNext）、Start=ポーズ(P)、A=決定(PadA)
+   * 十字キー左右=武器の切り替え（仮想キー WeaponPrev / WeaponNext）、Lスティック押込+Rスティック押込=必殺技（Special。キーボードは V）、Start=ポーズ(P)、A=決定(PadA)
    */
   pollGamepad(dt: number): void {
     const pad = navigator.getGamepads?.().find((g) => g && g.connected && g.mapping === 'standard');
@@ -97,6 +97,9 @@ export class Input {
       const cap = this.padCapture;
       if (b(0) && !cap) keys.add('Space');
       // B(1)=インタラクト専用（PadB。2階のベッドなど）。回避は RB(5) だけ
+      // Lスティック押し込み+Rスティック押し込み 同時 = 必殺技（仮想キー 'Special'）。そのフレームはダッシュ・デコイに流さない
+      const combo = b(10) && b(11);
+      if (combo) keys.add('Special');
       if (b(5)) keys.add('KeyC');
       if (b(2) && !cap) keys.add('KeyF');
       // Y(3)=スキル発動（仮想キー 'Skill'）。ジェットパックは A 長押し
@@ -111,7 +114,9 @@ export class Input {
       this.skillStickX = ax(2);
       this.skillStickY = ax(3);
       if (b(9)) keys.add('KeyP');
-      if (b(10)) keys.add('ShiftLeft');
+      if (b(10) && !combo) keys.add('ShiftLeft');
+      // 右スティック押し込み = ホログラムデコイ（abilities/decoy.ts。ハッキング中はコード入力を邪魔しない）
+      if (b(11) && !cap && !combo) keys.add('KeyN');
       if (b(7) || (pad.buttons[7]?.value ?? 0) > 0.3) mouse.add(0);
       if (b(6) || (pad.buttons[6]?.value ?? 0) > 0.3) mouse.add(2);
       // 右スティック→視点（デッドゾーン後に2乗カーブ）

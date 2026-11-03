@@ -10,6 +10,7 @@ import { WEAPON_NAMES, WEAPON_ORDER } from '../player/weaponSwitch';
 import type { SkillId } from '../core/types';
 import { clamp, formatRate, formatTime, pct, projectToScreen, stepRate } from './format';
 import type { RateState } from './format';
+import { isFull, segmentFills } from '../special/logic';
 
 export interface HudCallbacks { onStart(): void; onContinue?(): void; onRetry(): void; onResume(): void; onTitle(): void; onCheckpoint?(id: string): void }
 export interface HudCheckpoint { id: string; label: string; detail: string; disabled?: boolean }
@@ -125,6 +126,7 @@ const KEY_ROWS: KeyRow[] = [
   { id: 'k2', keys: '2', pad: '十字上', label: 'オートエイム' },
   { id: 'wswap', keys: '1 / 3', pad: '十字左右', label: '武器の切り替え（前 / 次）' },
   { id: 'skill', keys: 'Y', pad: '十字下＋Rスティック → Y', label: 'スキル（選ぶ → 発動）' },
+  { id: 'decoy', keys: 'N', pad: 'R押込', label: 'ホログラムデコイ（敵の的を3体出す）' },
   { id: 'p', keys: 'P', pad: 'Start', label: '一時停止' },
   { id: 'h', keys: 'H', pad: '—', label: '操作表示の切替' },
 ];
@@ -244,6 +246,25 @@ export function createHUD(root: HTMLElement, cb: HudCallbacks): Hud {
   const bossNum = el('div', 'boss-num');
   bossBox.append(bossName, bossBar, bossNum);
 
+  // ドレインガーディアン：部位ごとのHPバー3本（右腕・胴体・左腕。再生中は電流の表示）
+  const guardBox = el('div', 'guard off sc-only');
+  guardBox.append(el('div', 'guard-name', ENEMY_INFO.drainGuard.name));
+  const guardRow = el('div', 'guard-row');
+  type GuardBar = { box: HTMLElement; fill: HTMLElement; num: HTMLElement; tag: HTMLElement };
+  const mkGuardBar = (label: string, cls: string): GuardBar => {
+    const box = el('div', `guard-part ${cls}`);
+    const tag = el('div', 'guard-label', label);
+    const bar = el('div', 'bar');
+    const fill = el('div', 'fill');
+    bar.append(fill);
+    const num = el('div', 'guard-num');
+    box.append(tag, bar, num);
+    return { box, fill, num, tag };
+  };
+  const guardBars: Record<'rArm' | 'body' | 'lArm', GuardBar> = { rArm: mkGuardBar('右腕', 'arm'), body: mkGuardBar('胴体', 'body'), lArm: mkGuardBar('左腕', 'arm') };
+  guardRow.append(guardBars.rArm.box, guardBars.body.box, guardBars.lArm.box);
+  guardBox.append(guardRow);
+
   const objBox = el('div', 'objective off');
   const roomEl = el('div', 'room');
   const objEl = el('div', 'obj');
@@ -327,6 +348,21 @@ export function createHUD(root: HTMLElement, cb: HudCallbacks): Hud {
   const shFill = el('div', 'fill');
   shBar.append(shFill);
   shBox.append(shHead, shBar);
+  // 必殺技ゲージ（HPの下。3分割。満タンで虹色に流れ、「V 必殺」が出る）
+  const spBox = el('div', 'spbar');
+  const spHead = el('div', 'g-head');
+  const spKey = el('span', 'sp-key', '');
+  spHead.append(el('span', 'g-label sp-l', '必殺'), spKey);
+  const spSegs = el('div', 'sp-segs');
+  const spFills: HTMLElement[] = [];
+  for (let i = 0; i < 3; i++) {
+    const seg = el('div', 'sp-seg');
+    const fill = el('i', 'sp-fill');
+    seg.append(fill);
+    spSegs.append(seg);
+    spFills.push(fill);
+  }
+  spBox.append(spHead, spSegs);
   const gauge = el('div', 'gauge');
   const gHead = el('div', 'g-head');
   const gLabel = el('span', 'g-label', '電力');
@@ -338,7 +374,7 @@ export function createHUD(root: HTMLElement, cb: HudCallbacks): Hud {
   const battNum = el('span', 'batt-num');
   batt.append(battFill, battNum);
   gauge.append(gHead, batt);
-  bleft.append(hpBox, shBox, gauge);
+  bleft.append(hpBox, spBox, shBox, gauge);
 
   // 揺れは一度だけ再生して外す
   const onShakeEnd = (e: Event) => (e.currentTarget as HTMLElement).classList.remove('shake');
@@ -539,7 +575,7 @@ export function createHUD(root: HTMLElement, cb: HudCallbacks): Hud {
   let commGap = 0;
 
   playRoot.append(
-    vignette, scouterFx, crosshair, lockon, hitmark, dmgBox, bossBox, objBox,
+    vignette, scouterFx, crosshair, lockon, hitmark, dmgBox, bossBox, guardBox, objBox,
     controls, toastBox, absBox, hackBox, hackOk, allyBox, energyHint, bleft, funcs, wpn, skBox, topRight, comm, wheel,
   );
 
@@ -1067,6 +1103,14 @@ export function createHUD(root: HTMLElement, cb: HudCallbacks): Hud {
     setCls(hpBox, 'low', hpPct <= LOW_HP_PCT);
     setOpacity(vignette, Math.max(vigT * 0.9, hpPct <= LOW_HP_PCT ? 0.2 : 0));
 
+    // 必殺技ゲージ
+    const spFull = isFull(world);
+    const fills = segmentFills(world.special.gauge);
+    for (let i = 0; i < spFills.length; i++) setW(spFills[i], fills[i] * 100);
+    setCls(spBox, 'full', spFull);
+    setCls(spBox, 'busy', world.special.phase !== 'idle');
+    setText(spKey, spFull ? (world.input.lastDevice === 'pad' ? 'L3+R3 必殺' : 'V 必殺') : '');
+
     // クロスヘア・ヒットマーカー
     setCls(crosshair, 'charging', p.charging);
     if (p.charging) {
@@ -1169,6 +1213,24 @@ export function createHUD(root: HTMLElement, cb: HudCallbacks): Hud {
       setCls(bossBox, 'flash', bossFlashT > 0);
     }
 
+    // ドレインガーディアン：右腕・胴体・左腕の3本（ムービー中・撃破後は出さない）
+    const gd = world.enemies.find((e) => e.kind === 'drainGuard' && e.status !== 'dead' && !e.ai.inert);
+    setCls(guardBox, 'off', !gd);
+    if (gd) {
+      const g = gd.ai.model?.parts?.guard as { hp: Record<'rArm' | 'body' | 'lArm', number>; max: Record<'rArm' | 'body' | 'lArm', number>; arm: Record<'rArm' | 'lArm', string>; phase: number; regen: { target: string } | null } | undefined;
+      if (g) {
+        for (const k of ['rArm', 'body', 'lArm'] as const) {
+          const b = guardBars[k];
+          const state = k === 'body' ? 'ok' : g.arm[k];
+          setW(b.fill, state === 'ok' ? pct(g.hp[k], g.max[k]) : state === 'regen' ? 100 : 0);
+          setText(b.num, state === 'broken' ? '破壊' : state === 'regen' ? '再生中…' : `${Math.ceil(g.hp[k])} / ${g.max[k]}`);
+          setCls(b.box, 'broken', state === 'broken');
+          setCls(b.box, 'regen', state === 'regen');
+        }
+        setCls(guardBars.body.box, 'red', g.phase >= 2);
+      }
+    }
+
     // 目的・区画
     // 部屋名は表示しない（目的だけ）
     const roomName = '';
@@ -1219,6 +1281,7 @@ export function createHUD(root: HTMLElement, cb: HudCallbacks): Hud {
     setCls(keyEls.lmb, 'dim', p.energy < gunTapCost(world));
     setCls(keyEls.k2, 'off', !world.unlocks.autoAim); // 未解放の機能は操作一覧にも出さない
     setCls(keyEls.k2, 'dim', empty);
+    setCls(keyEls.decoy, 'off', !world.unlocks.decoy); // 入手するまで操作一覧に出さない
     setCls(keyEls.wswap, 'off', world.loadout.owned.length < 2); // 武器が1つなら切り替えは出さない
     setCls(keyEls.skill, 'hl', !!world.input.skillMenuHeld);
 

@@ -20,7 +20,8 @@ export const CAR = {
   wheel: { y: 1.25, z: -0.1, r: 0.17 },
 };
 
-export type DriverPose = 'drive' | 'lean' | 'brace';
+/** 'push'=歯を食いしばって全身で前へ踏み込む（ルート2の突入）、'scratch'=頭の後ろをかく（失敗後のあきれ） */
+export type DriverPose = 'drive' | 'lean' | 'brace' | 'push' | 'scratch';
 
 export interface CarModel extends CarVisual {
   /** 運転手のリグ（座る姿勢の計算で使う本物の主人公モデル） */
@@ -308,11 +309,13 @@ export function buildCar(): CarModel {
   // ---- 状態 ----
   const st = {
     spin: 0, steer: 0, steerTarget: 0, t: 0, engine: false, speed: 0, flash: 0,
-    pose: 'drive' as DriverPose, leanK: 0, braceK: 0, bob: 0,
+    pose: 'drive' as DriverPose, leanK: 0, braceK: 0, pushK: 0, scratchK: 0, bob: 0,
   };
 
   const _qs = new THREE.Quaternion(), _qe = new THREE.Quaternion();
   const _tgt = new THREE.Vector3();
+  const _hand = new THREE.Vector3(), _poleS = new THREE.Vector3();
+  const SCRATCH_POLE = new THREE.Vector3(1, 0.1, 0.1);
   const POLE_R = new THREE.Vector3(0.7, -1, 0.15), POLE_L = new THREE.Vector3(-0.7, -1, 0.15);
 
   /** 座った姿勢を毎フレーム計算（膝・腰・背中・首・腕。腕はハンドルの握り位置へ IK） */
@@ -321,7 +324,9 @@ export function buildCar(): CarModel {
     const k = 1 - Math.exp(-8 * Math.max(dt, 0));
     st.leanK += ((st.pose === 'lean' ? 1 : 0) - st.leanK) * k;
     st.braceK += ((st.pose === 'brace' ? 1 : 0) - st.braceK) * k;
-    const lean = st.leanK, brace = st.braceK;
+    st.pushK += ((st.pose === 'push' ? 1 : 0) - st.pushK) * k;
+    st.scratchK += ((st.pose === 'scratch' ? 1 : 0) - st.scratchK) * (1 - Math.exp(-5 * Math.max(dt, 0)));
+    const lean = st.leanK, brace = st.braceK, push = st.pushK, scratch = st.scratchK;
     const breath = Math.sin(st.t * 2.2);
     const speedK = Math.min(1, st.speed / 90);
     const shake = Math.sin(st.t * 47) * 0.01 * speedK;
@@ -338,10 +343,16 @@ export function buildCar(): CarModel {
     v.hips.position.set(0, 0.9, 0);
     v.hips.rotation.set(0.0, 0, 0);
     // 背中：シートにもたれる → 前へ乗り出す（lean）→ 衝撃に備えて丸まる（brace）
-    v.spine.rotation.set(0.1 - lean * 0.5 - brace * 0.42 + 0.01 * breath + shake, steer * 0.08, -steer * 0.05);
-    v.chest.rotation.set(0.0 - lean * 0.1 - brace * 0.22, steer * 0.12, 0);
+    v.spine.rotation.set(0.1 - lean * 0.5 - brace * 0.42 - push * 0.8 + scratch * 0.12 + 0.01 * breath + shake * (1 + push * 2), steer * 0.08, -steer * 0.05);
+    v.chest.rotation.set(0.0 - lean * 0.1 - brace * 0.22 - push * 0.3 + scratch * 0.04, steer * 0.12, scratch * 0.04);
     // 首：前を見る。lean は首を上げて遠くを覗く、brace は顔を伏せる
-    v.head.rotation.set(-0.06 + lean * 0.4 - brace * 0.55 + 0.02 * Math.sin(st.t * 1.3), -steer * 0.28 + 0.02 * Math.sin(st.t * 0.9), -steer * 0.06);
+    // push は顎を引いて上目づかいに睨む（正面からは額と目線が前へ突き出る）、scratch は首をかしげる
+    v.head.rotation.set(-0.06 + lean * 0.4 - brace * 0.55 + push * 1.15 + scratch * 0.1 + 0.02 * Math.sin(st.t * 1.3), -steer * 0.28 + 0.02 * Math.sin(st.t * 0.9) + -scratch * (0.3 + 0.06 * Math.sin(st.t * 1.7)), -steer * 0.06 - scratch * 0.18);
+    // push：スカウターとバッテリーが強く光る（気合）
+    const fire = push * (0.8 + 0.2 * Math.sin(st.t * 24));
+    pv.scouterMat.color.setHex(C.scouter.onColor).multiplyScalar(1.6 + fire * 1.8);
+    pv.scouterGlowMat.opacity = 0.6 + fire * 0.4;
+    pv.batteryMat.color.setHex(col.cyan).multiplyScalar(1.1 + fire * 1.2);
 
     // ハンドルを舵に合わせて回す
     rim.rotation.z = -steer * 1.25;
@@ -350,7 +361,16 @@ export function buildCar(): CarModel {
     const chest = v.chest;
     gripR.getWorldPosition(_tgt);
     chest.worldToLocal(_tgt);
-    solveArm(v.armR.shoulder.position, _tgt, v.armR.upper, v.armR.fore, POLE_R, _qs, _qe);
+    let poleR = POLE_R;
+    if (scratch > 0.001) {
+      // 右手を頭の後ろ（後頭部）へ。ゴシゴシこする小さな往復
+      const rub = Math.sin(st.t * 11) * 0.035;
+      v.head.localToWorld(_hand.set(0.07 + rub, 0.2, 0.14));
+      chest.worldToLocal(_hand);
+      _tgt.lerp(_hand, scratch);
+      poleR = _poleS.copy(POLE_R).lerp(SCRATCH_POLE, scratch);
+    }
+    solveArm(v.armR.shoulder.position, _tgt, v.armR.upper, v.armR.fore, poleR, _qs, _qe);
     v.armR.shoulder.quaternion.copy(_qs);
     v.armR.elbow.quaternion.copy(_qe);
     gripL.getWorldPosition(_tgt);

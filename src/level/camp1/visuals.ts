@@ -1,6 +1,7 @@
 // サージ収容所 1階の見た目（plan.ts の純データ → three のメッシュ・当たり判定）。
 // 箱は材質ごとに Batch で1つのメッシュへ結合する。動く物（シャッター・ハッチ・脆い壁・レーザー網・電力源・キー・バキューム・歯車）は個別に作って返す。
 import * as THREE from 'three';
+import { addPreCracks, tintDamaged } from '../preCrack';
 import type { AABB } from '../../core/types';
 import { buildShieldPickup } from '../../abilities/shield';
 import { createGearModel, type GearModel } from '../gear';
@@ -175,6 +176,9 @@ export function buildCamp1Visuals(plan: Plan): Camp1Visuals {
   bMesh.position.set((B.x0 + B.x1) / 2, (B.y0 + B.y1) / 2, (B.z0 + B.z1) / 2);
   bMesh.castShadow = bMesh.receiveShadow = true;
   root.add(bMesh);
+  // 最初から割れている見た目（普通の壁と区別がつく）。bMesh の子なので壊れれば一緒に消える
+  tintDamaged(brittleMat);
+  addPreCracks(bMesh, new THREE.Vector3(B.x1 - B.x0, B.y1 - B.y0, B.z1 - B.z0), '-x', 311);
   const crackMat = new THREE.MeshBasicMaterial({ color: 0x1a1410 });
   const crackGlow = new THREE.MeshBasicMaterial({ color: 0xff9a40, transparent: true, opacity: 0 });
   const cracks: THREE.Group[] = [];

@@ -1,6 +1,6 @@
 // サージ収容所への道（?level=surge）の平面図。level/surge/layout.ts の取り決め（数値）から描く。
 // 道が 1.7km あるので、上に全体図、下に「階段〜ガレージ〜T字路」と「収容所の前」の拡大図を置く。
-import { CHECKPOINT, COMPOUND, ENTRANCE, GARAGE, ROAD, STAIRS } from '../../level/surge/layout';
+import { CHECKPOINT, CHECKPOINT_E, COMPOUND, DEVICE_PLATFORM, DRAIN_DOOR, ENTRANCE, GARAGE, PLANT, RAMP, ROAD, STAIRS } from '../../level/surge/layout';
 import { Legend, Plot, WALL, dot, newCanvas, FONT, INK, type R2, type StageSheet } from './common';
 
 export function createSurgeSheet(): StageSheet {
@@ -9,7 +9,8 @@ export function createSurgeSheet(): StageSheet {
   const half = ROAD.width / 2 + ROAD.sidewalk;
   const bW = COMPOUND.wallX - COMPOUND.depth;
 
-  const ov = { px: 0.9, minX: -1800, maxX: 100, minZ: -260, maxZ: 80, grid: 100 };
+  // 東（ルート2）の道・坂・発電所まで入れるので、東は x=2000 まで
+  const ov = { px: 0.9, minX: -1800, maxX: 2000, minZ: -260, maxZ: 80, grid: 100 };
   const d1 = { px: 6, minX: -40, maxX: 40, minZ: -110, maxZ: 50, grid: 10 };
   const d2 = { px: 1.6, minX: -1800, maxX: -1340, minZ: -260, maxZ: 80, grid: 20 };
   const ovW = (ov.maxX - ov.minX) * ov.px, ovH = (ov.maxZ - ov.minZ) * ov.px;
@@ -74,6 +75,19 @@ export function createSurgeSheet(): StageSheet {
     // 東の柵
     c.strokeStyle = '#7a4a1c'; c.lineWidth = 3;
     c.beginPath(); c.moveTo(X(ROAD.eastFenceX), Z(jz - half)); c.lineTo(X(ROAD.eastFenceX), Z(jz + half)); c.stroke();
+    // ルート2（収容所 2階クリア後）：東の道・判定地点 E・坂・発電所・装置の台座・扉
+    {
+      P.rect({ x0: ROAD.eastFenceX, x1: RAMP.footX, z0: jz - ROAD.width / 2, z1: jz + ROAD.width / 2 }, 'rgba(120,150,200,0.55)');
+      P.rect({ x0: RAMP.footX, x1: RAMP.topX, z0: jz - RAMP.width / 2, z1: jz + RAMP.width / 2 }, 'rgba(230,150,60,0.6)');
+      P.rect({ x0: PLANT.x0, x1: PLANT.x1, z0: PLANT.z0, z1: PLANT.z1 }, '#6f7683', '#2b3442', 2);
+      P.rect({ x0: DEVICE_PLATFORM.x0, x1: DEVICE_PLATFORM.x1, z0: DEVICE_PLATFORM.z0, z1: DEVICE_PLATFORM.z1 }, '#b9c3d2', '#2b3442', 1.5);
+      c.strokeStyle = '#d02050'; c.lineWidth = 3;
+      c.beginPath(); c.moveTo(X(DRAIN_DOOR.x), Z(DRAIN_DOOR.z - DRAIN_DOOR.w / 2)); c.lineTo(X(DRAIN_DOOR.x), Z(DRAIN_DOOR.z + DRAIN_DOOR.w / 2)); c.stroke();
+      c.strokeStyle = '#7a4a1c'; c.lineWidth = 3;
+      c.beginPath(); c.moveTo(X(ROAD.westBlockX), Z(jz - half)); c.lineTo(X(ROAD.westBlockX), Z(jz + half)); c.stroke();
+      c.strokeStyle = '#ff8a00'; c.lineWidth = 3; c.setLineDash([8, 4]);
+      c.beginPath(); c.moveTo(X(CHECKPOINT_E.x), Z(jz - half - 6)); c.lineTo(X(CHECKPOINT_E.x), Z(jz + half + 6)); c.stroke(); c.setLineDash([]);
+    }
     // 判定地点
     c.strokeStyle = '#ff8a00'; c.lineWidth = 3; c.setLineDash([8, 4]);
     c.beginPath(); c.moveTo(X(CHECKPOINT.x), Z(jz - half - 6)); c.lineTo(X(CHECKPOINT.x), Z(jz + half + 6)); c.stroke(); c.setLineDash([]);
@@ -104,6 +118,10 @@ export function createSurgeSheet(): StageSheet {
     PO.label('収容所の柵', COMPOUND.fenceX, jz - COMPOUND.fenceHalf - 12, '#3a4552', 12);
     PO.label('収容所の建物', (building.x0 + building.x1) / 2, jz - 60, '#2b3442', 13);
     PO.label('西へ一直線（車で加速）', -700, jz - 30, INK, 13);
+    PO.label('【ルート2】東へ一直線（右折）', 700, jz - 30, '#2a4a8a', 13);
+    PO.label(`判定地点E（${CHECKPOINT_E.kmh}km/h 以上で成功）`, CHECKPOINT_E.x, jz - half - 22, '#c06000', 12, '#ff8a00');
+    PO.label('坂→ドレイン装置', RAMP.topX, jz - half - 40, '#d02050', 12);
+    PO.label('発電所', (PLANT.x0 + PLANT.x1) / 2, jz + 70, '#2b3442', 13);
     PO.label('街（道の外には入れない）', -400, jz + 70, '#9a7a5a', 12);
     // 拡大範囲の枠
     c.save(); c.setLineDash([5, 4]); c.strokeStyle = '#d02050'; c.lineWidth = 1.5;

@@ -3,7 +3,7 @@
 import * as THREE from 'three';
 import type { AABB } from '../../core/types';
 import { Batch, rng } from './batch';
-import { COMPOUND, ROAD } from './layout';
+import { COMPOUND, EAST_ROUTE, PLANT, RAMP, ROAD, type SurgeRoute } from './layout';
 import { adTex, asphaltTex, facadeTex, glowTex, groundTex, sidewalkTex } from './textures';
 
 export const FOG_COLOR = 0xc98a66;
@@ -41,9 +41,12 @@ const GLOWS = [0x52e8ff, 0xff4ad0, 0xffb040, 0x7aff9a, 0x9a8cff, 0xff6a5a];
 interface Chunk { office: Batch; glass: Batch; plain: Batch; glow: Batch }
 interface Rect { x0: number; x1: number; z0: number; z1: number }
 
-export function buildCity(seed = 77): CityParts {
+export function buildCity(seed = 77, route: SurgeRoute = 'camp'): CityParts {
   const root = new THREE.Group();
   root.name = 'surgeCity';
+  // ルート2（'drain'）：道を東へ坂の下まで延ばす（東の柵はなく、西が封鎖される）。ルート1（'camp'）は従来どおり eastEnd = WALK.eastX
+  const drain = route === 'drain';
+  const eastEnd = drain ? EAST_ROUTE.roadEndX : WALK.eastX;
   const colliders: AABB[] = [];
   const rand = rng(seed);
   const R = (a: number, b: number): number => a + (b - a) * rand();
@@ -69,15 +72,15 @@ export function buildCity(seed = 77): CityParts {
 
   // ================================================================ 地面
   {
-    const g = new THREE.Mesh(new THREE.PlaneGeometry(7000, 3400), groundMat);
+    const g = new THREE.Mesh(new THREE.PlaneGeometry(drain ? 8200 : 7000, 3400), groundMat);
     g.rotation.x = -Math.PI / 2;
-    g.position.set(-800, -0.6, -90);
+    g.position.set(drain ? -200 : -800, -0.6, -90);
     g.renderOrder = -10;
     root.add(g);
   }
 
   // ================================================================ 道路（アスファルト）
-  const { ewZ0, ewZ1, eastX, westX } = WALK;
+  const { ewZ0, ewZ1, westX } = WALK;
   const jz = ROAD.junctionZ, hw = ROAD.width / 2;
   const roadQuad = (xa: number, xb: number, za: number, zb: number, along: 'x' | 'z'): THREE.Mesh => {
     const g = new THREE.PlaneGeometry(xb - xa, zb - za);
@@ -93,29 +96,29 @@ export function buildCity(seed = 77): CityParts {
     m.receiveShadow = true;
     return m;
   };
-  root.add(roadQuad(westX, ROAD.eastFenceX + 0.5, jz - hw, jz + hw, 'x'));
+  root.add(roadQuad(westX, drain ? eastEnd : ROAD.eastFenceX + 0.5, jz - hw, jz + hw, 'x'));
   root.add(roadQuad(-hw, hw, jz + hw, WALK.nsZ1, 'z'));
 
   // ---- 歩道・縁石・縁のシアンの光
   const walk = new Batch(), glow = new Batch();
   const WH = 0.2; // 歩道の高さ
   // 地面（道路）と歩道（縁石の高さ 0.2m）の当たり判定
-  colliders.push(col(westX, WALK.eastX + 1, -4, 0, ewZ0, WALK.nsZ1, 'floor'));
+  colliders.push(col(westX, eastEnd + 1, -4, 0, ewZ0, WALK.nsZ1, 'floor'));
   const sidewalk = (xa: number, xb: number, za: number, zb: number): void => {
     colliders.push(col(xa, xb, -4, WH, za, zb, 'floor'));
     walk.box((xa + xb) / 2, WH / 2 - 0.1, (za + zb) / 2, xb - xa, WH + 0.2, zb - za, 0xd6d0cc, { tu: 3 });
   };
-  sidewalk(westX, WALK.eastX, ewZ0, jz - hw);                 // 東西の道の北側
+  sidewalk(westX, eastEnd, ewZ0, jz - hw);                 // 東西の道の北側
   sidewalk(westX, -hw, jz + hw, ewZ1);                        // 南側（西）
-  sidewalk(hw, WALK.eastX, jz + hw, ewZ1);                    // 南側（東）
+  sidewalk(hw, eastEnd, jz + hw, ewZ1);                    // 南側（東）
   sidewalk(-WALK.half, -hw, ewZ1, WALK.nsZ1);                 // 南北の道の西
   sidewalk(hw, WALK.half, ewZ1, WALK.nsZ1);                   // 東
   {
     // 縁のシアンの光（歩道の縁石の上）
-    const L = WALK.eastX - westX;
-    glow.box((westX + WALK.eastX) / 2, WH + 0.005, jz - hw - 0.12, L, 0.02, 0.12, 0x52e8ff, false);
+    const L = eastEnd - westX;
+    glow.box((westX + eastEnd) / 2, WH + 0.005, jz - hw - 0.12, L, 0.02, 0.12, 0x52e8ff, false);
     glow.box((westX + -hw) / 2, WH + 0.005, jz + hw + 0.12, -hw - westX, 0.02, 0.12, 0x52e8ff, false);
-    glow.box((hw + WALK.eastX) / 2, WH + 0.005, jz + hw + 0.12, WALK.eastX - hw, 0.02, 0.12, 0x52e8ff, false);
+    glow.box((hw + eastEnd) / 2, WH + 0.005, jz + hw + 0.12, eastEnd - hw, 0.02, 0.12, 0x52e8ff, false);
     const nl = WALK.nsZ1 - (jz + hw);
     for (const sx of [-1, 1]) glow.box(sx * (hw + 0.12), WH + 0.005, (jz + hw + WALK.nsZ1) / 2, 0.12, 0.02, nl, 0x52e8ff, false);
   }
@@ -127,10 +130,10 @@ export function buildCity(seed = 77): CityParts {
     wall(-WALK.half - T, -WALK.half, ewZ1, WALK.nsZ1 + 0.5, 'roadWall');          // 南北の道の西
     wall(WALK.half, WALK.half + T, ewZ1, WALK.nsZ1 + 0.5, 'roadWall');             // 東
     wall(westX, -WALK.half, ewZ1, ewZ1 + T, 'roadWall');                           // 東西の道の南（西側）
-    wall(WALK.half, WALK.eastX + T, ewZ1, ewZ1 + T, 'roadWall');                   // 南（東側）
-    wall(westX, WALK.eastX + T, ewZ0 - T, ewZ0, 'roadWall');                       // 北
-    wall(WALK.eastX, WALK.eastX + T, ewZ0, ewZ1 + T, 'roadWall');                  // 東の端
-    colliders.push(col(westX, WALK.eastX + T, top, top + 2, ewZ0 - T, WALK.nsZ1 + 0.5, 'roadLid'));
+    wall(WALK.half, eastEnd + T, ewZ1, ewZ1 + T, 'roadWall');                   // 南（東側）
+    wall(westX, eastEnd + T, ewZ0 - T, ewZ0, 'roadWall');                       // 北
+    wall(eastEnd, eastEnd + T, ewZ0, ewZ1 + T, 'roadWall');                  // 東の端
+    colliders.push(col(westX, eastEnd + T, top, top + 2, ewZ0 - T, WALK.nsZ1 + 0.5, 'roadLid'));
   }
 
   // ================================================================ 街（建物）
@@ -144,9 +147,10 @@ export function buildCity(seed = 77): CityParts {
   const placed: Rect[] = [];
   const hit = (r: Rect, m: number): boolean => placed.some((p) => r.x0 < p.x1 + m && r.x1 > p.x0 - m && r.z0 < p.z1 + m && r.z1 > p.z0 - m);
   // 立ち入れない所（道路・研究所・ガントリー）を先に登録
-  placed.push({ x0: westX - 2, x1: WALK.eastX + 2, z0: ewZ0 - 1.5, z1: ewZ1 + 1.5 });
+  placed.push({ x0: westX - 2, x1: eastEnd + 2, z0: ewZ0 - 1.5, z1: ewZ1 + 1.5 });
   placed.push({ x0: -WALK.half - 1.5, x1: WALK.half + 1.5, z0: ewZ1, z1: WALK.nsZ1 });
   placed.push({ x0: -45, x1: 45, z0: -12, z1: 52 });                      // 研究所
+  if (drain) placed.push({ x0: RAMP.footX - 10, x1: PLANT.x1 + 140, z0: jz - 170, z1: jz + 170 });   // 坂と発電所（plant.ts）の敷地には建てない
   let buildingCount = 0;
   const ads: Batch[] = [0, 1, 2, 3, 4, 5].map(() => new Batch());
 
@@ -280,6 +284,13 @@ export function buildCity(seed = 77): CityParts {
     placed.push({ x0: gx - 4, x1: gx + 4, z0: ewZ0 - 8, z1: ewZ0 + 0.5 });
     placed.push({ x0: gx - 4, x1: gx + 4, z0: ewZ1 - 0.5, z1: ewZ1 + 8 });
   }
+  // ルート2：東の道のガントリー（道をまたぐ門）の柱の位置も先に確保する
+  const eastGantryX: number[] = [];
+  if (drain) for (let x = 170; x < eastEnd - 120; x += 170) eastGantryX.push(x);
+  for (const gx of eastGantryX) {
+    placed.push({ x0: gx - 4, x1: gx + 4, z0: ewZ0 - 8, z1: ewZ0 + 0.5 });
+    placed.push({ x0: gx - 4, x1: gx + 4, z0: ewZ1 - 0.5, z1: ewZ1 + 8 });
+  }
   // 南北の道（ガレージ前から T字路）
   for (const side of [-1, 1] as const) {
     rowZ({ from: WALK.nsZ1 - 2, to: ewZ1 + 1, edge: side * (WALK.half + 1.5), side, d: [14, 30], w: [14, 26], h: [16, 58], gap: [0, 3], row: 1 });
@@ -288,18 +299,18 @@ export function buildCity(seed = 77): CityParts {
   const farX = COMPOUND.fenceX + 30;
   for (const side of [-1, 1] as const) {
     const edge = side < 0 ? ewZ0 - 1.5 : ewZ1 + 1.5;
-    rowX({ from: WALK.eastX + 70, to: farX, edge, side, d: [14, 30], w: [14, 34], h: [14, 62], gap: [0, 3], row: 1 });
+    rowX({ from: eastEnd + 70, to: farX, edge, side, d: [14, 30], w: [14, 34], h: [14, 62], gap: [0, 3], row: 1 });
   }
   for (const side of [-1, 1] as const) {
     const edge = side < 0 ? ewZ0 - 40 : ewZ1 + 40;
-    rowX({ from: WALK.eastX + 80, to: farX, edge, side, d: [26, 52], w: [20, 46], h: [50, 150], gap: [2, 10], row: 2 });
+    rowX({ from: eastEnd + 80, to: farX, edge, side, d: [26, 52], w: [20, 46], h: [50, 150], gap: [2, 10], row: 2 });
   }
   for (const side of [-1, 1] as const) {
     const edge = side < 0 ? ewZ0 - 110 : ewZ1 + 110;
-    rowX({ from: WALK.eastX + 120, to: farX - 40, edge, side, d: [40, 90], w: [30, 70], h: [90, 250], gap: [6, 30], row: 3 });
+    rowX({ from: eastEnd + 120, to: farX - 40, edge, side, d: [40, 90], w: [30, 70], h: [90, 250], gap: [6, 30], row: 3 });
   }
   // 東のはて（柵の向こう）
-  rowZ({ from: ewZ1 + 4, to: ewZ0 - 4, edge: WALK.eastX + 3, side: 1, d: [30, 60], w: [24, 40], h: [30, 90], gap: [0, 6], row: 1 });
+  if (!drain) rowZ({ from: ewZ1 + 4, to: ewZ0 - 4, edge: eastEnd + 3, side: 1, d: [30, 60], w: [24, 40], h: [30, 90], gap: [0, 6], row: 1 });
 
   // ---- 目印：大きなドームとタワー（道から離れた所に点在）
   const landmarks = new Batch(), lmGlow = new Batch();
@@ -353,6 +364,13 @@ export function buildCity(seed = 77): CityParts {
     furn.box(WALK.half - 2.2, 9.0, z - 16, 2.6, 0.14, 0.14, 0x6e7a8a, false);
     furnGlow.box(WALK.half - 3.4, 8.9, z - 16, 1.1, 0.12, 0.5, 0xfff0d0, false);
   }
+  if (drain) {
+    // ルート2：東の道の街灯（西の道と同じ並び。東へ）
+    for (let x = 30; x < eastEnd - 10; x += 38) {
+      lamp(x, ewZ0 + 0.9, 1);
+      lamp(x + 19, ewZ1 - 0.9, -1);
+    }
+  }
   // ガントリー（道をまたぐ門＋光の看板）
   const banners: { x: number; ad: number }[] = [];
   gantryX.forEach((gx, i) => {
@@ -372,6 +390,29 @@ export function buildCity(seed = 77): CityParts {
     ads[b.ad].quad(b.x + 0.9, 12.2, jz, 14, 3.4, 0xffffff, Math.PI / 2, false);
     furn.cyl(b.x + 0.6, 14.1, jz - 6.5, 0.04, 1.2, 0x8a94a4, 4, false);
     furn.cyl(b.x + 0.6, 14.1, jz + 6.5, 0.04, 1.2, 0x8a94a4, 4, false);
+  }
+  if (drain) {
+    // ルート2：東のガントリー（看板は西向きの面＝東へ走る車から見える面に付ける）
+    eastGantryX.forEach((gx, i) => {
+      const pz0 = ewZ0 - 4, pz1 = ewZ1 + 4;
+      for (const pz of [pz0, pz1]) {
+        furn.box(gx, 8.5, pz, 1.6, 17, 1.6, 0x56606f, false);
+        furn.box(gx, 0.4, pz, 2.4, 0.8, 2.4, 0x3a4250, false);
+        furnGlow.box(gx - 0.82, 8, pz, 0.06, 12, 0.3, 0x52e8ff, false);
+      }
+      furn.box(gx, 16.3, (pz0 + pz1) / 2, 1.4, 1.4, pz1 - pz0 + 1.6, 0x56606f, false);
+      furn.box(gx, 14.9, (pz0 + pz1) / 2, 0.3, 0.2, pz1 - pz0, 0x8a94a4, false);
+      furnGlow.box(gx - 0.72, 16.3, (pz0 + pz1) / 2, 0.06, 0.2, pz1 - pz0 + 1.6, i % 2 ? 0xff4ad0 : 0x52e8ff, false);
+      ads[(i + 3) % 6].quad(gx - 0.9, 12.2, jz, 14, 3.4, 0xffffff, -Math.PI / 2, false);
+      furn.cyl(gx - 0.6, 14.1, jz - 6.5, 0.04, 1.2, 0x8a94a4, 4, false);
+      furn.cyl(gx - 0.6, 14.1, jz + 6.5, 0.04, 1.2, 0x8a94a4, 4, false);
+      for (let k = 0; k < 4; k++) furnGlow.box(gx - 0.1, 14.7, jz - 10.5 + k * 7, 1.2, 0.1, 0.6, 0xdff4ff, false);
+    });
+    // 車線の上のホログラム矢印（東向き）
+    for (let x = 40; x < eastEnd - 60; x += 60) {
+      furnGlow.box(x, 6.5, jz - 3.5, 8, 0.05, 0.06, 0x52e8ff, false);
+      furnGlow.box(x, 6.5, jz + 3.5, 8, 0.05, 0.06, 0x52e8ff, false);
+    }
   }
   // 車線の上のホログラム矢印（遠くまで続く光の道しるべ。西向きの矢印を道の真ん中の空中に）
   for (let x = -40; x > COMPOUND.fenceX + 60; x -= 60) {
@@ -405,7 +446,8 @@ export function buildCity(seed = 77): CityParts {
   {
     const rr = rng(seed + 3);
     const ring = (scale: number, hMul: number, phase: number, c0: number, c1: number): void => {
-      const K = 220, cx = -760, cz = jz, ax = 2300 * scale, az = 1150 * scale;
+      // ルート2は東へ長い道なので、山の輪を東へずらして広げる（坂・発電所が山にめり込まないように）
+      const K = 220, cx = drain ? 200 : -760, cz = jz, ax = (drain ? 2900 : 2300) * scale, az = 1150 * scale;
       const pos: number[] = [], colr: number[] = [], idx: number[] = [];
       const lo = new THREE.Color(c0), hi = new THREE.Color(c1), t = new THREE.Color();
       const rows = [{ k: 1.0, y: -10 }, { k: 0.985, y: 0.45 }, { k: 0.965, y: 1 }];

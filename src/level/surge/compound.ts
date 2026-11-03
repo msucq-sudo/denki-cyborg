@@ -3,7 +3,7 @@ import * as THREE from 'three';
 import type { AABB } from '../../core/types';
 import { hazardTex } from '../floor1/visuals';
 import { Batch, rng } from './batch';
-import { COMPOUND, ROAD } from './layout';
+import { COMPOUND, ROAD, type SurgeRoute } from './layout';
 import { beamTex, compoundWallTex, sidewalkTex, signTex } from './textures';
 import { createFenceWireGeometry } from './wire';
 
@@ -26,7 +26,7 @@ export interface CompoundParts {
   wall: THREE.Mesh;
   /** 壁・建物・屋上の設備・看板をまとめたもの（wall もこの子） */
   building: THREE.Group;
-  /** T字路の東の端の柵 */
+  /** T字路の東の端の柵（ルート2 では西の端の封鎖） */
   eastCollider: AABB;
   /** 毎フレームの演出（サーチライトなど） */
   update(t: number): void;
@@ -51,7 +51,7 @@ export function dentWall(wall: THREE.Mesh, hit: THREE.Vector3, radius: number, d
   g.computeBoundingSphere();
 }
 
-export function buildCompound(): CompoundParts {
+export function buildCompound(route: SurgeRoute = 'camp'): CompoundParts {
   const root = new THREE.Group();
   root.name = 'surgeCompound';
   const colliders: AABB[] = [];
@@ -332,39 +332,42 @@ export function buildCompound(): CompoundParts {
   }
 
   // ================================================================ T字路の東の端：通行止めの柵
-  const ex = ROAD.eastFenceX;
+  // ルート2（'drain'）は右折して東へ走るので、東の柵はなく、西側（ROAD.westBlockX）に鏡写しで同じ通行止めを置く
+  const west = route === 'drain';
+  const ex = west ? ROAD.westBlockX : ROAD.eastFenceX;
+  const sd = west ? -1 : 1;
   {
     const eb = new Batch(), ehz = new Batch(), eg = new Batch();
     const zA = jz - hw - 5, zB = jz + hw + 5;
     // コンクリートのバリケード（ハザード柄）
     for (let z = zA + 2; z < zB; z += 4.2) {
-      ehz.box(ex - 0.2, 0.55, z, 1.1, 1.1, 4.0, 0xffffff, { tu: 1.6 });
-      eb.box(ex - 0.2, 1.15, z, 0.6, 0.2, 4.0, 0x6d6a6c, false);
+      ehz.box(ex - sd * 0.2, 0.55, z, 1.1, 1.1, 4.0, 0xffffff, { tu: 1.6 });
+      eb.box(ex - sd * 0.2, 1.15, z, 0.6, 0.2, 4.0, 0x6d6a6c, false);
     }
     // 金網の柵（高さ 6m）と柱
     const g = createFenceWireGeometry(zB - zA, 5);
     const fm = new THREE.Mesh(g, meshMat);
-    fm.rotation.y = Math.PI / 2;
-    fm.position.set(ex + 0.4, 3.7, (zA + zB) / 2);
+    fm.rotation.y = sd * Math.PI / 2;
+    fm.position.set(ex + sd * 0.4, 3.7, (zA + zB) / 2);
     root.add(fm);
     for (let z = zA; z <= zB + 0.01; z += 4) {
-      eb.box(ex + 0.4, 3.5, z, 0.3, 7, 0.3, 0x59636f, false);
-      eg.box(ex + 0.4, 7.2, z, 0.3, 0.3, 0.3, 0xff3a2a, false);
+      eb.box(ex + sd * 0.4, 3.5, z, 0.3, 7, 0.3, 0x59636f, false);
+      eg.box(ex + sd * 0.4, 7.2, z, 0.3, 0.3, 0.3, 0xff3a2a, false);
     }
-    eb.box(ex + 0.4, 6.4, (zA + zB) / 2, 0.2, 0.2, zB - zA, 0x7b8694, false);
-    eb.box(ex + 0.4, 1.5, (zA + zB) / 2, 0.2, 0.2, zB - zA, 0x7b8694, false);
+    eb.box(ex + sd * 0.4, 6.4, (zA + zB) / 2, 0.2, 0.2, zB - zA, 0x7b8694, false);
+    eb.box(ex + sd * 0.4, 1.5, (zA + zB) / 2, 0.2, 0.2, zB - zA, 0x7b8694, false);
     const m1 = eb.mesh(frameMat, { cast: true, receive: true }), m2 = ehz.mesh(hazardMat, { cast: true, receive: true }), m3 = eg.mesh(glowMat);
     for (const m of [m1, m2, m3]) if (m) root.add(m);
     // 看板：通行止め
     const t = signTex('通行止め', 'red', 1024, 256);
     for (const z of [jz - 5.5, jz + 5.5]) {
       const s = new THREE.Mesh(new THREE.PlaneGeometry(4.4, 1.1), new THREE.MeshBasicMaterial({ ...(t ? { map: t } : { color: 0xaa3333 }), transparent: true }));
-      s.rotation.y = -Math.PI / 2;
-      s.position.set(ex - 0.8, 3.2, z);
+      s.rotation.y = -sd * Math.PI / 2;
+      s.position.set(ex - sd * 0.8, 3.2, z);
       root.add(s);
     }
   }
-  const eastCollider = col(ex - 0.9, ex + 0.9, -2, 8, jz - hw - 5, jz + hw + 5, 'eastFence');
+  const eastCollider = col(ex - 0.9, ex + 0.9, -2, 8, jz - hw - 5, jz + hw + 5, west ? 'westBlock' : 'eastFence');
   colliders.push(eastCollider);
 
   building.updateMatrixWorld(true);

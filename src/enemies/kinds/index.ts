@@ -15,6 +15,8 @@ import { domer } from './domer';
 import { redCrawler } from './redCrawler';
 import { ringer } from './ringer';
 import { medic } from './medic';
+import { redMedic } from './redMedic';
+import { drainGuard } from './drainGuard';
 
 /** kinds/ に置いた敵の一覧。ここに足せば spawnEnemy・buildModel・敵図鑑で使える */
 export const KIND_MODULES: Partial<Record<EnemyKind, KindModule>> = {
@@ -32,6 +34,8 @@ export const KIND_MODULES: Partial<Record<EnemyKind, KindModule>> = {
   redCrawler,
   ringer,
   medic,
+  redMedic,
+  drainGuard,
 };
 
 registerKindBuilders(Object.fromEntries(Object.entries(KIND_MODULES).map(([k, m]) => [k, () => m!.build()])));

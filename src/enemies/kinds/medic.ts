@@ -2,7 +2,7 @@
 // 傷ついた仲間がいなければ、ドームを張るドーマーの中や仲間のそばに隠れてついていく。プレイヤーが近づくと逃げる。
 // 先に倒さないと、ほかの敵がどんどん元気になる
 import * as THREE from 'three';
-import { Builder, COLORS, boxGeo, icoGeo, sphereGeo } from '../models';
+import { Builder, COLORS, boxGeo, icoGeo, sphereGeo, type Model } from '../models';
 import { approach, faceToward, moveGround, type Ctx } from '../common';
 import { hasLineOfSight } from '../../core/collision';
 import { isTargetable } from '../../core/enemyUtil';
@@ -68,14 +68,14 @@ function pickTarget(world: World, e: Enemy): Enemy | undefined {
 function pickEscort(world: World, e: Enemy): Enemy | undefined {
   let best: Enemy | undefined, bd = Infinity;
   for (const o of world.enemies) {
-    if (o === e || o.kind === 'medic' || o.kind === 'boss' || !isTargetable(o)) continue;
+    if (o === e || o.kind === 'medic' || o.kind === 'redMedic' || o.kind === 'boss' || !isTargetable(o)) continue;
     const d = o.pos.distanceTo(e.pos) - (activeBarrier(o) ? 6 : 0);   // ドームの持ち主を優先
     if (d < bd && d < MEDIC.scanRange) { bd = d; best = o; }
   }
   return best;
 }
 
-function update(c: Ctx): void {
+export function updateMedic(c: Ctx): void {
   const { world, e, dt, spec, dist2d, dirXZ, los } = c;
   const ai = e.ai;
   if (e.status === 'stunned') {
@@ -184,7 +184,7 @@ function healTick(world: World, e: Enemy, target: Enemy, dt: number): void {
   }
 }
 
-function animate(_world: World, e: Enemy, dt: number, down: boolean): void {
+export function animateMedic(_world: World, e: Enemy, dt: number, down: boolean): void {
   const ai = e.ai;
   const p = ai.model.parts;
   const vis = ai.model.vis as THREE.Group;
@@ -236,76 +236,84 @@ function animate(_world: World, e: Enemy, dt: number, down: boolean): void {
   }
 }
 
+export interface MedicPalette { white: number; navy: number; pale: number; lamp: number }
+const BLUE_PALETTE: MedicPalette = { white: COLORS.white, navy: COLORS.navy, pale: COLORS.paleBlue, lamp: MEDIC.color };
+
+/** メディックの見た目（配色だけ差し替えられる。赤メディックも使う）。decorate は仕上げ前に呼ばれる */
+export function buildMedicWith(pal: MedicPalette = BLUE_PALETTE, decorate?: (b: Builder, lampMats: THREE.MeshStandardMaterial[]) => void): Model {
+  const b = new Builder();
+  const white = b.body(pal.white, 0.5, true), silver = b.body(COLORS.silver, 0.5, true), navy = b.body(pal.navy, 0.7, true);
+  const pale = b.body(pal.pale, 0.5, true);
+  const lampMats: THREE.MeshStandardMaterial[] = [];
+  const lampMat = (i: number): THREE.MeshStandardMaterial => {
+    const m = new THREE.MeshStandardMaterial({ color: 0xffffff, emissive: pal.lamp, emissiveIntensity: i, roughness: 0.4 });
+    lampMats.push(m);
+    return m;
+  };
+  // まるい小さな体 + 胸の「＋」マーク（緑に光る）
+  b.mesh(icoGeo(0.2, 1), white, b.vis, 0, 0.02, 0);
+  const plusMat = lampMat(0.9);
+  b.mesh(boxGeo(0.1, 0.03, 0.02), plusMat, b.vis, 0, 0.0, 0.19).castShadow = false;
+  b.mesh(boxGeo(0.03, 0.1, 0.02), plusMat, b.vis, 0, 0.0, 0.19).castShadow = false;
+  // 顔：大きな目のバイザーと、頭の上の十字アンテナ
+  b.block(0.24, 0.08, 0.06, navy, b.vis, 0, 0.1, 0.17, 0.02);
+  b.mesh(boxGeo(0.17, 0.035, 0.02), b.eye(), b.vis, 0, 0.1, 0.205);
+  b.prism(0.012, 0.12, 4, navy, b.vis, 0, 0.27, -0.02);
+  b.mesh(sphereGeo(0.03), lampMat(1.6), b.vis, 0, 0.34, -0.02).castShadow = false;
+  // 小さな足
+  const legs: THREE.Group[] = [];
+  for (const sx of [-1, 1]) {
+    const leg = new THREE.Group();
+    leg.position.set(sx * 0.09, -0.17, 0.02);
+    b.vis.add(leg);
+    b.prism(0.035, 0.07, 6, silver, leg, 0, -0.02, 0);
+    b.block(0.09, 0.05, 0.13, navy, leg, 0, -0.08, 0.02, 0.015);
+    legs.push(leg);
+  }
+  b.parts.legL = legs[0];
+  b.parts.legR = legs[1];
+  // 左腕：小さな飾り
+  b.block(0.05, 0.12, 0.05, pale, b.vis, -0.22, -0.02, 0.02, 0.015);
+  // 右肩のアーム：根元は小さな箱。ロッドが伸び縮みし、先端に手（三つ又）がつく
+  const arm = new THREE.Group();
+  arm.position.set(MEDIC.shoulder.x, MEDIC.shoulder.y, MEDIC.shoulder.z);
+  b.vis.add(arm);
+  b.block(0.09, 0.09, 0.09, silver, arm, 0, 0, -0.01, 0.02);
+  const rod = b.mesh(boxGeo(0.03, 0.03, 1), b.body(COLORS.silver, 0.4, true), arm, 0, 0, MEDIC.foldedLen / 2);
+  rod.scale.z = MEDIC.foldedLen;
+  rod.castShadow = false;
+  const glow = new THREE.Mesh(
+    boxGeo(0.08, 0.08, 1),
+    new THREE.MeshBasicMaterial({ color: MEDIC.color, transparent: true, opacity: 0.35, depthWrite: false }),
+  );
+  glow.visible = false;
+  glow.castShadow = false;
+  arm.add(glow);
+  const hand = new THREE.Group();
+  hand.position.z = MEDIC.foldedLen;
+  arm.add(hand);
+  b.mesh(sphereGeo(0.045), lampMat(1.4), hand).castShadow = false;
+  for (let i = 0; i < 3; i++) {
+    const a = (i / 3) * Math.PI * 2;
+    const prong = b.mesh(boxGeo(0.015, 0.015, 0.07), navy, hand, Math.cos(a) * 0.04, Math.sin(a) * 0.04, 0.04);
+    prong.rotation.set(-Math.sin(a) * 0.4, Math.cos(a) * 0.4, 0);
+  }
+  arm.rotation.x = 0.35;
+  b.parts.arm = arm; b.parts.rod = rod; b.parts.glow = glow; b.parts.hand = hand;
+  b.parts.lampMats = lampMats;
+  b.parts.lamps = lampMats;
+  // 背中の小さなタンク（弱点）
+  b.block(0.14, 0.16, 0.06, navy, b.vis, 0, 0.03, -0.2, 0.02);
+  b.weak(0, 0.03, -0.24, 0.15, [1, 1, 0.6], 0.075);
+  decorate?.(b, lampMats);
+  return b.done();
+}
+
 export const medic: KindModule = {
   knockback: 1,
 
-  build() {
-    const b = new Builder();
-    const white = b.body(COLORS.white, 0.5, true), silver = b.body(COLORS.silver, 0.5, true), navy = b.body(COLORS.navy, 0.7, true);
-    const pale = b.body(COLORS.paleBlue, 0.5, true);
-    const lampMats: THREE.MeshStandardMaterial[] = [];
-    const lampMat = (i: number): THREE.MeshStandardMaterial => {
-      const m = new THREE.MeshStandardMaterial({ color: 0xffffff, emissive: MEDIC.color, emissiveIntensity: i, roughness: 0.4 });
-      lampMats.push(m);
-      return m;
-    };
-    // まるい小さな体 + 胸の「＋」マーク（緑に光る）
-    b.mesh(icoGeo(0.2, 1), white, b.vis, 0, 0.02, 0);
-    const plusMat = lampMat(0.9);
-    b.mesh(boxGeo(0.1, 0.03, 0.02), plusMat, b.vis, 0, 0.0, 0.19).castShadow = false;
-    b.mesh(boxGeo(0.03, 0.1, 0.02), plusMat, b.vis, 0, 0.0, 0.19).castShadow = false;
-    // 顔：大きな目のバイザーと、頭の上の十字アンテナ
-    b.block(0.24, 0.08, 0.06, navy, b.vis, 0, 0.1, 0.17, 0.02);
-    b.mesh(boxGeo(0.17, 0.035, 0.02), b.eye(), b.vis, 0, 0.1, 0.205);
-    b.prism(0.012, 0.12, 4, navy, b.vis, 0, 0.27, -0.02);
-    b.mesh(sphereGeo(0.03), lampMat(1.6), b.vis, 0, 0.34, -0.02).castShadow = false;
-    // 小さな足
-    const legs: THREE.Group[] = [];
-    for (const sx of [-1, 1]) {
-      const leg = new THREE.Group();
-      leg.position.set(sx * 0.09, -0.17, 0.02);
-      b.vis.add(leg);
-      b.prism(0.035, 0.07, 6, silver, leg, 0, -0.02, 0);
-      b.block(0.09, 0.05, 0.13, navy, leg, 0, -0.08, 0.02, 0.015);
-      legs.push(leg);
-    }
-    b.parts.legL = legs[0];
-    b.parts.legR = legs[1];
-    // 左腕：小さな飾り
-    b.block(0.05, 0.12, 0.05, pale, b.vis, -0.22, -0.02, 0.02, 0.015);
-    // 右肩のアーム：根元は小さな箱。ロッドが伸び縮みし、先端に手（三つ又）がつく
-    const arm = new THREE.Group();
-    arm.position.set(MEDIC.shoulder.x, MEDIC.shoulder.y, MEDIC.shoulder.z);
-    b.vis.add(arm);
-    b.block(0.09, 0.09, 0.09, silver, arm, 0, 0, -0.01, 0.02);
-    const rod = b.mesh(boxGeo(0.03, 0.03, 1), b.body(COLORS.silver, 0.4, true), arm, 0, 0, MEDIC.foldedLen / 2);
-    rod.scale.z = MEDIC.foldedLen;
-    rod.castShadow = false;
-    const glow = new THREE.Mesh(
-      boxGeo(0.08, 0.08, 1),
-      new THREE.MeshBasicMaterial({ color: MEDIC.color, transparent: true, opacity: 0.35, depthWrite: false }),
-    );
-    glow.visible = false;
-    glow.castShadow = false;
-    arm.add(glow);
-    const hand = new THREE.Group();
-    hand.position.z = MEDIC.foldedLen;
-    arm.add(hand);
-    b.mesh(sphereGeo(0.045), lampMat(1.4), hand).castShadow = false;
-    for (let i = 0; i < 3; i++) {
-      const a = (i / 3) * Math.PI * 2;
-      const prong = b.mesh(boxGeo(0.015, 0.015, 0.07), navy, hand, Math.cos(a) * 0.04, Math.sin(a) * 0.04, 0.04);
-      prong.rotation.set(-Math.sin(a) * 0.4, Math.cos(a) * 0.4, 0);
-    }
-    arm.rotation.x = 0.35;
-    b.parts.arm = arm; b.parts.rod = rod; b.parts.glow = glow; b.parts.hand = hand;
-    b.parts.lampMats = lampMats;
-    // 背中の小さなタンク（弱点）
-    b.block(0.14, 0.16, 0.06, navy, b.vis, 0, 0.03, -0.2, 0.02);
-    b.weak(0, 0.03, -0.24, 0.15, [1, 1, 0.6], 0.075);
-    return b.done();
-  },
+  build: () => buildMedicWith(),
 
-  update,
-  animate,
+  update: updateMedic,
+  animate: animateMedic,
 };

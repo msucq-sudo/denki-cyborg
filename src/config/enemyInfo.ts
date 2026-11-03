@@ -18,7 +18,7 @@ export interface EnemyInfo {
 export const ENEMY_ORDER: EnemyKind[] = [
   'drone', 'crawler', 'gunner', 'walker', 'heavy', 'heavyWalker', 'missile', 'boss',
   'beamer', 'leech', 'redWalker', 'jumper', 'missileDrone', 'bomber', 'redDrone',
-  'domer', 'redCrawler', 'ringer', 'medic',
+  'domer', 'redCrawler', 'ringer', 'medic', 'redMedic', 'drainGuard',
 ];
 
 /** 図鑑番号（ENEMY_ORDER の順に 1 から）。マップ・図鑑・データ一覧で共通 */
@@ -31,7 +31,7 @@ export const ENEMY_COLOR: Record<EnemyKind, string> = {
   heavy: '#d23c3c', heavyWalker: '#8a3cd2', missile: '#444c5c', boss: '#000000',
   beamer: '#0a6cc4', leech: '#c43ab0', redWalker: '#e0302a', jumper: '#2a6a8a',
   missileDrone: '#5a5aa0', bomber: '#c8a020', redDrone: '#e04848',
-  domer: '#2aa8c8', redCrawler: '#d8322c', ringer: '#e0508a', medic: '#3ac888',
+  domer: '#2aa8c8', redCrawler: '#d8322c', ringer: '#e0508a', medic: '#3ac888', redMedic: '#e05a48', drainGuard: '#7a1f2a',
 };
 
 export const ENEMY_INFO: Record<EnemyKind, EnemyInfo> = {
@@ -124,6 +124,22 @@ export const ENEMY_INFO: Record<EnemyKind, EnemyInfo> = {
     name: 'メディック', role: '小型・回復支援',
     behavior: ['傷ついた仲間のそば（プレイヤーの反対側）へ行き、アームを伸ばして回復する', 'ドームが傷ついていればドームも直す', 'ドーマーのドームの中に隠れてついていく', 'プレイヤーが近づくと逃げる。先に倒さないと敵がどんどん元気になる'],
     weakness: '背中の小さなタンク', area: 'ボルト研究室前', look: 'とても小さい白いまるい体。胸に緑の＋マーク。右肩から伸び縮みするアーム（回復中は緑に光る）',
+  },
+  redMedic: {
+    name: '赤メディック', role: '小型・回復支援・ハッキング可能',
+    behavior: ['メディックと同じく、傷ついた仲間やドームを回復しながら隠れてついていく', '吸収アームをつなぐとハッキング開始（動きがにぶる）。8個のコードを入力すると味方になる', '味方の間はプレイヤーのそばについて、傷ついたプレイヤーと味方を回復する（20秒）'],
+    weakness: '背中の小さなタンク', area: 'ボルト研究室前', look: 'メディックの赤い版。赤い小さな体に胸の＋マーク。頭の横に皿型アンテナと接続ポートがあり青緑に点滅する（ハッキングできる印）。味方になると青く光る',
+  },
+  drainGuard: {
+    name: 'ドレインガーディアン', role: 'ボス（ドレイン装置の部屋）・部位破壊',
+    behavior: [
+      'HPは右腕・胴体・左腕の3つ。胴体が0で撃破。弾は当たった部位に入る',
+      '右腕：ホーミングミサイル（撃ち落とせる）／左腕：電撃弾／近づくとパンチ／胴体：予兆つきの突進',
+      '胴体HP50%以下で第2形態：床に赤い円が並ぶミサイルの雨、瞬間移動（背後にも出る）',
+      '腕が壊れると、残った腕のHPが一定以上なら半分を渡して腕を再生する。足りなければ再生しない',
+      '両腕がないと、突進・目玉のビーム・瞬間移動からの体当たりを使う',
+    ],
+    weakness: '胴体の上の目玉（弱点）。腕を壊せば攻撃が減る', area: 'ドレイン装置の部屋', look: '分厚い胴体、胴体の上の大きな目玉、とても太い脚、大きな2本の腕（右腕にミサイルポッド、左腕に電撃砲）',
   },
   boss: {
     name: 'ジェネレーター', role: 'ボス（サージ収容所）',

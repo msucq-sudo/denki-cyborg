@@ -31,6 +31,12 @@ const SFX_POLICY: Record<string, SfxPolicy> = {
   lowPowerBeep: { minInterval: 0.5 },
   heartbeat: { minInterval: 0.4 },
   footstep: { minInterval: 0.12, maxVoices: 2 },
+  residentStep: { minInterval: 0.03, maxVoices: 7 },
+  jetCharge: { maxVoices: 1 },
+  specialCharge: { maxVoices: 1 },
+  specialFire: { maxVoices: 1 },
+  specialBeam: { maxVoices: 1 },
+  jetLaunch: { maxVoices: 1 },
   metalPickup: { minInterval: 0.05, maxVoices: 3 },
   armGrab: { minInterval: 0.1, maxVoices: 2 },
   enemyNotice: { minInterval: 0.6, maxVoices: 1 },
@@ -39,6 +45,7 @@ const SFX_POLICY: Record<string, SfxPolicy> = {
   missileLoad: { minInterval: 0.1, maxVoices: 3 },
   missileBeep: { minInterval: 0.1, maxVoices: 2 },
   missileDown: { minInterval: 0.04, maxVoices: 4 },
+  counter: { minInterval: 0.1, maxVoices: 2 },
   missileBlast: { minInterval: 0.05, maxVoices: 3 },
   missileDisrupt: { minInterval: 0.3 },
   summon: { minInterval: 0.3, maxVoices: 2 },
@@ -81,6 +88,19 @@ const SFX_POLICY: Record<string, SfxPolicy> = {
   skillSelect: { minInterval: 0.05, maxVoices: 2 },
   skillDenied: { minInterval: 0.2 },
   weaponSwitch: { minInterval: 0.06, maxVoices: 2 },
+  gStep: { minInterval: 0.2, maxVoices: 2 },
+  gLand: { maxVoices: 1 },
+  gRoar: { maxVoices: 1 },
+  gMissile: { minInterval: 0.08, maxVoices: 4 },
+  gBolt: { minInterval: 0.1, maxVoices: 3 },
+  gPunch: { maxVoices: 2 },
+  gRush: { maxVoices: 1 },
+  gRainLaunch: { maxVoices: 1 },
+  gTeleport: { maxVoices: 2 },
+  gAppear: { maxVoices: 2 },
+  gArmBreak: { maxVoices: 2 },
+  gCrack: { minInterval: 0.12, maxVoices: 4 },
+  gWind: { minInterval: 0.15, maxVoices: 3 },
 };
 
 /* ------------------------------------------------------------------ */
@@ -597,9 +617,10 @@ export function updateAudio(world: World, dt: number): void {
 
     // 足音（重量級：ドスドス）。地上を歩いた距離で鳴らす（半歩ごと＝ストライド/2）
     const sp = Math.hypot(p.vel.x, p.vel.z);
-    if (p.onGround && !p.flying && sp > 0.8) {
+    if (isWalking(p)) {
       const run = sp > moveSpeed(world) * 1.15;
       const half = (run ? CHARACTER.anim.strideRun : CHARACTER.anim.strideWalk) / 2;
+      if (footAcc <= 0) footAcc = half * 0.55;   // 歩き出しの最初の一歩は早めに（ムービーなど、短い歩きでも足音が聞こえるように）
       footAcc += sp * dt;
       if (footAcc >= half) { footAcc -= half; playFootstep(run); }
     } else footAcc = Math.min(footAcc, 0.0);
@@ -619,6 +640,253 @@ export function updateAudio(world: World, dt: number): void {
   }
 }
 
+/* ------------------------------------------------------------------ */
+/* ジェットパック発進（ムービー用）：溜め → ドゥン → ブーーン（遠ざかる）   */
+/* ------------------------------------------------------------------ */
+
+/** 発進音をまとめるバス（軽く歪ませる）。止めるときはここを絞る */
+let jetBus: GainNode | null = null;
+
+function jetEng(): Eng | null {
+  if (!engine) return null;
+  if (!jetBus) {
+    const ctx = engine.ctx;
+    const bus = ctx.createGain();
+    bus.gain.value = 0.9;
+    const sh = ctx.createWaveShaper();
+    const curve = new Float32Array(257);
+    for (let i = 0; i < curve.length; i++) { const v = (i / 128) - 1; curve[i] = Math.tanh(v * 1.8) / Math.tanh(1.8); }   // やわらかい歪み
+    sh.curve = curve;
+    bus.connect(sh);
+    sh.connect(engine.master);
+    jetBus = bus;
+  }
+  return { ctx: engine.ctx, master: jetBus, noise: engine.noise };
+}
+
+/** 発進の溜め（約0.6秒）：のぼっていく電気のうなり */
+export function playJetCharge(): void {
+  play('jetCharge', 0.7, () => {
+    const x = jetEng();
+    if (!x) return;
+    const t = x.ctx.currentTime;
+    tone(x, t, { type: 'sawtooth', f: 80, f2: 380, dur: 0.62, gain: 0.16, attack: 0.25, filter: { type: 'lowpass', f: 500, f2: 3200, q: 2 } });
+    tone(x, t, { type: 'sawtooth', f: 81.2, f2: 384, dur: 0.62, gain: 0.1, attack: 0.25, filter: { type: 'lowpass', f: 500, f2: 3200, q: 2 } });
+    tone(x, t, { type: 'sine', f: 50, f2: 120, dur: 0.62, gain: 0.2, attack: 0.3 });
+    noise(x, t, { dur: 0.62, gain: 0.13, attack: 0.35, filter: { type: 'bandpass', f: 300, f2: 2600, q: 1.2 } });
+  });
+}
+
+/** 発進：重い「ドゥン」＋ごうっと吹き上がる風切り＋のぼってから落ちていく「ブーーン」（遠ざかるドップラー感）。約3秒 */
+export function playJetLaunch(): void {
+  play('jetLaunch', 3.2, () => {
+    const x = jetEng();
+    if (!x) return;
+    const t = x.ctx.currentTime;
+    // ドゥン
+    tone(x, t, { type: 'sine', f: 95, f2: 30, dur: 0.8, gain: 0.55, attack: 0.004 });
+    noise(x, t, { dur: 0.3, gain: 0.4, attack: 0.002, filter: { type: 'lowpass', f: 600, f2: 120, q: 0.8 } });
+    noise(x, t, { dur: 0.08, gain: 0.25, attack: 0.001, filter: { type: 'highpass', f: 2500 } });
+    // ごうっと吹き上がる風（上へ、そして遠くへ）
+    noise(x, t, { dur: 2.8, gain: 0.3, attack: 0.08, filter: { type: 'bandpass', f: 250, f2: 4800, q: 0.9 } });
+    noise(x, t, { at: 0.1, dur: 1.4, gain: 0.1, attack: 0.1, filter: { type: 'highpass', f: 2200, f2: 6500 } });
+    // ブーーン：のぼって、遠ざかりながら落ちる。少しずらした2本＋1オクターブ下
+    for (const [d, g] of [[1, 0.17], [1.012, 0.12]] as const) {
+      tone(x, t, { type: 'sawtooth', f: 110 * d, f2: 620 * d, dur: 0.9, gain: g, attack: 0.03, filter: { type: 'lowpass', f: 900, f2: 4000, q: 2.5 } });
+      tone(x, t, { at: 0.88, type: 'sawtooth', f: 620 * d, f2: 70 * d, dur: 2.1, gain: g * 0.9, attack: 0.02, filter: { type: 'lowpass', f: 3500, f2: 300, q: 1.5 } });
+    }
+    tone(x, t, { type: 'square', f: 55, f2: 310, dur: 0.9, gain: 0.07, attack: 0.03, filter: { type: 'lowpass', f: 700, q: 1 } });
+    tone(x, t, { at: 0.88, type: 'square', f: 310, f2: 35, dur: 2.1, gain: 0.06, attack: 0.02, filter: { type: 'lowpass', f: 600, q: 1 } });
+  });
+}
+
+/** 発進音をすぐ止める（ムービーのスキップ・World の破棄）。鳴り終わっていれば何もしない */
+export function stopJetLaunch(): void {
+  const bus = jetBus;
+  if (!bus || !engine) return;
+  jetBus = null;
+  try {
+    const t = engine.ctx.currentTime;
+    bus.gain.cancelScheduledValues(t);
+    bus.gain.setValueAtTime(bus.gain.value, t);
+    bus.gain.linearRampToValueAtTime(0, t + 0.08);
+    setTimeout(() => { try { bus.disconnect(); } catch { /* ignore */ } }, 200);
+  } catch (e) {
+    reportError('stopJetLaunch', e);
+  }
+}
+
+/* ---- 必殺技（電気のかめはめ波）。溜め→発射→照射をまとめるバス。止めるときはここを絞る ---- */
+let specialBus: GainNode | null = null;
+
+function specialEng(): Eng | null {
+  if (!engine) return null;
+  if (!specialBus) {
+    const bus = engine.ctx.createGain();
+    bus.gain.value = 1;
+    bus.connect(engine.master);
+    specialBus = bus;
+  }
+  return { ctx: engine.ctx, master: specialBus, noise: engine.noise };
+}
+
+/** だんだん大きくなる音の素：osc を生やし、音量を 0 から peak まで指数で上げて切る */
+function risingOsc(x: Eng, t: number, dur: number, o: { type: OscillatorType; f: number; f2: number; peak: number; vibRate?: number; vibDepth?: number; filter?: { type: BiquadFilterType; f: number; f2: number; q: number } }): void {
+  const ctx = x.ctx;
+  const osc = ctx.createOscillator();
+  osc.type = o.type;
+  osc.frequency.setValueAtTime(o.f, t);
+  osc.frequency.exponentialRampToValueAtTime(o.f2, t + dur);
+  const g = ctx.createGain();
+  g.gain.setValueAtTime(0.0001, t);
+  g.gain.exponentialRampToValueAtTime(o.peak, t + dur * 0.96);
+  g.gain.linearRampToValueAtTime(0.0001, t + dur + 0.04);
+  let node: AudioNode = osc;
+  if (o.filter) {
+    const fl = ctx.createBiquadFilter();
+    fl.type = o.filter.type;
+    fl.Q.value = o.filter.q;
+    fl.frequency.setValueAtTime(o.filter.f, t);
+    fl.frequency.exponentialRampToValueAtTime(o.filter.f2, t + dur);
+    osc.connect(fl);
+    node = fl;
+  }
+  node.connect(g).connect(x.master);
+  // ビブラート：だんだん速く・深く
+  if (o.vibDepth) {
+    const lfo = ctx.createOscillator();
+    lfo.frequency.setValueAtTime(o.vibRate ?? 6, t);
+    lfo.frequency.linearRampToValueAtTime((o.vibRate ?? 6) * 1.8, t + dur);
+    const d = ctx.createGain();
+    d.gain.setValueAtTime(o.vibDepth * 0.2, t);
+    d.gain.linearRampToValueAtTime(o.vibDepth, t + dur);
+    lfo.connect(d).connect(osc.frequency);
+    lfo.start(t); lfo.stop(t + dur + 0.06);
+  }
+  osc.start(t); osc.stop(t + dur + 0.06);
+}
+
+/** 必殺技・溜め：「キュイーン」。高い電気の音が溜めの間じゅうぐんぐん上がり、ビブラートと高域のざわめきが増して、だんだん大きく明るくなる */
+export function playSpecialCharge(dur = 1.4): void {
+  play('specialCharge', dur + 0.1, () => {
+    const x = specialEng();
+    if (!x) return;
+    const t = x.ctx.currentTime;
+    risingOsc(x, t, dur, { type: 'sine', f: 520, f2: 4300, peak: 0.2, vibRate: 5.5, vibDepth: 70 });
+    risingOsc(x, t, dur, { type: 'triangle', f: 524, f2: 4350, peak: 0.12, vibRate: 7, vibDepth: 90 });
+    risingOsc(x, t, dur, { type: 'sine', f: 1040, f2: 8600, peak: 0.06, vibRate: 8, vibDepth: 160 });
+    // ざわめき（ジジジ）：のこぎり波を帯域フィルターごと上へ
+    risingOsc(x, t, dur, { type: 'sawtooth', f: 180, f2: 900, peak: 0.07, filter: { type: 'bandpass', f: 1400, f2: 7500, q: 5 } });
+    // 下から押し上げる低いうなり
+    risingOsc(x, t, dur, { type: 'sine', f: 70, f2: 260, peak: 0.16 });
+    // 高域のノイズ
+    const src = x.ctx.createBufferSource();
+    src.buffer = x.noise; src.loop = true;
+    const hp = x.ctx.createBiquadFilter();
+    hp.type = 'highpass'; hp.frequency.setValueAtTime(3000, t); hp.frequency.linearRampToValueAtTime(7000, t + dur);
+    const g = x.ctx.createGain();
+    g.gain.setValueAtTime(0.0001, t);
+    g.gain.exponentialRampToValueAtTime(0.1, t + dur * 0.97);
+    g.gain.linearRampToValueAtTime(0.0001, t + dur + 0.04);
+    src.connect(hp).connect(g).connect(x.master);
+    src.start(t, Math.random() * (x.noise.duration - 0.5)); src.stop(t + dur + 0.06);
+  });
+}
+
+/** 必殺技・発射：「ドガーン」。鋭い破裂音＋ズシンと落ちる低音＋広い帯域のノイズの爆風 */
+export function playSpecialFire(): void {
+  play('specialFire', 1.6, () => {
+    const x = specialEng();
+    if (!x) return;
+    const t = x.ctx.currentTime;
+    // 鋭いパキッ
+    noise(x, t, { dur: 0.07, gain: 0.55, attack: 0.001, filter: { type: 'highpass', f: 2500 } });
+    tone(x, t, { type: 'triangle', f: 3600, f2: 220, dur: 0.09, gain: 0.35, attack: 0.001 });
+    // 低いドーン（ピッチが落ちる）
+    tone(x, t, { type: 'sine', f: 150, f2: 26, dur: 1.4, gain: 0.95, attack: 0.003 });
+    tone(x, t, { type: 'sine', f: 62, f2: 24, dur: 1.2, gain: 0.7, attack: 0.004 });
+    noise(x, t, { dur: 1.0, gain: 0.7, attack: 0.002, filter: { type: 'lowpass', f: 1100, f2: 70, q: 0.8 } });
+    // 広い爆風
+    noise(x, t, { dur: 0.7, gain: 0.5, attack: 0.004, filter: { type: 'lowpass', f: 9000, f2: 500, q: 0.6 } });
+    noise(x, t, { at: 0.02, dur: 0.45, gain: 0.3, attack: 0.01, filter: { type: 'bandpass', f: 2800, f2: 500, q: 0.7 } });
+  });
+}
+
+/** 必殺技・照射：ごうっと鳴り続ける轟音。dur 秒かけて静かになる */
+export function playSpecialBeam(dur = 2.0): void {
+  play('specialBeam', dur + 0.2, () => {
+    const x = specialEng();
+    if (!x) return;
+    const ctx = x.ctx, t = ctx.currentTime;
+    const env = (peak: number, hold: number): GainNode => {
+      const g = ctx.createGain();
+      g.gain.setValueAtTime(0.0001, t);
+      g.gain.exponentialRampToValueAtTime(peak, t + 0.08);
+      g.gain.setValueAtTime(peak, t + dur * hold);
+      g.gain.exponentialRampToValueAtTime(0.0001, t + dur);
+      return g;
+    };
+    const roar = ctx.createBufferSource();
+    roar.buffer = x.noise; roar.loop = true;
+    const bp = ctx.createBiquadFilter();
+    bp.type = 'bandpass'; bp.Q.value = 0.7;
+    bp.frequency.setValueAtTime(900, t); bp.frequency.exponentialRampToValueAtTime(260, t + dur);
+    roar.connect(bp).connect(env(0.34, 0.35)).connect(x.master);
+    roar.start(t, Math.random() * (x.noise.duration - 0.5)); roar.stop(t + dur + 0.05);
+    const hiss = ctx.createBufferSource();
+    hiss.buffer = x.noise; hiss.loop = true;
+    const hp = ctx.createBiquadFilter();
+    hp.type = 'highpass'; hp.frequency.value = 3500;
+    hiss.connect(hp).connect(env(0.1, 0.25)).connect(x.master);
+    hiss.start(t, Math.random() * (x.noise.duration - 0.5)); hiss.stop(t + dur + 0.05);
+    for (const [type, f, f2, peak] of [['sawtooth', 96, 60, 0.12], ['sawtooth', 97.4, 61, 0.1], ['sine', 48, 34, 0.3]] as const) {
+      const o = ctx.createOscillator();
+      o.type = type;
+      o.frequency.setValueAtTime(f, t); o.frequency.exponentialRampToValueAtTime(f2, t + dur);
+      const lp = ctx.createBiquadFilter();
+      lp.type = 'lowpass'; lp.frequency.value = 900;
+      o.connect(lp).connect(env(peak, 0.4)).connect(x.master);
+      o.start(t); o.stop(t + dur + 0.05);
+    }
+  });
+}
+
+/** 必殺技の音をすぐ止める（スキップ・World の破棄） */
+export function stopSpecialSfx(): void {
+  const bus = specialBus;
+  if (!bus || !engine) return;
+  specialBus = null;
+  try {
+    const t = engine.ctx.currentTime;
+    bus.gain.cancelScheduledValues(t);
+    bus.gain.setValueAtTime(bus.gain.value, t);
+    bus.gain.linearRampToValueAtTime(0, t + 0.1);
+    setTimeout(() => { try { bus.disconnect(); } catch { /* ignore */ } }, 250);
+  } catch (e) {
+    reportError('stopSpecialSfx', e);
+  }
+}
+
+/** 足音が鳴る状態か：地上を、ある程度の速さで歩いている（立ち止まり・空中・飛行中は鳴らない） */
+export function isWalking(p: { vel: { x: number; z: number }; onGround: boolean; flying: boolean }): boolean {
+  return p.onGround && !p.flying && Math.hypot(p.vel.x, p.vel.z) > 0.8;
+}
+
+/**
+ * 住民の足音。主人公の重い足音（低いドスッ＋金属のカチャ）とは別物：軽くやわらかい、素足・薄い靴のペタペタ。
+ * 高め・短い・金属音なし。1歩ごとに音程と間をばらつかせる。大勢が走っても群れのさざめきに聞こえるよう、同時発音と音量を絞る
+ */
+export function playResidentStep(pos?: { x: number; y: number; z: number }): void {
+  const a = att(pos);
+  if (a <= 0.21) return;   // 遠すぎるものは鳴らさない
+  const f = 1500 + Math.random() * 1500;
+  const at = Math.random() * 0.015;
+  play('residentStep', 0.06, (x, t) => {
+    noise(x, t, { at, dur: 0.035, gain: 0.05 * a, attack: 0.002, filter: { type: 'bandpass', f, f2: f * 0.6, q: 0.9 } });
+    tone(x, t, { at, type: 'sine', f: 240 + Math.random() * 120, f2: 130, dur: 0.04, gain: 0.025 * a, attack: 0.002 });
+  });
+}
+
 /** 主人公の足音。重いサイボーグ：低いドスッ＋金属のカチャ。走りは強め */
 let footAlt = false;
 export function playFootstep(run: boolean): void {
@@ -628,7 +896,8 @@ export function playFootstep(run: boolean): void {
   play('footstep', 0.2, (x, t) => {
     tone(x, t, { type: 'sine', f: 95 * pitch, f2: 38, dur: 0.16, gain: 0.26 * g, attack: 0.003 });
     noise(x, t, { dur: 0.09, gain: 0.16 * g, attack: 0.002, filter: { type: 'lowpass', f: 700, f2: 150, q: 0.7 } });
-    noise(x, t, { at: 0.012, dur: 0.035, gain: 0.04 * g, filter: { type: 'bandpass', f: 2600 * pitch, q: 3 } });
+    noise(x, t, { at: 0.012, dur: 0.035, gain: 0.07 * g, filter: { type: 'bandpass', f: 2600 * pitch, q: 3 } });
+    tone(x, t, { type: 'triangle', f: 210 * pitch, f2: 120, dur: 0.07, gain: 0.07 * g, attack: 0.003 });   // 小さなスピーカーでも聞こえる中域のドスッ
   });
 }
 
@@ -795,6 +1064,11 @@ function onEnemyAction(p: GameEvents['enemyAction']): void {
         }
       });
       break;
+    case 'gStep': case 'gLand': case 'gRoar': case 'gMissile': case 'gBolt': case 'gPunch': case 'gRush': case 'gWallCrash':
+    case 'gRainLaunch': case 'gTeleport': case 'gAppear': case 'gArmBreak': case 'gRegen': case 'gRegenDone': case 'gCrack':
+    case 'gMissileWind': case 'gBoltCharge': case 'gPunchWind': case 'gRushWind': case 'gRainWarn': case 'gBeamCharge': case 'gBeamFire':
+      onGuardAction(p.action, a);
+      break;
     case 'missileDisrupt':
       // 溜めが途切れるパワーダウン＋グリッチ
       play('missileDisrupt', 0.5, (x, t) => {
@@ -803,6 +1077,131 @@ function onEnemyAction(p: GameEvents['enemyAction']): void {
           noise(x, t, { at: i * 0.06, dur: 0.03, gain: 0.12 * a, filter: { type: 'bandpass', f: 1500 + i * 900, q: 4 } });
         }
       });
+      break;
+  }
+}
+
+/** ドレインガーディアン（ボス）とその登場ムービーの音。重い足音・着地・咆哮・各攻撃の予兆と発射 */
+function onGuardAction(action: GameEvents['enemyAction']['action'], a: number): void {
+  switch (action) {
+    case 'gStep':
+      play('gStep', 0.5, (x, t) => {
+        tone(x, t, { type: 'sine', f: 78, f2: 28, dur: 0.38, gain: 0.5 * a, attack: 0.003 });
+        noise(x, t, { dur: 0.28, gain: 0.28 * a, attack: 0.003, filter: { type: 'lowpass', f: 600, f2: 90, q: 0.8 } });
+        tone(x, t, { type: 'triangle', f: 160, f2: 70, at: 0.01, dur: 0.14, gain: 0.12 * a });
+        noise(x, t, { at: 0.02, dur: 0.06, gain: 0.08 * a, filter: { type: 'bandpass', f: 2200, q: 2 } });
+      });
+      break;
+    case 'gLand':
+      play('gLand', 1.4, (x, t) => {
+        tone(x, t, { type: 'sine', f: 62, f2: 20, dur: 0.9, gain: 0.7 * a, attack: 0.002 });
+        noise(x, t, { dur: 0.7, gain: 0.45 * a, attack: 0.002, filter: { type: 'lowpass', f: 700, f2: 60, q: 0.8 } });
+        tone(x, t, { type: 'triangle', f: 130, f2: 50, dur: 0.4, gain: 0.2 * a });
+        for (let i = 0; i < 7; i++) noise(x, t, { at: 0.08 + i * 0.07 + Math.random() * 0.04, dur: 0.05, gain: 0.07 * a, filter: { type: 'bandpass', f: 800 + Math.random() * 2500, q: 2 } });
+      });
+      break;
+    case 'gRoar':
+      play('gRoar', 1.8, (x, t) => {
+        tone(x, t, { type: 'sawtooth', f: 110, f2: 55, dur: 1.5, gain: 0.22 * a, attack: 0.05, filter: { type: 'lowpass', f: 700, f2: 300 } });
+        tone(x, t, { type: 'square', f: 55, f2: 40, dur: 1.5, gain: 0.12 * a, attack: 0.08, filter: { type: 'lowpass', f: 400 } });
+        noise(x, t, { dur: 1.4, gain: 0.12 * a, attack: 0.1, filter: { type: 'bandpass', f: 500, f2: 250, q: 1 } });
+      });
+      break;
+    case 'gMissileWind': case 'gBoltCharge': case 'gBeamCharge': case 'gRainWarn': case 'gRushWind': case 'gPunchWind':
+      play('gWind', 1.2, (x, t) => {
+        const f0 = action === 'gBoltCharge' || action === 'gBeamCharge' ? 220 : action === 'gPunchWind' ? 90 : 140;
+        tone(x, t, { type: 'sawtooth', f: f0, f2: f0 * 4, dur: action === 'gPunchWind' ? 0.8 : 1.0, gain: 0.07 * a, attack: 0.08, filter: { type: 'lowpass', f: 600, f2: 3200 } });
+        tone(x, t, { type: 'sine', f: f0 / 2, f2: f0 * 1.4, dur: 0.9, gain: 0.14 * a, attack: 0.1 });
+        if (action === 'gRainWarn') for (let i = 0; i < 4; i++) tone(x, t, { type: 'square', f: 880, at: i * 0.22, dur: 0.07, gain: 0.04 * a });
+      });
+      break;
+    case 'gMissile':
+      play('gMissile', 0.5, (x, t) => {
+        noise(x, t, { dur: 0.5, gain: 0.14 * a, attack: 0.04, filter: { type: 'bandpass', f: 500, f2: 3500, q: 0.9 } });
+        tone(x, t, { type: 'sine', f: 160, f2: 380, dur: 0.3, gain: 0.07 * a });
+      });
+      break;
+    case 'gBolt':
+      play('gBolt', 0.4, (x, t) => {
+        tone(x, t, { type: 'sawtooth', f: 1800, f2: 200, dur: 0.25, gain: 0.12 * a, attack: 0.002, filter: { type: 'bandpass', f: 1400, q: 2 } });
+        noise(x, t, { dur: 0.18, gain: 0.14 * a, filter: { type: 'highpass', f: 2500 } });
+        tone(x, t, { type: 'sine', f: 140, f2: 50, dur: 0.2, gain: 0.2 * a, attack: 0.002 });
+      });
+      break;
+    case 'gPunch':
+      play('gPunch', 0.6, (x, t) => {
+        tone(x, t, { type: 'sine', f: 95, f2: 30, dur: 0.4, gain: 0.5 * a, attack: 0.002 });
+        noise(x, t, { dur: 0.22, gain: 0.3 * a, filter: { type: 'bandpass', f: 1200, f2: 300, q: 1.2 } });
+        tone(x, t, { type: 'triangle', f: 900, f2: 600, at: 0.02, dur: 0.3, gain: 0.08 * a });
+      });
+      break;
+    case 'gRush':
+      play('gRush', 1.1, (x, t) => {
+        noise(x, t, { dur: 1.0, gain: 0.2 * a, attack: 0.05, filter: { type: 'bandpass', f: 300, f2: 1400, q: 1 } });
+        tone(x, t, { type: 'sawtooth', f: 60, f2: 140, dur: 0.9, gain: 0.16 * a, attack: 0.05, filter: { type: 'lowpass', f: 500, f2: 1200 } });
+      });
+      break;
+    case 'gWallCrash':
+      play('wallCrash', 0.9, (x, t) => {
+        tone(x, t, { type: 'sine', f: 90, f2: 30, dur: 0.5, gain: 0.55 * a, attack: 0.002 });
+        noise(x, t, { dur: 0.3, gain: 0.3 * a, filter: { type: 'bandpass', f: 1500, q: 1.5 } });
+        tone(x, t, { type: 'triangle', f: 880, f2: 700, at: 0.02, dur: 0.5, gain: 0.1 * a });
+      });
+      break;
+    case 'gRainLaunch':
+      play('gRainLaunch', 1.2, (x, t) => {
+        for (let i = 0; i < 8; i++) noise(x, t, { at: i * 0.07, dur: 0.4, gain: 0.08 * a, attack: 0.03, filter: { type: 'bandpass', f: 600, f2: 3200, q: 0.9 } });
+        tone(x, t, { type: 'sine', f: 120, f2: 300, dur: 0.6, gain: 0.12 * a });
+      });
+      break;
+    case 'gTeleport':
+      play('gTeleport', 0.8, (x, t) => {
+        tone(x, t, { type: 'sine', f: 1600, f2: 200, dur: 0.45, gain: 0.12 * a, attack: 0.01 });
+        tone(x, t, { type: 'sawtooth', f: 300, f2: 1800, dur: 0.4, gain: 0.05 * a, filter: { type: 'lowpass', f: 3000 } });
+        noise(x, t, { dur: 0.4, gain: 0.07 * a, attack: 0.05, filter: { type: 'highpass', f: 3500 } });
+      });
+      break;
+    case 'gAppear':
+      play('gAppear', 0.8, (x, t) => {
+        tone(x, t, { type: 'sine', f: 200, f2: 1500, dur: 0.18, gain: 0.12 * a, attack: 0.005 });
+        tone(x, t, { type: 'sine', f: 120, f2: 40, at: 0.1, dur: 0.35, gain: 0.35 * a, attack: 0.002 });
+        noise(x, t, { at: 0.1, dur: 0.3, gain: 0.15 * a, filter: { type: 'lowpass', f: 1200, f2: 150 } });
+      });
+      break;
+    case 'gBeamFire':
+      play('gRush', 1.6, (x, t) => {
+        tone(x, t, { type: 'sawtooth', f: 400, f2: 380, dur: 1.4, gain: 0.12 * a, attack: 0.02, filter: { type: 'bandpass', f: 1100, q: 3 } });
+        noise(x, t, { dur: 1.4, gain: 0.16 * a, attack: 0.03, filter: { type: 'highpass', f: 2200 } });
+        tone(x, t, { type: 'sine', f: 90, dur: 1.4, gain: 0.25 * a });
+      });
+      break;
+    case 'gArmBreak':
+      play('gArmBreak', 1.0, (x, t) => {
+        tone(x, t, { type: 'sine', f: 120, f2: 35, dur: 0.5, gain: 0.5 * a, attack: 0.002 });
+        noise(x, t, { dur: 0.5, gain: 0.3 * a, filter: { type: 'bandpass', f: 1800, f2: 400, q: 1 } });
+        for (let i = 0; i < 6; i++) noise(x, t, { at: 0.05 + i * 0.06, dur: 0.04, gain: 0.12 * a, filter: { type: 'bandpass', f: 2500 + Math.random() * 3000, q: 3 } });
+        tone(x, t, { type: 'triangle', f: 1400, f2: 300, at: 0.05, dur: 0.5, gain: 0.08 * a });
+      });
+      break;
+    case 'gRegen':
+      play('gWind', 1.4, (x, t) => {
+        tone(x, t, { type: 'sawtooth', f: 120, f2: 520, dur: 1.2, gain: 0.09 * a, attack: 0.1, filter: { type: 'lowpass', f: 600, f2: 3200 } });
+        for (let i = 0; i < 10; i++) noise(x, t, { at: i * 0.1, dur: 0.04, gain: 0.08 * a, filter: { type: 'bandpass', f: 2000 + Math.random() * 3000, q: 4 } });
+      });
+      break;
+    case 'gRegenDone':
+      play('gWind', 0.6, (x, t) => {
+        [660, 880, 1320].forEach((f, i) => tone(x, t, { type: 'sine', f, at: i * 0.07, dur: 0.2, gain: 0.07 * a }));
+      });
+      break;
+    case 'gCrack':
+      play('gCrack', 0.5, (x, t) => {
+        noise(x, t, { dur: 0.18, gain: 0.3 * a, filter: { type: 'bandpass', f: 1800, f2: 500, q: 2.5 } });
+        tone(x, t, { type: 'triangle', f: 320, f2: 90, dur: 0.2, gain: 0.12 * a });
+        for (let i = 0; i < 3; i++) noise(x, t, { at: 0.04 + i * 0.05, dur: 0.03, gain: 0.1 * a, filter: { type: 'highpass', f: 3500 } });
+      });
+      break;
+    default:
       break;
   }
 }
@@ -826,6 +1225,17 @@ function subscribeNew(events: EventBus): void {
       noise(x, t, { dur: 0.1, gain: 0.22 * a, attack: 0.002, filter: { type: 'highpass', f: 2500 } });
       tone(x, t, { type: 'sine', f: 220, f2: 80, dur: 0.25, gain: 0.2 * a });
       tone(x, t, { type: 'sine', f: 2093, at: 0.05, dur: 0.2, gain: 0.07 * a });
+    });
+  });
+  sub(events, 'counter', (p) => {
+    const a = att(p.pos);
+    play('counter', 0.5, (x, t) => {
+      // 奪って打ち返す：低い衝撃 + 上昇するきらめき + 電気の破裂
+      tone(x, t, { type: 'sawtooth', f: 180, f2: 90, dur: 0.18, gain: 0.16 * a, attack: 0.002 });
+      tone(x, t, { type: 'triangle', f: 700, f2: 2400, dur: 0.16, gain: 0.2 * a, attack: 0.002 });
+      noise(x, t, { dur: 0.12, gain: 0.2 * a, attack: 0.002, filter: { type: 'highpass', f: 3000 } });
+      tone(x, t, { type: 'sine', f: 1568, at: 0.08, dur: 0.22, gain: 0.1 * a });
+      tone(x, t, { type: 'sine', f: 2349, at: 0.14, dur: 0.26, gain: 0.08 * a });
     });
   });
   sub(events, 'missileBlast', (p) => {

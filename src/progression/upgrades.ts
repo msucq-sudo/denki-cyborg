@@ -4,7 +4,7 @@
 // - 通貨は歯車（world.inventory.gears）
 // 状態は world.upgrades に持つ（リトライで World を作り直すため。階の移動では main.ts が引き継ぐ）
 import type { World } from '../core/types';
-import { ABSORB, DASH, DODGE, FUNCTIONS, GUN, HACK, OVERLOAD, PLAYER } from '../config/balance';
+import { ABSORB, DASH, DODGE, FUNCTIONS, GUN, HACK, OVERLOAD, PLAYER, SPECIAL_UPGRADE } from '../config/balance';
 
 export type Category = 'gun' | 'body' | 'arm' | 'skill';
 
@@ -31,6 +31,8 @@ export interface Track {
   /** costs[i] = レベル i+1 → i+2 に上げるのに必要な歯車。長さ = 最大レベル - 1 */
   costs: number[];
   stats: StatLine[];
+  /** 上げる前に必要な条件（別項目が指定レベル以上）。無ければ制限なし */
+  requires?: { id: string; level: number };
 }
 
 /** 項目の参照（画面とゲームで共通） */
@@ -92,6 +94,12 @@ export const SKILL_TRACKS: Track[] = [
     stats: [{ key: 'drainPerSec', label: '滞空の消費電力', unit: '/秒', digits: 1, lowerIsBetter: true, values: mul(FUNCTIONS.flight.flyingDrainPerSec, [1, 0.85, 0.7, 0.55], 2) }],
   },
   {
+    // 自由飛行：Lv2 で解放（フラグ）。ジェットパックを Lv2 以上にしてから
+    id: 'skill.jetpackFree', category: 'skill', name: 'ジェットパック：自由飛行', desc: 'ジャンプ長押しで高度の上限なく飛べる。離すとゆっくり降りる',
+    costs: [5], requires: { id: 'skill.jetpack', level: 2 },
+    stats: [{ key: 'enabled', label: '自由飛行', values: [0, 1] }],
+  },
+  {
     id: 'skill.speed', category: 'skill', name: '素早さ', desc: '移動とダッシュが速くなる',
     costs: [2, 3, 4],
     stats: [
@@ -113,6 +121,16 @@ export const SKILL_TRACKS: Track[] = [
     stats: [
       { key: 'allyTime', label: '味方でいる時間', unit: '秒', values: add(HACK.allyTime, [0, 5, 10, 16]) },
       { key: 'failEnergy', label: 'ミス1回の消費電力', lowerIsBetter: true, values: add(HACK.failEnergy, [0, -1, -2, -3]) },
+    ],
+  },
+  {
+    id: 'skill.special', category: 'skill', name: '必殺技', desc: '電気のかめはめ波。貫通・ゲージ・太さ・ボスへのダメージが上がる',
+    costs: SPECIAL_UPGRADE.costs,
+    stats: [
+      { key: 'pierce', label: '貫通ダメージ（最大HP比）', unit: '%', values: SPECIAL_UPGRADE.pierce },
+      { key: 'gaugeMul', label: 'ゲージのたまりやすさ', unit: '%', values: SPECIAL_UPGRADE.gaugeMul },
+      { key: 'beamWidth', label: 'ビームの太さ', unit: ' m', digits: 1, values: SPECIAL_UPGRADE.beamWidth },
+      { key: 'boss', label: 'ボスへのダメージ（最大HP比）', unit: '%', values: SPECIAL_UPGRADE.boss },
     ],
   },
 ];
@@ -139,15 +157,20 @@ export function nextCost(world: World, t: Track): number | null {
   return lv >= maxLevel(t) ? null : t.costs[lv - 1];
 }
 
+/** 前提の項目が足りているか（requires が無ければ常に true） */
+export function meetsRequirement(world: World, t: Track): boolean {
+  return !t.requires || getLevel(world, t.requires.id) >= t.requires.level;
+}
+
 export function canUpgrade(world: World, t: Track): boolean {
   const c = nextCost(world, t);
-  return c !== null && world.inventory.gears >= c;
+  return c !== null && world.inventory.gears >= c && meetsRequirement(world, t);
 }
 
 /** 1レベル上げる。歯車が足りない・最大なら false（何も変えない）。上げたら 'upgrade' を発行 */
 export function upgrade(world: World, t: Track): boolean {
   const c = nextCost(world, t);
-  if (c === null || world.inventory.gears < c) return false;
+  if (c === null || world.inventory.gears < c || !meetsRequirement(world, t)) return false;
   world.inventory.gears -= c;
   const lv = getLevel(world, t.id) + 1;
   world.upgrades[t.id] = lv;

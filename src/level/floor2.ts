@@ -143,6 +143,11 @@ export function buildFloor2(world: World): void {
 
   const state: Floor2State = { phase: 'free', t: 0, sleeps: 0, doorOpen: 0, leftCar: false, nearBed: false, held: false, exitOpen: 0, exitUnlocked: false };
   world.level.data.floor2 = state;
+  // 収容所 2階クリア後に戻ってきたときは、ベッドで眠らなくても西の出口が使える（2本目の道へ）
+  if (world.level.data.camp2Cleared === true) {
+    state.exitUnlocked = true;
+    world.level.data.objective = '西の出口（北西）から階段を下りて、ガレージへ向かおう';
+  }
   world.player.pos.set(plan.start.x, 0, plan.start.z);
   world.player.yaw = plan.start.yaw;
   world.player.pitch = 0;

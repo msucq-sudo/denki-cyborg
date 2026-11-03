@@ -100,13 +100,15 @@ export class Cutscene implements CutsceneHandle, Runtime {
   private timer?: ReturnType<typeof setInterval>;
   private skipped = false;
 
-  constructor(readonly world: World, factory: ScriptFactory, private onDone: () => void) {
+  /** opts.fadeIn=false：最初に黒から明けない／opts.skippable=false：スキップできない（必殺技など、ゲーム中の短い演出用） */
+  constructor(readonly world: World, factory: ScriptFactory, private onDone: () => void, private opts: { fadeIn?: boolean; skippable?: boolean } = {}) {
     this.overlay = createOverlay();
     this.fx = new Fx(world.scene);
     this.lines = new SpeedLines(world.scene);
     this.script = factory(this);
     if (typeof window !== 'undefined') {
       this.onKey = (e) => {
+        if (this.opts.skippable === false) return;
         if (e.code === 'Escape') this.skip();
         else if (e.code === 'Space' || e.code === 'Enter') this.keyHeld = true;
       };
@@ -209,9 +211,9 @@ export class Cutscene implements CutsceneHandle, Runtime {
     cam.far = Math.max(cam.far, 3500);
     cam.updateProjectionMatrix();
     this.overlay.setLetterbox(true);
-    this.overlay.setSkip(0);
-    this.fadeA = 1;
-    this.fadeTo(0, 0.45);
+    this.overlay.setSkip(this.opts.skippable === false ? -1 : 0);
+    if (this.opts.fadeIn === false) { this.fadeA = 0; this.fadeTarget = 0; }
+    else { this.fadeA = 1; this.fadeTo(0, 0.45); }
   }
 
   private updateSlow(): void {
@@ -227,6 +229,7 @@ export class Cutscene implements CutsceneHandle, Runtime {
   }
 
   private readSkip(dt: number): void {
+    if (this.opts.skippable === false) return;
     const inp = this.world.input as World['input'] | undefined;
     if (inp?.rawPressed?.('Escape')) { this.skip(); return; }
     // 運転中は入力がロックされているので、ロック中でも読める rawDown を使う

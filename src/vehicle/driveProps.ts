@@ -5,7 +5,8 @@ import type { EnemyKind } from '../config/balance';
 import { ENEMIES } from '../config/balance';
 import { buildModel, disposeObject, type Model } from '../enemies/models';
 import '../enemies/kinds';
-import { CHECKPOINT, ROAD } from '../level/surge/layout';
+import { CHECKPOINT, CHECKPOINT_E, ROAD, type SurgeRoute } from '../level/surge/layout';
+import { HeavyActor } from '../cinematic/heavy';
 
 export type ObstacleKind = 'barricade' | 'crates' | 'wreck';
 export interface ObstacleDef { x: number; z: number; w: number; d: number; kind: ObstacleKind }
@@ -27,7 +28,8 @@ function rng(seed: number): () => number {
  * 障害物の配置。西向きの直線（z=ROAD.junctionZ が道の中心）に、約 120 m おき。
  * 横の位置は 左端寄り／右端寄り／中央 をばらけさせる（どれも反対側に十分な空きがある）
  */
-export function planObstacles(): ObstacleDef[] {
+export function planObstacles(route: SurgeRoute = 'camp'): ObstacleDef[] {
+  if (route === 'drain') return planDrainHazards().obstacles;
   const lat = [1, -1, 0, 1, -1, -1, 0, 1, -1, 1];
   const kinds: ObstacleKind[] = ['barricade', 'crates', 'wreck', 'barricade', 'wreck', 'crates', 'barricade', 'crates', 'wreck', 'barricade'];
   const out: ObstacleDef[] = [];
@@ -52,12 +54,14 @@ const ZAKO_MIX: [ZakoKind, number][] = [
  * 雑魚敵の配置：直線の序盤〜判定地点の手前まで、2〜4体ずつの群れ（packs 個）。障害物とは重ならない。
  * 群れにすると遠くからでも「敵がいる」と読める
  */
-export function planZako(obstacles: ObstacleDef[], packs = 19): ZakoDef[] {
+export function planZako(obstacles: ObstacleDef[], packs?: number, route: SurgeRoute = 'camp', heavies: HeavyDef[] = []): ZakoDef[] {
   const r = rng(20261029);
   const bag: ZakoKind[] = [];
   for (const [k, n] of ZAKO_MIX) for (let i = 0; i < n; i++) bag.push(k);
   const out: ZakoDef[] = [];
-  const x0 = -60, x1 = CHECKPOINT.x + 60;
+  // ルート2（東向き）は群れを増やす（28）。x0→x1 は走る向きに並ぶ（ルート1は負の向き）
+  if (packs === undefined) packs = route === 'drain' ? 28 : 19;
+  const x0 = route === 'drain' ? 60 : -60, x1 = route === 'drain' ? CHECKPOINT_E.x - 60 : CHECKPOINT.x + 60;
   for (let j = 0; j < packs; j++) {
     const cx = x0 + ((x1 - x0) * (j + 0.2 + r() * 0.6)) / packs;
     const cz = ROAD.junctionZ + (r() * 2 - 1) * (ROAD.width / 2 - 3.5);
@@ -68,10 +72,67 @@ export function planZako(obstacles: ObstacleDef[], packs = 19): ZakoDef[] {
       let z = clampZ(cz + (r() * 2 - 1) * 3.5);
       // 障害物の近く（手前後 12m）は避ける
       for (const o of obstacles) if (Math.abs(o.x - x) < 12 && Math.abs(o.z - z) < o.w / 2 + 1.5) z = ROAD.junctionZ + (z > ROAD.junctionZ ? -1 : 1) * (ROAD.width / 2 - 1.6);
+      // ヘビーの足元にも置かない（ヘビーのいない側の端へ寄せる）
+      for (const h of heavies) if (Math.abs(h.x - x) < 9 && Math.abs(h.z - z) < HEAVY_R + 2.2) z = ROAD.junctionZ + (h.z > ROAD.junctionZ ? -1 : 1) * (ROAD.width / 2 - 1.6);
       out.push({ x, z, kind, phase: r() * 6.28 });
     }
   }
   return out;
+}
+
+// ---------------------------------------------------------------- ルート2：障害物16個とヘビー5体（東向き）
+
+/** ヘビー（車ではね飛ばせない。ぶつかると受け止められて止まる） */
+export interface HeavyDef { x: number; z: number }
+/** ヘビーの当たりの半径 m（腕を前に出した分を含む） */
+export const HEAVY_R = 1.55;
+
+/**
+ * ルート2の危険物：東向きの直線（x=150〜1330、道の中心 z=ROAD.junctionZ）に、59m おきに 21 個。
+ * 4つに1つ（3,7,11,15,19 番目）がヘビー、残りの 16 個が障害物。ヘビーは障害物の反対側へ置き、必ず避けて通れる道が残る。
+ */
+export function planDrainHazards(): { obstacles: ObstacleDef[]; heavies: HeavyDef[] } {
+  const N = 21, X0 = 150, STEP = 59;
+  // 障害物の横の位置（-1=北端寄り, 0=中央, 1=南端寄り）。ヘビーは HEAVY_LAT（道の中心からの横ずれ m）
+  const lat = [1, -1, 0, 1, -1, 1, 0, -1, 1, -1, 0, 1, -1, 0, 1, -1];
+  const kinds: ObstacleKind[] = ['barricade', 'crates', 'wreck', 'barricade', 'wreck', 'crates', 'barricade', 'crates', 'wreck', 'barricade', 'crates', 'wreck', 'barricade', 'wreck', 'crates', 'barricade'];
+  const heavyLat = [-4.2, 4.2, 0, -4.2, 4.2];
+  const obstacles: ObstacleDef[] = [], heavies: HeavyDef[] = [];
+  let oi = 0, hi = 0;
+  for (let i = 0; i < N; i++) {
+    const x = X0 + i * STEP;
+    if (i % 4 === 3) heavies.push({ x, z: ROAD.junctionZ + heavyLat[hi++] });
+    else {
+      const kind = kinds[oi];
+      obstacles.push({
+        x, z: ROAD.junctionZ + lat[oi] * (ROAD.width / 2 - OBSTACLE_WIDTH / 2 - 0.4), w: OBSTACLE_WIDTH,
+        d: kind === 'wreck' ? 4.4 : kind === 'crates' ? 2.6 : 1.6, kind,
+      });
+      oi++;
+    }
+  }
+  return { obstacles, heavies };
+}
+
+export function planHeavies(route: SurgeRoute = 'camp'): HeavyDef[] {
+  return route === 'drain' ? planDrainHazards().heavies : [];
+}
+
+export interface Heavy {
+  def: HeavyDef;
+  actor: HeavyActor;
+  /** 'idle'＝道に立っている、'caught'＝車を受け止めた */
+  state: 'idle' | 'caught';
+  /** 立っていた位置（受け止めて押されたときの基準） */
+  baseX: number;
+}
+
+/** ヘビーを道の上に立たせる（車が来る西を向く）。受け止めの動き（押し戻し）は drive.ts */
+export function buildHeavy(def: HeavyDef, scene: THREE.Scene): Heavy {
+  const actor = new HeavyActor(scene, def.x, def.z, -Math.PI / 2);
+  actor.mode = 'idle';
+  actor.root.traverse((o) => { if ((o as THREE.Mesh).isMesh) o.castShadow = true; });
+  return { def, actor, state: 'idle', baseX: def.x };
 }
 
 const clampZ = (z: number): number => Math.max(ROAD.junctionZ - (ROAD.width / 2 - 1.4), Math.min(ROAD.junctionZ + (ROAD.width / 2 - 1.4), z));

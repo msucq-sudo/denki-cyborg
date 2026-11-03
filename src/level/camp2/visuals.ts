@@ -2,7 +2,7 @@
 import * as THREE from 'three';
 import type { AABB } from '../../core/types';
 import { floorTex, hazardTex, makeSign, panelTex } from '../floor1/visuals';
-import { BAR_T, CAGE, CAGE_Z, CRATES, DOOR, HALL, LOCK, PILLARS } from './layout';
+import { BAR_T, CAGE, CAGE_Z, CEILING_HOLE, CRATES, DOOR, HALL, LOCK, PILLARS } from './layout';
 
 export interface Camp2Visuals {
   root: THREE.Group;
@@ -18,6 +18,14 @@ export interface Camp2Visuals {
   alarmMat: THREE.MeshBasicMaterial;
   /** 檻の中を照らす灯り（解放後に明るくする） */
   cageLight: THREE.PointLight;
+  /** 平らな天井（エンディングで穴のあいた天井に差し替える） */
+  ceil: THREE.Mesh;
+  /** 天井の割れ目（最大溜めの一発で穴があく所のひび。穴があいたら隠す） */
+  ceilCracks: THREE.Group;
+  /** ひびの奥の弱い光（脈打たせる） */
+  ceilCrackGlow: THREE.MeshBasicMaterial;
+  /** 入口（南）の大扉（エンディングで住民が出るときに開ける） */
+  gate: THREE.Mesh;
 }
 
 const v3 = (x: number, y: number, z: number) => new THREE.Vector3(x, y, z);
@@ -29,6 +37,64 @@ function rep(t: THREE.Texture | undefined, x: number, y: number): { map?: THREE.
   if (!t) return {};
   t.repeat.set(x, y);
   return { map: t };
+}
+
+/** 天井の割れ目：中心から放射状に枝分かれして走る折れ線。見た目だけで毎回同じ形（決め打ちの擬似乱数） */
+function buildCeilCracks(y: number): { group: THREE.Group; glow: THREE.MeshBasicMaterial } {
+  const group = new THREE.Group();
+  group.name = 'camp2-ceil-cracks';
+  const { x: cx, z: cz, r } = CEILING_HOLE;
+  let seed = 7;
+  const rnd = () => { seed = (seed * 16807) % 2147483647; return seed / 2147483647; };
+  const lines: { x: number; z: number }[][] = [];
+  const arms = 9;
+  for (let i = 0; i < arms; i++) {
+    let a = (i / arms) * Math.PI * 2 + (rnd() - 0.5) * 0.4;
+    const len = r * (1.0 + rnd() * 0.55);
+    const pts: { x: number; z: number }[] = [{ x: cx, z: cz }];
+    const n = 5;
+    for (let k = 1; k <= n; k++) {
+      a += (rnd() - 0.5) * 0.7;
+      const d = (len * k) / n;
+      pts.push({ x: cx + Math.cos(a) * d, z: cz + Math.sin(a) * d });
+      // 途中から枝分かれ
+      if (k === 3 && rnd() < 0.8) {
+        const b = a + (rnd() < 0.5 ? -1 : 1) * (0.6 + rnd() * 0.5);
+        lines.push([pts[k], { x: pts[k].x + Math.cos(b) * r * 0.45, z: pts[k].z + Math.sin(b) * r * 0.45 }]);
+      }
+    }
+    lines.push(pts);
+  }
+  // 折れ線を細い板（下向き）にする
+  const ribbon = (w: number): THREE.BufferGeometry => {
+    const pos: number[] = [];
+    for (const pts of lines) {
+      for (let i = 0; i + 1 < pts.length; i++) {
+        const a = pts[i], b = pts[i + 1];
+        const dx = b.x - a.x, dz = b.z - a.z, l = Math.hypot(dx, dz) || 1;
+        const nx = (-dz / l) * w * 0.5, nz = (dx / l) * w * 0.5;
+        const taper = 1 - (i / pts.length) * 0.6;   // 先へ行くほど細く
+        const ax = nx * taper, az = nz * taper;
+        pos.push(a.x - ax, y, a.z - az, a.x + ax, y, a.z + az, b.x + nx * 0.4, y, b.z + nz * 0.4,
+          a.x - ax, y, a.z - az, b.x + nx * 0.4, y, b.z + nz * 0.4, b.x - nx * 0.4, y, b.z - nz * 0.4);
+      }
+    }
+    const g = new THREE.BufferGeometry();
+    g.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3));
+    return g;
+  };
+  const glow = new THREE.MeshBasicMaterial({ color: new THREE.Color(0xff8a3a).multiplyScalar(1.4), transparent: true, opacity: 0.35, depthWrite: false, blending: THREE.AdditiveBlending, side: THREE.DoubleSide, fog: false });
+  const halo = new THREE.Mesh(ribbon(0.34), glow);
+  halo.position.y = 0;
+  const dark = new THREE.Mesh(ribbon(0.11), new THREE.MeshBasicMaterial({ color: 0x050404, side: THREE.DoubleSide }));
+  dark.position.y = -0.012;
+  group.add(halo, dark);
+  // 中心の欠けた所（うっすら明るい）
+  const core = new THREE.Mesh(new THREE.CircleGeometry(r * 0.28, 14), glow);
+  core.rotation.x = Math.PI / 2;
+  core.position.set(cx, y - 0.01, cz);
+  group.add(core);
+  return { group, glow };
 }
 
 export function buildCamp2Visuals(): Camp2Visuals {
@@ -89,6 +155,8 @@ export function buildCamp2Visuals(): Camp2Visuals {
   ceil.rotation.x = Math.PI / 2;
   ceil.position.set(cx, H, cz);
   root.add(ceil);
+  const cr = buildCeilCracks(H - 0.03);
+  root.add(cr.group);
   // 天井の梁
   const beamGeo = new THREE.BoxGeometry(W, 0.5, 0.5);
   for (let z = Z0 + 3; z < Z1; z += 6) {
@@ -245,5 +313,5 @@ export function buildCamp2Visuals(): Camp2Visuals {
   alarm.position.set(0, DOOR.h + 1, CAGE_Z + 1.5);
   lights.push(alarm);
 
-  return { root, colliders, lights, door, doorCollider, lockLamp, alarm, alarmMat, cageLight };
+  return { root, colliders, lights, door, doorCollider, lockLamp, alarm, alarmMat, cageLight, ceil, ceilCracks: cr.group, ceilCrackGlow: cr.glow, gate };
 }

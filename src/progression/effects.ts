@@ -33,6 +33,8 @@ export const overloadEnergyPerSec = (w: World): number => statAt(w, ARM_TRACK.id
 // ---- SKILL
 /** ジェットパック：滞空中の消費電力/秒 */
 export const flightDrainPerSec = (w: World): number => statAt(w, 'skill.jetpack', 'drainPerSec');
+/** ジェットパック：自由飛行を覚えているか */
+export const freeFlightEnabled = (w: World): boolean => statAt(w, 'skill.jetpackFree', 'enabled') > 0;
 /** 素早さ：基本の移動速度（m/s） */
 export const moveSpeed = (w: World): number => statAt(w, 'skill.speed', 'moveSpeed');
 /** 素早さ：ダッシュ中の移動速度（m/s。補助キャラ等の基準に使う） */
@@ -45,6 +47,16 @@ export const dodgeInvuln = (w: World): number => statAt(w, 'skill.dodge', 'invul
 export const hackAllyTime = (w: World): number => statAt(w, 'skill.hack', 'allyTime');
 /** ハッキング：入力ミス1回の消費電力 */
 export const hackFailEnergy = (w: World): number => statAt(w, 'skill.hack', 'failEnergy');
+
+// ---- 必殺技（skill.special）
+/** 貫通ダメージ（最大HPに対する割合 0..1） */
+export const specialPierce = (w: World): number => statAt(w, 'skill.special', 'pierce') / 100;
+/** ゲージのたまりやすさの倍率 */
+export const specialGaugeMul = (w: World): number => statAt(w, 'skill.special', 'gaugeMul') / 100;
+/** ビームの半径（m） */
+export const specialBeamRadius = (w: World): number => statAt(w, 'skill.special', 'beamWidth');
+/** ボスへのダメージ（最大HPに対する割合 0..1） */
+export const specialBossPct = (w: World): number => statAt(w, 'skill.special', 'boss') / 100;
 
 // ---- 同期
 /**

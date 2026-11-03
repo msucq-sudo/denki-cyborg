@@ -117,7 +117,7 @@ describe('データ', () => {
     }
     expect(GUN_TRACKS.map((t) => maxLevel(t))).toEqual([5]);
     expect([BODY_TRACK, ARM_TRACK].map((t) => maxLevel(t))).toEqual([5, 5]);
-    expect(SKILL_TRACKS.map((t) => maxLevel(t))).toEqual([4, 4, 4, 4]);
+    expect(SKILL_TRACKS.map((t) => maxLevel(t))).toEqual([4, 2, 4, 4, 4, 5]);
   });
 
   it('preview は今と次の値を返す', () => {
@@ -366,5 +366,68 @@ describe('SKILL', () => {
     const u1 = used(1), u4 = used(4);
     expect(u1).toBeGreaterThan(FUNCTIONS.flight.flyingDrainPerSec * 0.8);
     expect(u4 / u1).toBeCloseTo(0.55, 1);
+  });
+
+  describe('ジェットパック：自由飛行', () => {
+    const fly = (free: boolean, sec: number, energy = 100) => {
+      world = mkWorld();
+      if (free) { setLv('skill.jetpack', 2); setLv('skill.jetpackFree', 2); }
+      world.player.pos.set(0, 10, 0);
+      world.player.onGround = false;
+      world.player.energy = energy;
+      input.keys.add('Space');
+      stepPlayer(Math.round(sec * 60));
+      input.keys.delete('Space');
+      return world.player;
+    };
+
+    it('強化なしでは上昇せず、今までどおりその高さで滞空する', () => {
+      const p = fly(false, 2);
+      expect(p.flying).toBe(true);
+      expect(p.pos.y).toBeLessThanOrEqual(10.01);
+    });
+
+    it('強化ありでは元の高さを超えて上り続ける（上限なし）', () => {
+      const p = fly(true, 3);
+      expect(p.flying).toBe(true);
+      expect(p.pos.y).toBeGreaterThan(20);
+    });
+
+    it('前提（ジェットパック Lv2）が無いと自由飛行は上げられない', () => {
+      world = mkWorld();
+      world.inventory.gears = 99;
+      const t = ALL_TRACKS.find((x) => x.id === 'skill.jetpackFree')!;
+      expect(canUpgrade(world, t)).toBe(false);
+      expect(upgrade(world, t)).toBe(false);
+      setLv('skill.jetpack', 2);
+      expect(upgrade(world, t)).toBe(true);
+      expect(fx.freeFlightEnabled(world)).toBe(true);
+    });
+
+    it('電力を消費し、0 になると飛べず落ちる', () => {
+      const p = fly(true, 1, 100);
+      expect(p.energy).toBeLessThan(100);
+      const q = fly(true, 1, 5);
+      expect(q.energy).toBe(0);
+      expect(q.flying).toBe(false);
+      const y = q.pos.y;
+      input.keys.add('Space');
+      stepPlayer(15);
+      expect(q.pos.y).toBeLessThan(y);
+    });
+
+    it('ジャンプを離すとゆっくり下降し、Ctrlで速く下降する', () => {
+      const p = fly(true, 1);
+      stepPlayer(30); // 上向きの勢いが抜けるのを待つ
+      const y0 = p.pos.y;
+      stepPlayer(60);
+      const slow = y0 - p.pos.y;
+      expect(slow).toBeGreaterThan(0.5);
+      expect(slow).toBeLessThan(3);
+      input.keys.add('ControlLeft');
+      const y1 = p.pos.y;
+      stepPlayer(30);
+      expect(y1 - p.pos.y).toBeGreaterThan(slow / 2 + 1);
+    });
   });
 });

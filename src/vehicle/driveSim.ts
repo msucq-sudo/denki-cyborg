@@ -1,7 +1,8 @@
 // 運転の計算（見た目・シーンに触れない純粋な数値処理）。drive.ts がこれを毎フレーム進める。
 // 座標：+X=東、-Z=北、yaw=0 が -Z（北）向き、+π/2 が -X（西）向き。ヘディング f = (-sin yaw, -cos yaw)。
 // 道：ガレージから北へ一本道 → T字路（junctionZ）→ 左折して西へ長い直線 → 判定地点。
-import { CHECKPOINT, ROAD } from '../level/surge/layout';
+// ルート2（route='drain'、収容所 2階クリア後）：同じ北の道 → T字路を「右折」して東へ長い直線 → 判定地点 E。西は封鎖（左へ曲がると跳ね返る）。
+import { CHECKPOINT, CHECKPOINT_E, ROAD, type SurgeRoute } from '../level/surge/layout';
 
 /** 調整用の数値（km/h は表示用の単位。内部の速度は m/s） */
 export const DRIVE = {
@@ -39,6 +40,8 @@ export const DRIVE = {
   northWall: 6.5,
   /** 東の柵（ここに触れると跳ね返る）手前の余白 */
   eastWallGap: 3,
+  /** ルート2：西の封鎖（ここに触れると跳ね返る）手前の余白 */
+  westWallGap: 3,
   /** 壁にぶつかった時の跳ね返り速度 (m/s)・時間 (s)・立て直しの旋回 (rad/s)・速度 (m/s) */
   bounceSpeed: 5,
   bounceTime: 0.55,
@@ -50,9 +53,15 @@ export const DRIVE = {
 } as const;
 
 export type Quality = 'perfect' | 'good' | 'miss';
-export type DriveMode = 'north' | 'turn' | 'east' | 'bounce' | 'recover' | 'west';
+/**
+ * 'west'＝ルート1の本線（西へ走る）、'east'＝ルート1で右へ曲がった行き止まり（東の柵）。
+ * 'eastRun'＝ルート2の本線（東へ走る）、'westBlock'＝ルート2で左へ曲がった行き止まり（西の封鎖）。
+ */
+export type DriveMode = 'north' | 'turn' | 'east' | 'bounce' | 'recover' | 'west' | 'eastRun' | 'westBlock';
 
 export interface SimState {
+  /** どちらの道か。'camp'＝左折して西へ（既定）、'drain'＝右折して東へ */
+  route: SurgeRoute;
   pos: { x: number; y: number; z: number };
   yaw: number;
   /** 進行方向への速度 (m/s)。跳ね返り中だけ負 */
@@ -86,7 +95,7 @@ export type SimEvent =
   | { type: 'boost'; quality: Quality; kmh: number }
   | { type: 'turnStart'; dir: -1 | 1 }
   | { type: 'junctionDone' }
-  | { type: 'bounce'; where: 'east' | 'north'; kmh: number }
+  | { type: 'bounce'; where: 'east' | 'west' | 'north'; kmh: number }
   | { type: 'checkpoint'; kmh: number };
 
 export interface SimInput {
@@ -96,8 +105,9 @@ export interface SimInput {
   press: boolean;
 }
 
-export function createSim(x: number, z: number, yaw = 0): SimState {
+export function createSim(x: number, z: number, yaw = 0, route: SurgeRoute = 'camp'): SimState {
   return {
+    route,
     pos: { x, y: 0, z }, yaw, speed: 0, mode: 'north', steer: 0, latVel: 0, intent: 0,
     turnDir: 0, turnPhi: 0, turnCx: 0, turnCz: 0, pendingKmh: 0, cursorT: 0, cooldown: 0, bounceT: 0,
     junctionDone: false, presses: 0, perfects: 0, goods: 0, misses: 0, checkpointDone: false,
@@ -121,7 +131,29 @@ export const kmhOf = (s: SimState): number => Math.max(0, s.speed) * 3.6;
 
 /** いまの速度上限 (km/h)。T字路を曲がり終えるまでは低い */
 export function speedCapKmh(s: SimState): number {
-  return s.mode === 'west' ? DRIVE.maxKmh : DRIVE.preTurnCapKmh;
+  return isRunMode(s) ? DRIVE.maxKmh : DRIVE.preTurnCapKmh;
+}
+
+/** 本線（判定地点へ向かう長い直線）を走っているか。ルート1＝'west'、ルート2＝'eastRun' */
+export function isRunMode(s: { mode: DriveMode }): boolean {
+  return s.mode === 'west' || s.mode === 'eastRun';
+}
+
+/** そのルートで曲がるべき向き（-1=左, 1=右） */
+export const turnDirOf = (route: SurgeRoute): -1 | 1 => (route === 'drain' ? 1 : -1);
+
+/** そのルートの判定地点（x と目標速度） */
+export function checkpointOf(route: SurgeRoute): { x: number; kmh: number } {
+  return route === 'drain' ? CHECKPOINT_E : CHECKPOINT;
+}
+
+/**
+ * 判定地点を越えた速度で結果を決める。ルート1：300km/h 以上＝'success'、未満＝'fail'。
+ * ルート2：300 以上＝'success'、200〜299＝'fail'（坂は登るが扉にはね返される）、200 未満＝'stall'（坂の途中で失速）
+ */
+export function classifyCheckpoint(route: SurgeRoute, kmh: number): 'success' | 'fail' | 'stall' {
+  if (route === 'drain') return kmh >= CHECKPOINT_E.kmh ? 'success' : kmh >= CHECKPOINT_E.stallKmh ? 'fail' : 'stall';
+  return kmh >= CHECKPOINT.kmh ? 'success' : 'fail';
 }
 
 const JZ = ROAD.junctionZ;
@@ -130,11 +162,15 @@ export const TURN_Z = JZ + DRIVE.turnRadius;
 
 /** 判定地点までの道のり (m)。T字路の手前なら、T字路までの距離も足す */
 export function distToCheckpoint(s: SimState): number {
+  if (s.route === 'drain') {
+    if (s.mode === 'eastRun' || s.mode === 'turn') return Math.max(0, CHECKPOINT_E.x - s.pos.x);
+    return Math.max(0, s.pos.z - JZ) + Math.max(0, CHECKPOINT_E.x);
+  }
   if (s.mode === 'west' || s.mode === 'turn') return Math.max(0, s.pos.x - CHECKPOINT.x);
   return Math.max(0, s.pos.z - JZ) + Math.max(0, -CHECKPOINT.x);
 }
 
-/** 「← 左折」を出す区間か（T字路の手前で、まだ曲がっていない） */
+/** 「← 左折」（ルート2は「→ 右折」）を出す区間か（T字路の手前で、まだ曲がっていない） */
 export function turnHintActive(s: SimState): boolean {
   if (s.mode === 'north') return s.pos.z <= TURN_Z + DRIVE.turnHintDist;
   return s.mode === 'bounce' || s.mode === 'recover';
@@ -142,7 +178,7 @@ export function turnHintActive(s: SimState): boolean {
 
 const wrapPi = (a: number): number => Math.atan2(Math.sin(a), Math.cos(a));
 
-function bounce(s: SimState, where: 'east' | 'north', out: SimEvent[]): void {
+function bounce(s: SimState, where: 'east' | 'west' | 'north', out: SimEvent[]): void {
   out.push({ type: 'bounce', where, kmh: kmhOf(s) });
   s.speed = -DRIVE.bounceSpeed;
   s.pendingKmh = 0;
@@ -229,9 +265,14 @@ export function stepSim(s: SimState, inp: SimInput, dt: number): SimEvent[] {
         p.x = s.turnCx - R * Math.cos(phi); p.z = s.turnCz - R * Math.sin(phi); s.yaw = -phi;
       }
       if (phi >= Math.PI / 2) {
-        if (s.turnDir === -1) {
-          s.mode = 'west'; s.yaw = Math.PI / 2; p.z = JZ; s.junctionDone = true; s.intent = 0;
+        if (s.turnDir === turnDirOf(s.route)) {
+          // 正しい向きに曲がった：本線へ（ルート1＝西向き、ルート2＝東向き）
+          s.mode = s.route === 'drain' ? 'eastRun' : 'west';
+          s.yaw = s.route === 'drain' ? -Math.PI / 2 : Math.PI / 2;
+          p.z = JZ; s.junctionDone = true; s.intent = 0;
           out.push({ type: 'junctionDone' });
+        } else if (s.route === 'drain') {
+          s.mode = 'westBlock'; s.yaw = Math.PI / 2; p.z = JZ;   // 西は封鎖
         } else {
           s.mode = 'east'; s.yaw = -Math.PI / 2; p.z = JZ;
         }
@@ -243,6 +284,11 @@ export function stepSim(s: SimState, inp: SimInput, dt: number): SimEvent[] {
       if (p.x >= ROAD.eastFenceX - DRIVE.eastWallGap) { p.x = ROAD.eastFenceX - DRIVE.eastWallGap; bounce(s, 'east', out); }
       break;
     }
+    case 'westBlock': {
+      p.x -= s.speed * dt;
+      if (p.x <= ROAD.westBlockX + DRIVE.westWallGap) { p.x = ROAD.westBlockX + DRIVE.westWallGap; bounce(s, 'west', out); }
+      break;
+    }
     case 'bounce': {
       p.x += fx * s.speed * dt;
       p.z += fz * s.speed * dt;
@@ -252,20 +298,35 @@ export function stepSim(s: SimState, inp: SimInput, dt: number): SimEvent[] {
       break;
     }
     case 'recover': {
-      // 左へ旋回して西向きに立て直す（東向きからは北を経由して半回転）
+      // 正しい向きへ旋回して立て直す（ルート1：左へ旋回して西向き／ルート2：右へ旋回して東向き。行き止まりからは北を経由して半回転）
       s.speed = Math.min(DRIVE.recoverSpeed, s.speed + 9 * dt);
-      const need = (((Math.PI / 2 - s.yaw) % (Math.PI * 2)) + Math.PI * 2) % (Math.PI * 2);
+      const drain = s.route === 'drain';
+      const g = drain ? -1 : 1;                       // 旋回の向き（+1=左=yaw が増える）
+      const target = drain ? -Math.PI / 2 : Math.PI / 2;
+      const need = ((((target - s.yaw) * g) % (Math.PI * 2)) + Math.PI * 2) % (Math.PI * 2);
       const step = DRIVE.recoverTurnRate * dt;
       if (need <= step || need > Math.PI * 1.5) {
-        s.yaw = Math.PI / 2;
-        s.mode = 'west';
+        s.yaw = target;
+        s.mode = drain ? 'eastRun' : 'west';
         s.junctionDone = true;
         s.intent = 0;
         p.z = Math.max(JZ - DRIVE.latMax, Math.min(JZ + DRIVE.latMax, p.z));
         out.push({ type: 'junctionDone' });
-      } else s.yaw = wrapPi(s.yaw + step);
+      } else s.yaw = wrapPi(s.yaw + g * step);
       p.x += -Math.sin(s.yaw) * s.speed * dt;
       p.z += -Math.cos(s.yaw) * s.speed * dt;
+      break;
+    }
+    case 'eastRun': {
+      // 東向き：右手は南（+Z）。右に切ると z が増える
+      p.z += lat();
+      const lo = JZ - DRIVE.latMax, hi = JZ + DRIVE.latMax;
+      if (p.z > hi) { p.z = hi; s.latVel = 0; } else if (p.z < lo) { p.z = lo; s.latVel = 0; }
+      p.x += s.speed * dt;
+      if (!s.checkpointDone && p.x > CHECKPOINT_E.x) {
+        s.checkpointDone = true;
+        out.push({ type: 'checkpoint', kmh: kmhOf(s) });
+      }
       break;
     }
     case 'west': {

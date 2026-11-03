@@ -9,7 +9,22 @@ import { DEFAULT_WEAPON, type WeaponBuilder, type WeaponDef } from './weapons';
 export const CYAN = C.colors.cyan;
 
 export interface ArmRig { shoulder: THREE.Group; elbow: THREE.Group; upper: number; fore: number }
+/** 指（付け根・第二関節）。手の -Y 方向へ伸び、X 軸まわりに曲げると手のひら側（-Z）へ巻く */
+export interface FingerRig { base: THREE.Group; mid: THREE.Group }
+/** 手。group は拳の中心（肘の子）。fingers[0]=親指、1〜4=人差し指〜小指 */
+export interface HandRig { group: THREE.Group; fingers: FingerRig[] }
 export interface LegRig { hip: THREE.Group; knee: THREE.Group; ankle: THREE.Group }
+
+/** 指の曲げ（curl 0=まっすぐ…1=握り）と開き（spread 0=そろえる…1=大きく開く）。親指は少し控えめに曲げる */
+export function setFingers(h: HandRig, curl: number, spread: number): void {
+  const SP = [0, -1.5, -0.5, 0.5, 1.5];
+  for (let i = 0; i < h.fingers.length; i++) {
+    const f = h.fingers[i];
+    const thumb = i === 0;
+    f.base.rotation.set(curl * (thumb ? 1.0 : 1.45), 0, thumb ? Math.sign(f.base.position.x) * spread * 0.55 : SP[i] * spread * 0.2);
+    f.mid.rotation.set(curl * (thumb ? 0.9 : 1.55), 0, 0);
+  }
+}
 
 export interface PlayerVisual {
   /** root の子。カメラが近すぎる時の非表示、上下の揺れ・傾きはここ */
@@ -20,11 +35,16 @@ export interface PlayerVisual {
   hips: THREE.Group;
   spine: THREE.Group;
   chest: THREE.Group;
+  /** 左の鎖骨（左肩アーマーと肩関節の見た目。胸の子）。腕の付け根はポーズ側でこれに合わせて動かす */
+  clavL: THREE.Group;
   head: THREE.Group;
   legL: LegRig;
   legR: LegRig;
   armL: ArmRig;
   armR: ArmRig;
+  /** 手と指（必殺技で開く。通常は握ったまま） */
+  handL: HandRig;
+  handR: HandRig;
   /** 銃（胸の子。位置と向きはポーズ側で毎フレーム決める） */
   gunFrame: THREE.Group;
   muzzle: THREE.Object3D;
@@ -161,6 +181,8 @@ export function buildPlayerVisual(root: THREE.Group): PlayerVisual {
   const hips = joint(rig, 0, 0.9, 0);
   const spine = joint(hips, 0, 1.0, 0);
   const chest = joint(spine, 0, 1.3, 0);
+  // 左の鎖骨：左肩アーマーごと首の付け根を軸に回せる（必殺技の溜めで左肩を右前へ丸める）。腕は胸の子のまま
+  const clavL = joint(chest, -0.06, 1.47, 0);
   const head = joint(chest, 0, 1.56, 0);
 
   // ================= 腰 =================
@@ -190,16 +212,18 @@ export function buildPlayerVisual(root: THREE.Group): PlayerVisual {
   add(chest, 'dark', box(0.14, 0.07, 0.03), [0, 1.46, 0.175]);                              // 背面ベント
   add(chest, 'grey', cbox(0.2, 0.2, 0.07, 0.03, 0.008), [0, 1.32, 0.205]);                  // バッテリーパック
   for (const s of [1, -1]) add(chest, 'battery', box(0.018, 0.15, 0.012), [s * 0.045, 1.32, 0.245]);
+  for (const s of [1, -1]) add(chest, 'dark', cyl(0.05, 0.075, 0.1, 8), [s * 0.07, 1.18, 0.215]);   // ジェットのノズル
   add(chest, 'white', cyl(0.115, 0.15, 0.075, 6), [0, 1.53, 0.02]);                          // 襟
   add(chest, 'dark', cyl(0.06, 0.066, 0.1, 8), [0, 1.57, 0]);                               // 首
 
   // 肩アーマー（胸に固定）
   for (const s of [1, -1]) {
     const x = s * 0.315;
-    add(chest, 'white', poly(mirror([[-0.13, -0.08], [0.125, -0.1], [0.14, -0.01], [0.105, 0.08], [-0.03, 0.135], [-0.135, 0.09]], s), 0.27), [x, 1.46, 0]);
-    add(chest, 'grey', poly(mirror([[-0.1, 0.0], [0.115, 0.0], [0.125, -0.09], [0.08, -0.14], [-0.08, -0.14]], s), 0.23), [x + s * 0.005, 1.33, 0]);
-    add(chest, 'yellow', cbox(0.075, 0.024, 0.13, 0.012, 0.004), [x - s * 0.005, 1.608, 0], [0, 0, -s * 0.28]); // 肩上の黄色パネル
-    add(chest, 'black', ball(0.075), [s * C.arm.shoulderX, C.arm.shoulderY, 0]);            // 肩関節
+    const J = s < 0 ? clavL : chest;
+    add(J, 'white', poly(mirror([[-0.13, -0.08], [0.125, -0.1], [0.14, -0.01], [0.105, 0.08], [-0.03, 0.135], [-0.135, 0.09]], s), 0.27), [x, 1.46, 0]);
+    add(J, 'grey', poly(mirror([[-0.1, 0.0], [0.115, 0.0], [0.125, -0.09], [0.08, -0.14], [-0.08, -0.14]], s), 0.23), [x + s * 0.005, 1.33, 0]);
+    add(J, 'yellow', cbox(0.075, 0.024, 0.13, 0.012, 0.004), [x - s * 0.005, 1.608, 0], [0, 0, -s * 0.28]); // 肩上の黄色パネル
+    add(J, 'black', ball(0.075), [s * C.arm.shoulderX, C.arm.shoulderY, 0]);            // 肩関節
   }
 
   // ================= 頭 =================
@@ -292,6 +316,43 @@ export function buildPlayerVisual(root: THREE.Group): PlayerVisual {
   };
   const armR = mkArm(1, C.arm.right.upper, C.arm.right.fore);
   const armL = mkArm(-1, C.arm.left.upper, C.arm.left.fore);
+  // 指（結合しない別メッシュ。静的パーツの finalize の後に黒グローブ色で付ける）
+  const mkHand = (arm: ArmRig, s: 1 | -1): HandRig => {
+    const group = new THREE.Group();
+    group.position.set(0, -arm.fore, 0);
+    arm.elbow.add(group);
+    const fingers: FingerRig[] = [];
+    // 親指、人差し指〜小指：x 位置・長さ（付け根/先）・太さ
+    const spec: { x: number; y: number; z: number; l1: number; l2: number; w: number }[] = [
+      { x: s * 0.062, y: -0.01, z: -0.045, l1: 0.05, l2: 0.042, w: 0.03 },
+      { x: -0.039, y: -0.052, z: -0.03, l1: 0.052, l2: 0.042, w: 0.026 },
+      { x: -0.013, y: -0.056, z: -0.03, l1: 0.058, l2: 0.046, w: 0.027 },
+      { x: 0.013, y: -0.054, z: -0.03, l1: 0.054, l2: 0.043, w: 0.026 },
+      { x: 0.039, y: -0.05, z: -0.03, l1: 0.044, l2: 0.036, w: 0.024 },
+    ];
+    for (const f of spec) {
+      const base = new THREE.Group();
+      base.position.set(f.x, f.y, f.z);
+      const mid = new THREE.Group();
+      mid.position.set(0, -f.l1, 0);
+      const g1 = new THREE.BoxGeometry(f.w, f.l1, f.w * 1.05); g1.translate(0, -f.l1 / 2, 0);
+      const g2 = new THREE.BoxGeometry(f.w * 0.92, f.l2, f.w); g2.translate(0, -f.l2 / 2, 0);
+      for (const [grp, g] of [[base, g1], [mid, g2]] as const) {
+        const m = new THREE.Mesh(g, mats.black);
+        m.castShadow = true;
+        const o = new THREE.Mesh(g, outMat);
+        grp.add(m, o);
+      }
+      base.add(mid);
+      group.add(base);
+      fingers.push({ base, mid });
+    }
+    return { group, fingers };
+  };
+  const handR = mkHand(armR, 1);
+  const handL = mkHand(armL, -1);
+  setFingers(handR, 1, 0);
+  setFingers(handL, 1, 0);
 
   // スプリング（TubeGeometry。伸びはシェーダーで Y を aAxial 分だけずらす＝ピッチが広がる）
   const SP = C.spring;
@@ -416,26 +477,28 @@ export function buildPlayerVisual(root: THREE.Group): PlayerVisual {
   body.add(pivot);
   root.add(body);
 
-  // 飛行ジェット（ブーツ下）
+  // 飛行ジェット：背中のユニット（バッテリーパックの下）の2つのノズルから、下向きに噴き出す。胸の子なので体の傾きに付いてくる
   const jets = new THREE.Group();
   const jetMats: THREE.MeshBasicMaterial[] = [];
   for (const s of [-1, 1]) {
     const m = new THREE.MeshBasicMaterial({ color: CYAN, transparent: true, opacity: 0.7, depthWrite: false });
     jetMats.push(m);
-    const cone = new THREE.Mesh(new THREE.ConeGeometry(0.11, 0.7, 10), m);
-    cone.rotation.x = Math.PI;
-    cone.position.set(s * 0.13, -0.3, 0);
+    const geo = new THREE.ConeGeometry(0.075, 0.75, 10);
+    geo.rotateX(Math.PI);
+    geo.translate(0, -0.375, 0);        // 底（根元）が原点、先が下
+    const cone = new THREE.Mesh(geo, m);
+    cone.position.set(s * 0.07, -0.17, 0.215);
     jets.add(cone);
   }
   const jetLight = new THREE.PointLight(CYAN, 0, 7, 2);
-  jetLight.position.set(0, -0.1, 0);
+  jetLight.position.set(0, -0.45, 0.3);
   jets.add(jetLight);
-  root.add(jets);
+  chest.g.add(jets);
 
   root.updateMatrixWorld(true);
   return {
-    body, pivot, rig: rig.g, hips: hips.g, spine: spine.g, chest: chest.g, head: head.g,
-    legL, legR, armL, armR, gunFrame: gun.g, muzzle,
+    body, pivot, rig: rig.g, hips: hips.g, spine: spine.g, chest: chest.g, clavL: clavL.g, head: head.g,
+    legL, legR, armL, armR, handL, handR, gunFrame: gun.g, muzzle,
     springStretch, springMat, flashMats, batteryMat, gunGlowMat, scouterMat, scouterGlowMat, scouterGlow,
     get weapon() { return state.weapon; }, setWeapon,
     jets, jetMats, jetLight, chargeGroup, chargeCore, chargeGlow, sparks, chargeLight,

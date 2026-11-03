@@ -17,6 +17,8 @@ export interface EnemyRayHit {
   t: number;
   weak: boolean;
   point: THREE.Vector3;
+  /** 部位（hitSpheres を持つ敵だけ） */
+  part?: string;
 }
 
 import { segmentSphere } from './collision';
@@ -27,6 +29,15 @@ export function raycastEnemies(enemies: Enemy[], p0: THREE.Vector3, p1: THREE.Ve
   const tmp = new THREE.Vector3();
   for (const e of enemies) {
     if (!isTargetable(e)) continue;
+    if (e.hitSpheres) {
+      let ph: { t: number; part: string; weak: boolean } | null = null;
+      for (const h of e.hitSpheres) {
+        const t = segmentSphere(p0, p1, h.pos, h.radius + extraRadius);
+        if (t !== null && (ph === null || t < ph.t)) ph = { t, part: h.part, weak: !!h.weak };
+      }
+      if (ph && (best === null || ph.t < best.t)) best = { enemy: e, t: ph.t, weak: ph.weak, part: ph.part, point: p0.clone().lerp(p1, ph.t) };
+      continue;
+    }
     const tb = segmentSphere(p0, p1, e.pos, e.radius + extraRadius);
     let hit: { t: number; weak: boolean } | null = tb !== null ? { t: tb, weak: false } : null;
     for (const wp of e.weakPoints) {

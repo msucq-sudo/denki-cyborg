@@ -7,17 +7,19 @@
 import * as THREE from 'three';
 import type { World } from '../core/types';
 import { spawnBurst, spawnFlash, spawnShockwave } from '../core/effects';
-import { CHECKPOINT, ROAD } from '../level/surge/layout';
-import { playFailCutscene, playSuccessCutscene, type CutsceneHandle } from '../cinematic/api';
+import { CHECKPOINT, CHECKPOINT_E, ROAD, type SurgeRoute } from '../level/surge/layout';
+import {
+  playDrainFailCutscene, playDrainStallCutscene, playDrainSuccessCutscene, playFailCutscene, playSuccessCutscene, type CutsceneHandle,
+} from '../cinematic/api';
 import { getDriveHud, type DriveHudView } from '../ui/driveHud';
 import { buildCar, CAR, type CarModel } from './carModel';
 import {
-  createSim, distToCheckpoint, DRIVE, kmhOf, stepSim, turnHintActive, cursorAt,
+  checkpointOf, classifyCheckpoint, createSim, distToCheckpoint, DRIVE, isRunMode, kmhOf, stepSim, turnDirOf, turnHintActive, cursorAt,
   type SimEvent, type SimState,
 } from './driveSim';
 import {
-  buildObstacle, buildZako, disposeObstacle, disposeZako, flingZako, idleZako, planObstacles, planZako, stepFlung, updateObstacle,
-  type Obstacle, type Zako,
+  buildHeavy, buildObstacle, buildZako, disposeObstacle, disposeZako, flingZako, HEAVY_R, idleZako, planHeavies, planObstacles, planZako, stepFlung, updateObstacle,
+  type Heavy, type Obstacle, type Zako,
 } from './driveProps';
 import { createSpeedLines, type SpeedLines } from './driveFx';
 import { KMH, type DriveState } from './types';
@@ -26,8 +28,13 @@ import { KMH, type DriveState } from './types';
 export interface DriveRuntime extends DriveState, SimState {
   car: CarModel;
   pos: THREE.Vector3;
+  route: SurgeRoute;
   obstacles: Obstacle[];
   zako: Zako[];
+  /** ルート2だけ：道に立つヘビー（はね飛ばせない。ぶつかると受け止められる） */
+  heavies: Heavy[];
+  /** ヘビーに受け止められた（phase='crashed' のあいだ、車を止めてヘビーを押し戻す動き用） */
+  caught: { heavy: Heavy; dir: 1 | -1; push: number } | null;
   /** はね飛ばした雑魚の数 */
   hits: number;
   /** 衝突してからの秒数（phase='crashed'） */
@@ -62,7 +69,7 @@ const MAX_MS = DRIVE.maxKmh * KMH;
 
 // ---------------------------------------------------------------- 作る
 
-export function initDrive(world: World, at: { x: number; z: number; yaw: number }): DriveState | null {
+export function initDrive(world: World, at: { x: number; z: number; yaw: number }, route: SurgeRoute = 'camp'): DriveState | null {
   const car = buildCar();
   car.driver.visible = false; // 乗るまで運転手は出さない
   car.root.rotation.order = 'YXZ';
@@ -70,25 +77,28 @@ export function initDrive(world: World, at: { x: number; z: number; yaw: number 
   car.root.rotation.y = at.yaw;
   world.scene.add(car.root);
 
-  const sim = createSim(at.x, at.z, at.yaw);
+  const sim = createSim(at.x, at.z, at.yaw, route);
   const pos = new THREE.Vector3(at.x, 0, at.z);
-  const obDefs = planObstacles();
+  const obDefs = planObstacles(route);
   const obstacles = obDefs.map(buildObstacle);
   for (const o of obstacles) world.scene.add(o.root);
-  const zako = planZako(obDefs).map(buildZako);
+  const heavyDefs = planHeavies(route);
+  const heavies = heavyDefs.map((h) => buildHeavy(h, world.scene));
+  const zako = planZako(obDefs, undefined, route, heavyDefs).map(buildZako);
   for (const z of zako) world.scene.add(z.root);
 
   const d: DriveRuntime = Object.assign(sim, {
     phase: 'parked' as DriveState['phase'],
     car, pos,
     result: 'none' as DriveState['result'],
-    obstacles, zako, hits: 0, crashT: 0, time: 0,
+    obstacles, zako, heavies, caught: null, hits: 0, crashT: 0, time: 0,
     cam: { yaw: at.yaw, focus: pos.clone(), kick: 0, init: false },
     shake: 0, cutscene: null, checkpointKmh: 0,
-    totalDist: Math.max(1, Math.max(0, at.z - ROAD.junctionZ) + -CHECKPOINT.x),
+    totalDist: Math.max(1, Math.max(0, at.z - ROAD.junctionZ) + Math.abs(checkpointOf(route).x)),
     deadSent: false, bumps: 0, sparkT: 0, fx: createSpeedLines(world.scene),
   }) as unknown as DriveRuntime;
   d.pos = pos;
+  d.route = route;
   world.level.data.drive = d;
   // 新しいワールドでは HUD を閉じる（前のワールドの表示を残さない）
   getDriveHud().reset();
@@ -175,7 +185,7 @@ function driving(world: World, d: DriveRuntime, dt: number): void {
   d.car.update(dt, d.speed);
   syncPlayer(world, d);
   updateChaseCam(world, d, dt);
-  d.fx.update(d.pos.x, d.pos.z, d.mode === 'west' ? -1 : 0, kmhOf(d), dt);
+  d.fx.update(d.pos.x, d.pos.z, d.mode === 'west' ? -1 : d.mode === 'eastRun' ? 1 : 0, kmhOf(d), dt);
 
   if (d.phase === 'driving') {
     hud.show();
@@ -185,10 +195,10 @@ function driving(world: World, d: DriveRuntime, dt: number): void {
 
 function hudView(world: World, d: DriveRuntime): DriveHudView {
   return {
-    kmh: kmhOf(d), maxKmh: DRIVE.maxKmh, targetKmh: CHECKPOINT.kmh,
+    kmh: kmhOf(d), maxKmh: DRIVE.maxKmh, targetKmh: checkpointOf(d.route).kmh,
     cursor: cursorAt(d.cursorT), perfectHalf: DRIVE.perfectHalf, goodHalf: DRIVE.goodHalf, cooldown: d.cooldown,
     distLeft: distToCheckpoint(d), totalDist: d.totalDist,
-    turnHint: turnHintActive(d), recovering: d.mode === 'bounce' || d.mode === 'recover',
+    turnHint: turnHintActive(d), turnDir: turnDirOf(d.route), recovering: d.mode === 'bounce' || d.mode === 'recover',
     device: world.input.lastDevice, hits: d.hits,
   };
 }
@@ -214,7 +224,7 @@ function onSimEvent(world: World, d: DriveRuntime, e: SimEvent): void {
     case 'turnStart':
       break;
     case 'junctionDone':
-      world.toasts.push({ text: d.bumps > 0 ? '立て直した！アクセルを踏め' : '左折成功！アクセルを踏め', timer: 2.2 });
+      world.toasts.push({ text: d.bumps > 0 ? '立て直した！アクセルを踏め' : d.route === 'drain' ? '右折成功！アクセルを踏め' : '左折成功！アクセルを踏め', timer: 2.2 });
       break;
     case 'bounce': {
       d.bumps++;
@@ -223,7 +233,11 @@ function onSimEvent(world: World, d: DriveRuntime, e: SimEvent): void {
       spawnBurst(world, _v, 0xffd070, 12, 6, 0.5);
       spawnFlash(world, _v, 0xfff0c0, 6, 6, 0.15);
       world.events.emit('driveBump', { pos: _v.clone(), kmh: e.kmh });
-      world.toasts.push({ text: e.where === 'east' ? '東は柵だ！左へ曲がれ' : '行き止まりだ！左へ曲がれ', timer: 2.2 });
+      world.toasts.push({
+        text: e.where === 'east' ? '東は柵だ！左へ曲がれ' : e.where === 'west' ? '西は封鎖されている！右へ曲がれ'
+          : d.route === 'drain' ? '行き止まりだ！右へ曲がれ' : '行き止まりだ！左へ曲がれ',
+        timer: 2.2,
+      });
       break;
     }
     case 'checkpoint':
@@ -236,7 +250,7 @@ function onSimEvent(world: World, d: DriveRuntime, e: SimEvent): void {
 
 /** 衝突の判定。障害物に当たって止まったら true */
 function collide(world: World, d: DriveRuntime, dt: number): boolean {
-  if (d.mode !== 'west') return false;
+  if (!isRunMode(d)) return false;
   const px = d.pos.x, pz = d.pos.z;
   // 障害物：当たったら失敗
   for (const o of d.obstacles) {
@@ -244,6 +258,15 @@ function collide(world: World, d: DriveRuntime, dt: number): boolean {
     if (Math.abs(o.def.x - px) < o.def.d / 2 + DRIVE.halfLen - 0.2 && Math.abs(o.def.z - pz) < o.def.w / 2 + DRIVE.halfWid - 0.1) {
       o.hit = true;
       crash(world, d, o);
+      return true;
+    }
+  }
+  // ヘビー：はね飛ばせない。ぶつかると受け止められて止まり、そのまま衝突の流れ（死亡画面）へ
+  for (const h of d.heavies) {
+    if (h.state !== 'idle') continue;
+    const reach = DRIVE.halfLen + HEAVY_R + Math.abs(d.speed) * dt * 0.5;
+    if (Math.abs(h.actor.pos.x - px) < reach && Math.abs(h.actor.pos.z - pz) < DRIVE.halfWid + HEAVY_R - 0.25) {
+      catchByHeavy(world, d, h);
       return true;
     }
   }
@@ -271,6 +294,35 @@ function collide(world: World, d: DriveRuntime, dt: number): boolean {
   return false;
 }
 
+/** 走る向き（x の符号）：ルート2は東（+1）、ルート1は西（-1） */
+const runDir = (d: DriveRuntime): 1 | -1 => (d.route === 'drain' ? 1 : -1);
+
+/** ヘビーに受け止められた：車はぐっと止まり、ヘビーは踏ん張って少し押し戻される。あとは障害物と同じ衝突の流れ（crashed） */
+function catchByHeavy(world: World, d: DriveRuntime, h: Heavy): void {
+  const dir = runDir(d);
+  h.state = 'caught';
+  h.actor.mode = 'skid';
+  h.actor.lean = -0.18;
+  d.caught = { heavy: h, dir, push: Math.min(3.4, 1.2 + Math.abs(d.speed) * 0.025) };
+  d.phase = 'crashed';
+  d.crashT = 0;
+  d.sparkT = 0;
+  d.speed = 0;
+  d.pendingKmh = 0;
+  d.shake = 1;
+  d.cam.kick = 0;
+  // 車の先端をヘビーの正面につける
+  d.pos.x = h.actor.pos.x - dir * (DRIVE.halfLen + HEAVY_R);
+  carFront(d, _v, DRIVE.halfLen, 1.1);
+  const at = _v.clone();
+  spawnShockwave(world, at, 0xff9a40, 5, 0.5);
+  spawnBurst(world, at, 0xffd070, 26, 12, 0.9);
+  spawnBurst(world, at, 0x7ff6ff, 12, 9, 0.7);
+  spawnFlash(world, at, 0xfff0c0, 14, 12, 0.25);
+  world.events.emit('driveCrash', { pos: at });
+  getDriveHud().hide();
+}
+
 function crash(world: World, d: DriveRuntime, o: Obstacle): void {
   d.phase = 'crashed';
   d.crashT = 0;
@@ -286,7 +338,7 @@ function crash(world: World, d: DriveRuntime, o: Obstacle): void {
   spawnBurst(world, at, 0xff6a2a, 14, 8, 0.8);
   spawnFlash(world, at, 0xfff0c0, 12, 12, 0.25);
   // 障害物は車にはじかれて少し動く
-  o.root.position.x -= 1.6;
+  o.root.position.x += 1.6 * runDir(d);
   o.root.rotation.z += 0.12;
   world.events.emit('driveCrash', { pos: at });
   getDriveHud().hide();
@@ -302,6 +354,14 @@ function crashed(world: World, d: DriveRuntime, dt: number): void {
   d.car.root.rotation.x = -0.28 * k * Math.cos(t * 9);
   d.car.root.position.y = 0.45 * k * Math.abs(Math.sin(t * 9));
   d.car.root.rotation.y = d.yaw + 0.1 * k * Math.sin(t * 14);
+  const c = d.caught;
+  if (c) {
+    // ヘビーが踏ん張りながら押し戻され、車はその正面につき続ける
+    const slide = c.push * (1 - Math.exp(-7 * t));
+    c.heavy.actor.pos.x = c.heavy.baseX + c.dir * slide;
+    d.pos.x = c.heavy.actor.pos.x - c.dir * (DRIVE.halfLen + HEAVY_R);
+    d.car.root.position.x = d.pos.x;
+  }
   d.car.update(dt, 0);
   if (t > 0.25) d.car.setEngine(false);
   // 火花
@@ -321,10 +381,11 @@ function crashed(world: World, d: DriveRuntime, dt: number): void {
 
 // ---------------------------------------------------------------- 判定地点 → 演出
 
-function reachCheckpoint(world: World, d: DriveRuntime, kmh: number): void {
-  const ok = kmh >= CHECKPOINT.kmh;
+function reachCheckpoint(world: World, d: DriveRuntime, kmh: number, doneOverride?: () => void): void {
+  const result = classifyCheckpoint(d.route, kmh);
+  const ok = result === 'success';
   d.checkpointKmh = kmh;
-  d.result = ok ? 'success' : 'fail';
+  d.result = result;
   d.phase = 'cutscene';
   d.steer = 0;
   d.latVel = 0;
@@ -334,12 +395,43 @@ function reachCheckpoint(world: World, d: DriveRuntime, kmh: number): void {
   getDriveHud().hide();
   d.fx.update(0, 0, 0, 0, 0);
   world.events.emit('driveCheckpoint', { ok, kmh });
-  const onDone = (): void => {
+  const onDone = doneOverride ? (): void => { d.phase = 'done'; doneOverride(); } : (): void => {
     d.phase = 'done';
+    if (d.route === 'drain') {
+      // ルート2：成功＝ドレイン装置の中（level 'drain'）へ。失敗・失速＝死亡画面（リトライは車に乗ったところ）
+      if (ok) world.level.data.nextLevel = { level: 'drain', startAt: 'entrance' };
+      else if (!d.deadSent) { d.deadSent = true; world.player.hp = 0; }
+      return;
+    }
     if (ok) world.toasts.push({ text: 'サージ収容所に潜入！（続きは今後）', timer: 6 });
     else if (!d.deadSent) { d.deadSent = true; world.player.hp = 0; }
   };
-  d.cutscene = ok ? playSuccessCutscene(world, d, onDone) : playFailCutscene(world, d, onDone);
+  if (d.route === 'drain') {
+    d.cutscene = result === 'success' ? playDrainSuccessCutscene(world, d, onDone)
+      : result === 'fail' ? playDrainFailCutscene(world, d, onDone) : playDrainStallCutscene(world, d, onDone);
+  } else d.cutscene = ok ? playSuccessCutscene(world, d, onDone) : playFailCutscene(world, d, onDone);
+}
+
+/** ムービー単体モード：判定地点の手前に車を置いて、すぐに成功（340km/h）／失敗（180km/h）の演出を始める。終わったら onDone */
+export function playCheckpointMovie(world: World, ok: boolean | number, onDone: () => void): void {
+  const d = getDrive(world);
+  if (!d) return;
+  if (d.phase === 'parked') startDrive(world);
+  // ok は true=成功(340km/h)・false=失敗(180km/h)、数値ならその速度（ルート2の失敗 250・失速 150 など）
+  const kmh = typeof ok === 'number' ? ok : ok ? 340 : 180;
+  d.junctionDone = true; d.intent = 0;
+  if (d.route === 'drain') {
+    d.mode = 'eastRun'; d.yaw = -Math.PI / 2;
+    d.pos.set(CHECKPOINT_E.x + 2, 0, ROAD.junctionZ);
+  } else {
+    d.mode = 'west'; d.yaw = Math.PI / 2;
+    d.pos.set(CHECKPOINT.x + 2, 0, ROAD.junctionZ);
+  }
+  d.speed = kmh * KMH;
+  d.checkpointDone = true;
+  placeCar(d);
+  d.cam.init = false;
+  reachCheckpoint(world, d, kmh, onDone);
 }
 
 // ---------------------------------------------------------------- 雑魚・障害物の毎フレーム
@@ -350,6 +442,20 @@ function stepProps(world: World, d: DriveRuntime, dt: number, cull = true): void
   for (const o of d.obstacles) {
     const dist = Math.abs(o.def.x - cx);
     if (dist < 700) updateObstacle(o, t, dist);
+  }
+  for (const h of d.heavies) {
+    const a = h.actor;
+    const dx = Math.abs(a.pos.x - cx);
+    if (cull) a.root.visible = dx < 340;
+    if (dx < 250 || h.state === 'caught') {
+      if (h.state === 'idle') {
+        // 近づくと車の方を向いて構える
+        const near = dx < 70;
+        a.mode = near ? 'brace' : 'idle';
+        a.turnTo(near ? Math.atan2(d.pos.x - a.pos.x, d.pos.z - a.pos.z) : -Math.PI / 2, dt, 5);
+      }
+      a.update(dt);
+    }
   }
   for (const z of d.zako) {
     if (z.state === 'idle') {
@@ -367,7 +473,7 @@ function stepProps(world: World, d: DriveRuntime, dt: number, cull = true): void
 function placeCar(d: DriveRuntime): void {
   const r = d.car.root;
   // 舵に合わせて車体を少し内側へ向ける（進行方向 d.yaw は変えない）
-  const tilt = d.mode === 'west' || d.mode === 'north' ? -d.steer * 0.1 : 0;
+  const tilt = isRunMode(d) || d.mode === 'north' ? -d.steer * 0.1 : 0;
   r.position.set(d.pos.x, 0, d.pos.z);
   r.rotation.set(0, d.yaw + tilt, 0);
 }
@@ -408,7 +514,9 @@ function updateChaseCam(world: World, d: DriveRuntime, dt: number, snap = false)
   const sx = (Math.sin(t * 91.3) + Math.sin(t * 57.1)) * 0.5 * amp;
   const sy = (Math.sin(t * 77.7) + Math.sin(t * 43.9)) * 0.5 * amp;
   // T字路の東の柵の向こう側へカメラが出ないようにする（立て直しで西向きの時、後ろ＝東にカメラが来る）
-  cam.position.set(Math.min(_focus.x + bx * dist + sx, ROAD.eastFenceX - 1.5), _focus.y + height + sy, _focus.z + bz * dist);
+  // ルート2は西の封鎖の向こう側へカメラが出ないようにする（立て直しで東向きの時、後ろ＝西にカメラが来る）
+  const camX = d.route === 'drain' ? Math.max(_focus.x + bx * dist + sx, ROAD.westBlockX + 1.5) : Math.min(_focus.x + bx * dist + sx, ROAD.eastFenceX - 1.5);
+  cam.position.set(camX, _focus.y + height + sy, _focus.z + bz * dist);
   _look.set(_focus.x - bx * (6 + 8 * speedK), _focus.y + 1.2, _focus.z - bz * (6 + 8 * speedK));
   cam.lookAt(_look);
   cam.rotateZ(Math.sin(t * 63) * amp * 0.12);
@@ -427,11 +535,13 @@ function exposeDebug(world: World, d: DriveRuntime): void {
     setSpeed: (kmh: number) => { d.speed = kmh * KMH; d.pendingKmh = 0; },
     /** 西向きの直線の x 地点へ移動（T字路は曲がった扱い） */
     teleport: (x: number, z = ROAD.junctionZ) => {
-      d.mode = 'west'; d.junctionDone = true; d.yaw = Math.PI / 2; d.pos.set(x, 0, z); d.intent = 0;
-      d.checkpointDone = x < CHECKPOINT.x;
+      const e = d.route === 'drain';
+      d.mode = e ? 'eastRun' : 'west'; d.junctionDone = true; d.yaw = e ? -Math.PI / 2 : Math.PI / 2; d.pos.set(x, 0, z); d.intent = 0;
+      d.checkpointDone = e ? x > checkpointOf('drain').x : x < CHECKPOINT.x;
       placeCar(d); d.cam.init = false;
     },
     obstacles: () => d.obstacles.map((o) => ({ x: o.def.x, z: o.def.z, kind: o.def.kind })),
+    heavies: () => d.heavies.map((h) => ({ x: h.actor.pos.x, z: h.actor.pos.z, state: h.state })),
     zako: () => d.zako.map((z) => ({ x: z.pos.x, z: z.pos.z, kind: z.kind, state: z.state })),
   };
 }

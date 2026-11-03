@@ -120,13 +120,13 @@ describe('redCrawler', () => {
     expect(e.ai.model.parts.legs).toHaveLength(4);
   });
 
-  it('as an enemy it charges the player like a crawler', () => {
+  it('as an enemy it stays still and does not charge', () => {
     world.player.pos.set(0, 0, 12);
     const e = spawnEnemy(world, 'redCrawler', V(0, 0.7, 0));
     e.ai.alert = 4;
     const z0 = e.pos.z;
     run(1);
-    expect(e.pos.z).toBeGreaterThan(z0 + 2);
+    expect(e.pos.z).toBeCloseTo(z0, 5);
   });
 
   it('as an ally it runs at and bites a nearby enemy', () => {
@@ -218,5 +218,40 @@ describe('medic', () => {
     const d0 = m.pos.distanceTo(world.player.pos);
     run(1.5);
     expect(m.pos.distanceTo(world.player.pos)).toBeGreaterThan(d0);
+  });
+});
+
+describe('redMedic', () => {
+  it('is hackable, has the hack cue, and does not heal others as an enemy', () => {
+    expect(KIND_MODULES.redMedic!.hackable).toBe(true);
+    expect(typeof KIND_MODULES.redMedic!.updateAlly).toBe('function');
+    const foe = spawnEnemy(world, 'walker', V(0, 0.7, 0));
+    foe.hp = 10;
+    const m = spawnEnemy(world, 'redMedic', V(2, 0.3, 0));
+    expect(m.ai.model.parts.beacon).toBeTruthy();
+    run(3);
+    expect(foe.hp).toBe(10);
+  });
+
+  it('as an ally it follows the player and heals the hurt player', () => {
+    world.player.pos.set(0, 0, 10);
+    world.player.hp = 40;
+    const m = spawnEnemy(world, 'redMedic', V(0, 0.3, 0));
+    m.allied = true;
+    m.ai.allyT = HACK.allyTime; m.ai.allyMax = HACK.allyTime;
+    run(4);
+    expect(m.pos.distanceTo(world.player.pos)).toBeLessThan(MEDIC.reach + 1);
+    expect(world.player.hp).toBeGreaterThan(50);
+  });
+
+  it('as an ally it heals a hurt allied enemy when the player is fine', () => {
+    world.player.pos.set(0, 0, 4);
+    const ally = spawnEnemy(world, 'walker', V(0, 0.7, 0));
+    ally.allied = true; ally.hp = 10;
+    const m = spawnEnemy(world, 'redMedic', V(1.5, 0.3, 0));
+    m.allied = true;
+    m.ai.allyT = HACK.allyTime; m.ai.allyMax = HACK.allyTime;
+    run(3);
+    expect(ally.hp).toBeGreaterThan(20);
   });
 });

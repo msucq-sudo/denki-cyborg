@@ -108,7 +108,7 @@ export function camp2Script(rt: Runtime, probe?: Camp2CutProbe): Script {
     // 振り向く：頭と背骨をひねって左肩ごしに真後ろを見る。体が向き直るにつれ戻す
     const lookK = smooth((T - BEAT.look0) / (BEAT.look1 - BEAT.look0)) * (1 - turnK);
     const down = T < BEAT.look0 ? 0.28 * smooth(T / 0.5) * (T < BEAT.freeze ? 1 : 1 - smooth((T - BEAT.freeze) / 0.4) * 0.6) : 0;
-    v.head.rotation.x += down;                           // 錠前を見下ろす
+    v.head.rotation.x -= down;                           // 錠前を見下ろす（この体は x が正で上を向く）
     v.head.rotation.y = 1.25 * lookK + (T < BEAT.freeze ? Math.sin(T * 9) * 0.04 : 0);
     v.spine.rotation.y += 0.6 * lookK;
     v.chest.rotation.y = 0.15 * lookK;

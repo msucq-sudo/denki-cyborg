@@ -44,26 +44,16 @@ describe('redDrone', () => {
     expect(e.ai.model.weakPoints).toHaveLength(1);
   });
 
-  it('behaves like a drone: closes in and shoots', () => {
+  it('stays still and never shoots while an enemy (even when alerted or tethered)', () => {
     world.player.pos.set(0, 0, 20);
     const e = spawnEnemy(world, 'redDrone', V(0, 2, 0));
     e.ai.alert = 4;
     run(1.5);
-    expect(e.pos.z).toBeGreaterThan(1);
+    e.tethered = true;
     run(6);
-    expect(world.projectiles.some((p) => p.owner === 'enemy')).toBe(true);
-  });
-
-  it('is slower while tethered', () => {
-    world.player.pos.set(0, 0, 60);
-    const free = spawnEnemy(world, 'redDrone', V(-30, 2, 0));
-    const held = spawnEnemy(world, 'redDrone', V(30, 2, 0));
-    free.ai.alert = 4; held.ai.alert = 4;
-    held.tethered = true;
-    run(2);
-    expect(free.pos.z).toBeGreaterThan(2);
-    expect(held.pos.z).toBeGreaterThan(0);
-    expect(held.pos.z).toBeLessThan(free.pos.z * (HACK.jamSpeedMul + 0.3));
+    expect(e.pos.z).toBeCloseTo(0, 5);
+    expect(e.pos.x).toBeCloseTo(0, 5);
+    expect(world.projectiles.some((p) => p.owner === 'enemy')).toBe(false);
   });
 
   it('as an ally flies near the player, shoots the nearest enemy, and tints blue', () => {

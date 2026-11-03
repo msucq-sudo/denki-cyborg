@@ -42,27 +42,16 @@ describe('redWalker', () => {
     expect(e.ai.model.weakPoints).toHaveLength(1);
   });
 
-  it('rolls at the player and shoots like a walker', () => {
+  it('stays still and never shoots while an enemy (even when alerted or tethered)', () => {
     world.player.pos.set(0, 0, 14);
     const e = spawnEnemy(world, 'redWalker', V(0, 0.7, 0));
     e.ai.alert = 4;
     run(1);
-    expect(e.pos.z).toBeGreaterThan(0.5); // 前進する
+    e.tethered = true;
     run(4);
-    expect(world.projectiles.some((p) => p.owner === 'enemy')).toBe(true);
-  });
-
-  it('is slowed while tethered', () => {
-    const free = spawnEnemy(world, 'redWalker', V(-20, 0.7, 0));
-    const held = spawnEnemy(world, 'redWalker', V(20, 0.7, 0));
-    world.player.pos.set(0, 0, 40);
-    free.ai.alert = 4; held.ai.alert = 4;
-    held.tethered = true;
-    run(1.5);
-    const dFree = free.pos.z, dHeld = held.pos.z;
-    expect(dFree).toBeGreaterThan(1);
-    expect(dHeld).toBeLessThan(dFree * (HACK.jamSpeedMul + 0.25));
-    expect(dHeld).toBeGreaterThan(0);
+    expect(e.pos.z).toBeCloseTo(0, 5);
+    expect(e.pos.x).toBeCloseTo(0, 5);
+    expect(world.projectiles.some((p) => p.owner === 'enemy')).toBe(false);
   });
 
   it('as an ally shoots the nearest enemy, tints blue, and keeps its weapon off the player', () => {

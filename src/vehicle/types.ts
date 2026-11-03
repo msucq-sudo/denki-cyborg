@@ -12,7 +12,7 @@ export interface CarVisual {
   setSteer(v: number): void;
   update(dt: number, speedMps: number): void;
   /** 運転手の姿勢。'drive'=普通、'lean'=ハンドルから前に乗り出す（失敗演出）、'brace'=衝突に備える */
-  setDriverPose(pose: 'drive' | 'lean' | 'brace'): void;
+  setDriverPose(pose: 'drive' | 'lean' | 'brace' | 'push' | 'scratch'): void;
   dispose(): void;
 }
 
@@ -31,8 +31,10 @@ export interface DriveState {
   pos: THREE.Vector3;
   yaw: number;
   speed: number;
-  /** 判定地点を越えたときの結果 */
-  result: 'none' | 'success' | 'fail';
+  /** 判定地点を越えたときの結果。'stall' はルート2（ドレイン装置へ）だけ：坂の途中で失速 */
+  result: 'none' | 'success' | 'fail' | 'stall';
+  /** どちらの道か（'camp'＝収容所へ西向き／'drain'＝ドレイン装置へ東向き。走行方向 yaw=-π/2 が東） */
+  route?: 'camp' | 'drain';
 }
 
 /** km/h ⇔ m/s */

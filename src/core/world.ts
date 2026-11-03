@@ -61,6 +61,7 @@ export function createWorld(input: Input, events: EventBus, aspect: number): Wor
     inventory: { gears: 0, metal: 0 },
     upgrades: {},
     drops: [],
+    special: { gauge: 0, phase: 'idle', t: 0, lastAbsorbed: -1, muteGain: false, dir: new THREE.Vector3(0, 0, -1) },
   };
   scene.add(world.player.root);
   return world;

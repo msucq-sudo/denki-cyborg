@@ -84,8 +84,18 @@ export interface Enemy {
   allied?: boolean;
   /** 守られている（ジャンパーの閉じた頭など）。true の間は弾が当たってもダメージ0（はじく）、吸収アームも刺さらない */
   shielded?: boolean;
+  /** 部位ごとの当たり判定（ドレインガーディアン）。あれば弾・アームの判定は体の球ではなくこちらで行う（毎フレーム、種類側が更新）。part は damageEnemy の opts.part に渡る */
+  hitSpheres?: HitSphere[];
   /** ドームシールド（ドーマー）。展開中は外からの弾・吸収アームを止める。中心は足元（enemies/barrier.ts） */
   barrier?: Barrier;
+}
+
+export interface HitSphere {
+  part: string;
+  pos: THREE.Vector3;
+  radius: number;
+  /** 弱点（目玉など）。ダメージ倍率がかかる */
+  weak?: boolean;
 }
 
 export interface Barrier {
@@ -133,6 +143,10 @@ export interface Projectile {
   };
   /** メッシュを速度方向へ向ける（+Z が先端） */
   orient?: boolean;
+  /** 電気の弾（敵弾のみ意味を持つ）。プレイヤーの電気弾が当たるとカウンターで奪われる */
+  electric?: boolean;
+  /** カウンターで奪った弾（再カウンターしない） */
+  countered?: boolean;
   /** 軌跡の火花の色 */
   trail?: number;
   trailT?: number;
@@ -224,7 +238,7 @@ export interface World {
    * 後から解放する特殊機能（スカウター・ジェットパックは最初から使える基本機能なので含めない）。
    * どれも未解放のうちは左上の「特殊機能」パネルを出さない
    */
-  unlocks: { autoAim: boolean; vacuum: boolean; shield: boolean };
+  unlocks: { autoAim: boolean; vacuum: boolean; shield: boolean; /** ホログラムデコイ（abilities/decoy.ts。無ければ未入手） */ decoy?: boolean };
   /** シールド（abilities/shield.ts が更新）。hp が 0 になると broken で、電力を使って回復する */
   shield: ShieldState;
   /** 武器の所持と装備中の武器（player/weaponSwitch.ts が切り替える） */
@@ -237,6 +251,23 @@ export interface World {
   upgrades: Record<string, number>;
   /** 床に落ちているメタル（pickups.ts が管理） */
   drops: import('./pickups').MetalDrop[];
+  /** 必殺技（special/special.ts が管理）。ゲージは階の移動で引き継ぐ */
+  special: SpecialState;
+}
+
+/** 必殺技の状態。gauge は 0..SPECIAL.max（3分割）。phase は演出の進み */
+export interface SpecialState {
+  gauge: number;
+  /** 演出中の段階。'idle' 以外の間はプレイヤー操作ロック・無敵 */
+  phase: 'idle' | 'pose' | 'charge' | 'fire' | 'beam';
+  /** 今の段階に入ってからの秒数 */
+  t: number;
+  /** 前フレームの world.stats.energyAbsorbed（吸収量の差分でゲージをためる）。-1=未取得 */
+  lastAbsorbed: number;
+  /** true の間は敵へのダメージをゲージに数えない（必殺技自身のダメージ） */
+  muteGain: boolean;
+  /** 撃つ向き（ワールド、正規化。体と腕はこちらへ向く） */
+  dir: THREE.Vector3;
 }
 
 /** 武器の所持。owned は WEAPON_ORDER の並び（切り替えの順番）。current は装備中の武器 id */
