@@ -14,7 +14,9 @@ import { updateTraverse } from './traverse';
 import { makeDormant, updateDormant, type DormantOpts } from './dormant';
 import { spawnMetalDrop } from '../core/pickups';
 
-export interface DamageOpts { weak?: boolean; how: 'shot' | 'explosion' | 'absorb'; hitPos?: THREE.Vector3 }
+export interface DamageOpts { weak?: boolean; how: 'shot' | 'explosion' | 'absorb'; hitPos?: THREE.Vector3; /** 当たった部位（hitSpheres を持つ敵） */ part?: string }
+/** 専用の大ボス（撃破時に連鎖爆発の演出・吸収の下限などをボスと同じに扱う） */
+const isBossLike = (kind: EnemyKind): boolean => kind === 'boss' || kind === 'drainGuard';
 export type OverloadResult = 'none' | 'exploded' | 'shorted';
 
 /** ノックバックの効きやすさ */
@@ -100,7 +102,7 @@ export function checkBossPhase(world: World, e: Enemy): void {
     e.ai.phase = 2;
     e.ai.laserT = 4;
     e.ai.atkTimer = 1.5;
-    e.ai.summonT = 3;
+    e.ai.summonT = 6;
     e.ai.phaseFlash = 1;
     spawnShockwave(world, e.pos, 0xff4a30, 9, 0.7);
     spawnFlash(world, e.pos, 0xff3a20, 10, 16, 0.4);
@@ -120,6 +122,18 @@ export function damageEnemy(world: World, enemy: Enemy, amount: number, opts: Da
   let dmg = amount;
   if (opts.weak) dmg *= weakMulFor(enemy, opts.hitPos);
   if (enemy.kind === 'boss' && enemy.status === 'stunned') dmg *= BOSS_STUN_DAMAGE_MUL;
+  const filter = KIND_MODULES[enemy.kind]?.filterDamage;
+  if (filter) {
+    const before = dmg;
+    dmg = filter(world, enemy, dmg, opts);
+    if (dmg <= 0) {
+      // 腕に入った（胴体は減らない）
+      enemy.ai.flash = FLASH_TIME;
+      enemy.ai.alert = Math.max(enemy.ai.alert ?? 0, 5);
+      world.events.emit('enemyHit', { pos: (opts.hitPos ?? enemy.pos).clone(), weak: !!opts.weak, damage: before });
+      return;
+    }
+  }
   enemy.hp = Math.max(0, enemy.hp - dmg);
   enemy.ai.flash = FLASH_TIME;
   enemy.ai.alert = Math.max(enemy.ai.alert ?? 0, 5);
@@ -137,7 +151,7 @@ export function damageEnemy(world: World, enemy: Enemy, amount: number, opts: Da
 export function drainEnemy(world: World, enemy: Enemy, amount: number): number {
   if (!isTargetable(enemy) || enemy.shielded || amount <= 0) return 0;
   let allowed = enemy.hp;
-  if (enemy.kind === 'boss') allowed = Math.max(0, enemy.hp - enemy.maxHp * BOSS_DRAIN_FLOOR);
+  if (isBossLike(enemy.kind)) allowed = Math.max(0, enemy.hp - enemy.maxHp * BOSS_DRAIN_FLOOR);
   const actual = Math.min(amount, allowed);
   if (actual <= 0) return 0;
   enemy.hp -= actual;
@@ -209,7 +223,7 @@ function killEnemy(world: World, e: Enemy, how: 'shot' | 'explosion' | 'absorb',
   world.events.emit('enemyKilled', { kind: e.kind, pos: e.pos.clone(), how });
   spawnMetalDrop(world, e.kind, e.pos); // 倒すとメタルを落とす
   KIND_MODULES[e.kind]?.onGone?.(world, e, how);
-  if (e.kind === 'boss') {
+  if (isBossLike(e.kind)) {
     e.deadTimer = BOSS_DEATH_TIME;
     e.ai.deathT = 0;
     e.ai.deathBang = 0;
@@ -237,6 +251,18 @@ export function overloadEnemy(world: World, enemy: Enemy, amount: number): Overl
   enemy.ai.lastOverload = world.time;
   if (enemy.overload < cap) return 'none';
 
+  if (enemy.kind === 'drainGuard') {
+    // 逆流はショート（爆発しない）：胴体に大ダメージ
+    enemy.overload = 0;
+    enemy.ai.flash = 0.3;
+    spawnShockwave(world, enemy.pos, 0x66e6ff, 9, 0.6);
+    spawnBurst(world, enemy.pos, 0x66e6ff, 30, 7, 0.7);
+    world.events.emit('bossShort', { pos: enemy.pos.clone() });
+    enemy.hp = Math.max(0, enemy.hp - BOSS.shortDamage);
+    if (enemy.hp <= 0) killEnemy(world, enemy, 'explosion', false);
+    else checkBossPhase(world, enemy);
+    return 'shorted';
+  }
   if (enemy.kind === 'boss') {
     enemy.overload = 0;
     enemy.status = 'stunned';
@@ -306,7 +332,7 @@ function updateOne(world: World, e: Enemy, dt: number): void {
 
   if (e.status === 'dead') {
     e.deadTimer -= dt;
-    if (e.kind === 'boss') bossDeath(world, e, dt);
+    if (isBossLike(e.kind)) bossDeath(world, e, dt);
     return;
   }
   if (e.status === 'down') {
@@ -341,6 +367,11 @@ function updateOne(world: World, e: Enemy, dt: number): void {
     if (e.allied) {
       // ハッキングで味方になった敵
       KIND_MODULES[e.kind]?.updateAlly?.(c);
+      animate(world, e, dt);
+      return;
+    }
+    // 赤い敵（ハッキングできる）は味方になるまで動かない・撃たない。置かれた場所でじっと待つ
+    if (KIND_MODULES[e.kind]?.hackable) {
       animate(world, e, dt);
       return;
     }

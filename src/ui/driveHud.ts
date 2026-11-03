@@ -17,8 +17,10 @@ export interface DriveHudView {
   cooldown: number;
   distLeft: number;
   totalDist: number;
-  /** 「← 左折」を出す */
+  /** 「← 左折」（turnDir=1 なら「→ 右折」）を出す */
   turnHint: boolean;
+  /** 曲がる向き（-1=左, 1=右。省略＝左）。ルート2（ドレイン装置へ）は右 */
+  turnDir?: -1 | 1;
   /** 曲がり損ねて立て直し中 */
   recovering: boolean;
   device: 'kbm' | 'pad';
@@ -53,6 +55,7 @@ const HINT = {
   pad: '<kbd>A</kbd> 加速　<kbd>左スティック</kbd> 左右',
 };
 const TURN_HINT = { kbm: '<kbd>A</kbd> / <kbd>←</kbd> を押して曲がる', pad: '<kbd>左スティック</kbd> を左へ' };
+const TURN_HINT_R = { kbm: '<kbd>D</kbd> / <kbd>→</kbd> を押して曲がる', pad: '<kbd>左スティック</kbd> を右へ' };
 
 let singleton: DriveHud | null = null;
 
@@ -72,6 +75,8 @@ function createDriveHud(): DriveHud {
   // 左折の案内
   const turn = el('div', 'dv-turn off', '<span class="dv-turn-arrow">←</span><span class="dv-turn-text">左折！</span><small class="dv-turn-sub"></small>');
   const turnSub = turn.querySelector('.dv-turn-sub') as HTMLElement;
+  const turnArrow = turn.querySelector('.dv-turn-arrow') as HTMLElement;
+  const turnText = turn.querySelector('.dv-turn-text') as HTMLElement;
 
   // 上：判定地点までの距離
   const top = el('div', 'dv-top');
@@ -184,7 +189,11 @@ function createDriveHud(): DriveHud {
 
       cls(turn, 'off', !v.turnHint);
       cls(turn, 'recover', v.recovering);
-      set('turnsub', turnSub, v.recovering ? '立て直し中…そのまま左へ！' : TURN_HINT[v.device], 'html');
+      const right = v.turnDir === 1;
+      cls(turn, 'right', right);
+      set('turnarrow', turnArrow, right ? '→' : '←');
+      set('turntext', turnText, right ? '右折！' : '左折！');
+      set('turnsub', turnSub, v.recovering ? `立て直し中…そのまま${right ? '右' : '左'}へ！` : (right ? TURN_HINT_R : TURN_HINT)[v.device], 'html');
 
       const hh = v.hits > 0;
       cls(hitsEl, 'off', !hh);

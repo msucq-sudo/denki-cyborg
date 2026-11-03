@@ -8,22 +8,29 @@
 //   wall:        THREE.Mesh       収容所の建物の壁（東向きの平面 260×70m、130×35 分割）。ジオメトリは rotateY(π/2) 済みで、ローカルの x が壁の外向き、
 //                                 y が上（-35..35）、z が横。mesh.position=(wallX, 35, junctionZ)。頂点を -x（西）へ動かせば凹む → dentWall(wall, 衝突点, 半径, 深さ)（level/surge/compound.ts）が使える
 //   building:    THREE.Group      壁・建物の本体・屋上の設備・看板（wall もこの子）
-//   eastCollider, shutter 他       T字路の東の柵／ガレージのシャッターの当たり判定
+//   eastCollider, shutter 他       T字路の東の柵／ガレージのシャッターの当たり判定（ルート2 では東の柵の代わりに西の封鎖）
+//   route:       'camp' | 'drain' どちらの道か（world.level.data.surgeRoute も同じ）
+//   plant:       DrainPlantParts   ルート2だけ。発電所・坂・ドレイン装置（level/surge/plant.ts。いまは空のフック）
 // }
+//
+// 【ルート2】 収容所 2階クリア後（world.level.data.camp2Cleared）は route='drain'：T字路を右折して東へ走り、判定地点 CHECKPOINT_E → 坂（RAMP）→ ドレイン装置の扉。
+// URL で ?level=surge&route=drain（または route=camp）と強制できる（&start=drive も併用可）。配置は level/surge/layout.ts の「ルート2」。
 // 空・カメラ：このステージは遠くまで見えるので、world.camera.near=0.25 / far=3800 にしている（車カメラもそのまま使える）。
 import * as THREE from 'three';
 import type { World, AABB } from '../core/types';
 import { drainEnergy } from '../core/energy';
 import { toast } from '../core/combat';
 import { clearSockets, getSockets } from '../core/sockets';
-import { initDrive, startDrive, updateDrive } from '../vehicle/drive';
+import { initDrive, startDrive, updateDrive, playCheckpointMovie } from '../vehicle/drive';
+import { movieNow, showMovieEnd } from '../cinematic/movieMode';
 import type { DriveState } from '../vehicle/types';
 import { getDriveHud } from '../ui/driveHud';
 import { showPrompt } from './floor1';
 import { buildCity, FOG_COLOR, SUN_DIR, WALK } from './surge/city';
 import { buildCompound } from './surge/compound';
+import { buildDrainPlant } from './surge/plant';
 import { buildLab } from './surge/lab';
-import { COMPOUND, ENTRANCE, GARAGE, ROAD, STAIRS, type SurgeStart } from './surge/layout';
+import { chooseSurgeRoute, COMPOUND, ENTRANCE, GARAGE, ROAD, STAIRS, type SurgeRoute, type SurgeStart } from './surge/layout';
 import { setPlayerFacing } from '../player/player';
 
 export const SURGE_EXPOSURE = 1.05;
@@ -49,6 +56,10 @@ interface Runtime {
   lab: ReturnType<typeof buildLab>;
   city: ReturnType<typeof buildCity>;
   comp: ReturnType<typeof buildCompound>;
+  /** どちらの道か。'drain'（収容所 2階クリア後）は東へ走ってドレイン装置へ */
+  route: SurgeRoute;
+  /** ルート2だけ：発電所・坂・ドレイン装置（いまは空） */
+  plant: ReturnType<typeof buildDrainPlant> | null;
   sun: THREE.DirectionalLight;
   clock: number;
   promptOn: boolean;
@@ -77,6 +88,10 @@ export function buildSurge(world: World): void {
   clearSockets(world);
   const scene = world.scene;
   const startAt: SurgeStart = world.level.data.startAt === 'drive' ? 'drive' : 'stairs';
+  // どちらの道か：URL の ?route=drain|camp があればそれ、なければ収容所 2階クリア済み（main.ts が camp2Cleared を渡す）なら 'drain'
+  const urlRoute = typeof location !== 'undefined' ? new URLSearchParams(location.search).get('route') : null;
+  const route = chooseSurgeRoute(world.level.data.camp2Cleared === true, urlRoute);
+  world.level.data.surgeRoute = route;
 
   // 遠くまで見える：ニア／ファーを広げる（0.05 のままだと遠くで深度が足りずチラつく）
   world.camera.near = 0.25;
@@ -100,11 +115,17 @@ export function buildSurge(world: World): void {
 
   // ---- 建物（研究所の裏・ガレージ・階段）と街と収容所
   const lab = buildLab();
-  const city = buildCity();
-  const comp = buildCompound();
+  const city = buildCity(77, route);
+  const comp = buildCompound(route);
   scene.add(lab.root, city.root, comp.root);
   for (const l of lab.lights) scene.add(l);
   for (const c of [...lab.colliders, ...city.colliders, ...comp.colliders]) world.colliders.push(c);
+  // ルート2：発電所・坂・ドレイン装置（見た目担当が plant.ts を埋める）
+  const plant = route === 'drain' ? buildDrainPlant() : null;
+  if (plant) {
+    scene.add(plant.root);
+    for (const c of plant.colliders) world.colliders.push(c);
+  }
 
   // ---- ミニマップ用の区画（長い直線は含めない）
   const room = (name: string, x0: number, x1: number, z0: number, z1: number, h: number) => ({
@@ -125,13 +146,14 @@ export function buildSurge(world: World): void {
     fence: comp.fence, fencePanels: comp.fencePanels, fenceCollider: comp.fenceCollider,
     wall: comp.wall, building: comp.building, eastCollider: comp.eastCollider,
     shutter: lab.shutter.collider, layout: { STAIRS, GARAGE, ROAD, COMPOUND },
+    route, plant,
   };
 
   const state: SurgeState = { powered: false, open: 0, nearCar: false, boarded: false, via: null };
   const entrance = buildEntranceMarker();
   scene.add(entrance.group);
   const rt: Runtime = {
-    state, lab, city, comp, sun, clock: 0, promptOn: false, doorEmitted: false, autoBoard: false, startAt,
+    state, lab, city, comp, route, plant, sun, clock: 0, promptOn: false, doorEmitted: false, autoBoard: false, startAt,
     walkOut: false, entrance: entrance.group, entranceLight: entrance.light,
   };
   runtimes.set(world, rt);
@@ -145,7 +167,7 @@ export function buildSurge(world: World): void {
   });
 
   // ---- 車（車担当が見た目を作る）。まだ無い間は null
-  initDrive(world, { x: GARAGE.carX, z: GARAGE.carZ, yaw: 0 });
+  initDrive(world, { x: GARAGE.carX, z: GARAGE.carZ, yaw: 0 }, route);
   lab.carCollider.active = !!driveOf(world);
 
   // ---- 開始地点
@@ -159,7 +181,7 @@ export function buildSurge(world: World): void {
     world.player.pos.set(GARAGE.carX, 0, GARAGE.carZ);
     world.player.yaw = 0;
     rt.autoBoard = true;
-    world.level.data.objective = '西へ！ 判定地点まで 300km/h 以上を出せ';
+    world.level.data.objective = driveObjective(route);
   } else {
     world.player.pos.set(STAIRS.topX, STAIRS.topY + 0.05, STAIRS.topZ);
     world.player.yaw = 0;
@@ -199,7 +221,12 @@ function power(world: World, rt: Runtime, via: 'shot' | 'arm'): void {
   setSocketLook(rt, true);
   toast(world, 'シャッターに電力が届いた', 3.5);
   world.events.emit('switchOn', { pos: rt.lab.socket.pos.clone() });
-  world.level.data.objective = '車に乗って収容所へ向かえ';
+  world.level.data.objective = rt.route === 'drain' ? '車に乗ってドレイン装置へ向かえ' : '車に乗って収容所へ向かえ';
+}
+
+/** 運転中の目的（ルート1＝西へ、ルート2＝右折して東へ） */
+function driveObjective(route: SurgeRoute): string {
+  return route === 'drain' ? '東へ！ T字路を右折して、判定地点まで 300km/h 以上を出せ' : '西へ！ 判定地点まで 300km/h 以上を出せ';
 }
 
 // ---------------------------------------------------------------- 更新
@@ -219,6 +246,16 @@ export function updateSurge(world: World, dt: number): void {
   if (rt.autoBoard) {
     rt.autoBoard = false;
     boardCar(world, rt);
+    // ムービー単体モード：判定地点の演出をすぐ流し、終わったら「もう一度見る」の画面
+    const mv = movieNow();
+    const movieKmh: Partial<Record<string, number>> = { success: 340, fail: 180, drainSuccess: 340, drainFail: 250, drainStall: 150 };
+    if (mv && movieKmh[mv] !== undefined) {
+      playCheckpointMovie(world, movieKmh[mv] as number, () => {
+        world.level.data.movieEnded = true;
+        world.level.data.movieReplay = () => { world.level.data.nextLevel = { level: 'surge', startAt: 'drive' }; };
+        showMovieEnd(world.level.data.movieReplay as () => void, world);
+      });
+    }
   }
 
   // ---- シャッター：電力が届いたら巻き上がる
@@ -273,11 +310,12 @@ export function updateSurge(world: World, dt: number): void {
 
   // ---- 激突の演出が終わった：車を降りて、建物の左側の入口まで歩く → 入ったら収容所 1階へ
   const dd = driveOf(world);
-  if (dd && dd.phase === 'done' && dd.result === 'success' && !rt.walkOut) beginWalkOut(world, rt, dd);
+  if (dd && dd.phase === 'done' && dd.result === 'success' && rt.route === 'camp' && !rt.walkOut) beginWalkOut(world, rt, dd);
   if (rt.walkOut) updateWalkOut(world, rt, dd, t);
 
   // ---- 収容所のサーチライトなど
   rt.comp.update(t);
+  rt.plant?.update(t);
 
   // ---- 太陽の影：車（運転中）かプレイヤーを追う。シャドウマップの 1 マスぶんの単位で動かして、ちらつきを防ぐ
   const d2 = driveOf(world);
@@ -304,7 +342,7 @@ function boardCar(world: World, rt: Runtime): void {
   showPrompt(null);
   rt.promptOn = false;
   world.level.data.retryAt = 'drive';
-  world.level.data.objective = '西へ！ 判定地点まで 300km/h 以上を出せ';
+  world.level.data.objective = driveObjective(rt.route);
   startDrive(world);
 }
 

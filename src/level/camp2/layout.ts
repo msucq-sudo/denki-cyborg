@@ -33,6 +33,9 @@ export const START = { x: 0, z: 19.5, yaw: 0 } as const;
  */
 export const FIGHT_START = { x: STAND.x, z: CAGE_Z + 5.4, yaw: Math.PI, pitch: 0.2 } as const;
 
+/** 天井の穴をあける所（部屋の真ん中の真上）。最大溜めの一発で割れる。r=穴の半径 */
+export const CEILING_HOLE = { x: 0, z: 6, r: 2.3 } as const;
+
 /** 柱（遮蔽物）。中心と幅 */
 export const PILLARS: { x: number; z: number; w: number }[] = [
   { x: -9, z: -5, w: 1.4 }, { x: 9, z: -5, w: 1.4 },

@@ -12,8 +12,8 @@ export const BOSS_AI = {
   minionCap: 6,
   openEvery: 6,
   openFor: 3,
-  summonEvery: 15,
-  summonEvery2: 12,
+  summonEvery: 30,
+  summonEvery2: 24,
   laserEvery: 9,
   laserTelegraph: 0.8,
   laserFire: 1.0,
@@ -44,7 +44,7 @@ export function initBossAI(world: World, e: Enemy): void {
   ai.openT = BOSS_AI.openEvery * 0.6;      // 次に開くまで
   ai.openLeft = 0;                          // 開いている残り
   ai.atkTimer = 2;
-  ai.summonT = 8;
+  ai.summonT = 16;
   ai.laserT = 5;
   ai.laser = null;
   ai.volley = 0;
@@ -349,7 +349,7 @@ function updateCharge(c: Ctx): void {
   if (Math.random() < 0.7) spawnBurst(world, e.pos.clone().addScaledVector(C.dir, -e.radius), 0xff8a4a, 2, 2, 0.3);
   if (!C.hit && e.pos.distanceTo(pc) < e.radius + PLAYER_HIT_RADIUS + 0.2) {
     C.hit = true;
-    damagePlayer(world, GENERATOR.chargeDamage);
+    damagePlayer(world, GENERATOR.chargeDamage, e.pos);
     // はね飛ばす
     const push = new THREE.Vector3(C.dir.x, 0, C.dir.z);
     if (push.lengthSq() > 1e-6) world.player.vel.addScaledVector(push.normalize(), 9);
@@ -447,7 +447,7 @@ function updateLaser(c: Ctx): void {
     const t = segmentSphere(start, end, pc, PLAYER_HIT_RADIUS + BOSS_AI.laserWidth2);
     if (t !== null && world.time - L.lastHit >= BOSS_AI.laserTick) {
       L.lastHit = world.time;
-      damagePlayer(world, BOSS_AI.laserDamage);
+      damagePlayer(world, BOSS_AI.laserDamage, start);
     }
     e.ai.warn = 0.6;
     if (L.t >= BOSS_AI.laserFire) endLaser(e);

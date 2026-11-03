@@ -22,6 +22,8 @@ export interface KindModule {
   onRemove?(world: World, e: Enemy): void;
   /** damageEnemy で HP が減った直後（倒れていない時のみ）。damage は倍率適用後 */
   onHit?(world: World, e: Enemy, damage: number, opts: DamageOpts): void;
+  /** 部位ごとにHPを持つ敵用：damageEnemy が enemy.hp を減らす前に呼ぶ。返した値だけ enemy.hp（胴体）から引く（腕に入った分は 0 を返す） */
+  filterDamage?(world: World, e: Enemy, damage: number, opts: DamageOpts): number;
   /** 倒れた瞬間。how='absorb' は吸い切られて停止、'expire' は味方の時間切れ */
   onGone?(world: World, e: Enemy, how: 'shot' | 'explosion' | 'absorb' | 'expire'): void;
   /** ハッキングできる（吸収アームをつなぐとコード入力が始まる。abilities/hack.ts） */

@@ -4,7 +4,10 @@ import type { EnemyKind } from '../config/balance';
 export type EnemyAction =
   | 'crawlerDodge' | 'stompWindup' | 'stomp' | 'chargeStart' | 'wallCrash'
   | 'summon' | 'missileLoad' | 'missileBeep' | 'missileDisrupt' | 'bombBlast' | 'jumperLand'
-  | 'domeDeploy' | 'domeBreak' | 'ringWarn' | 'ringFire' | 'healStart';
+  | 'domeDeploy' | 'domeBreak' | 'ringWarn' | 'ringFire' | 'healStart'
+  // ドレインガーディアン（ボス）
+  | 'gStep' | 'gLand' | 'gRoar' | 'gMissileWind' | 'gMissile' | 'gBoltCharge' | 'gBolt' | 'gPunchWind' | 'gPunch' | 'gRushWind' | 'gRush' | 'gWallCrash'
+  | 'gRainWarn' | 'gRainLaunch' | 'gTeleport' | 'gAppear' | 'gBeamCharge' | 'gBeamFire' | 'gArmBreak' | 'gRegen' | 'gRegenDone' | 'gCrack';
 
 /** ゲーム内イベント。SE・UI・演出はこれを購読する。発行側は emit するだけ。 */
 export interface GameEvents {
@@ -65,6 +68,9 @@ export interface GameEvents {
   allyExpire: { pos: THREE.Vector3 };
   /** 守られた敵に弾・アームがはじかれた */
   shieldBlock: { pos: THREE.Vector3 };
+  /** プレイヤーのシールドが壊れた／回復し切った */
+  shieldBreak: { pos: THREE.Vector3 };
+  shieldReady: {};
   gameStart: {};
   gameOver: {};
   gameClear: {};
@@ -75,6 +81,8 @@ export interface GameEvents {
   enemyAction: { kind: EnemyKind; pos: THREE.Vector3; action: EnemyAction; value?: number };
   /** ミサイルが撃ち落とされた / 着弾して爆発した */
   missileDown: { pos: THREE.Vector3 };
+  /** カウンター成功（敵の電気弾を打ち返した） */
+  counter: { pos: THREE.Vector3 };
   missileBlast: { pos: THREE.Vector3 };
   /** 休眠中の敵が起きる予兆（ポッドのランプ点灯 / 天井ハッチの点滅） */
   enemyWakeWarn: { pos: THREE.Vector3; mode: 'pod' | 'drop' };
@@ -88,6 +96,9 @@ export interface GameEvents {
   interactPrompt: {};
   /** 緊急バッテリーのスイッチON */
   switchOn: { pos: THREE.Vector3 };
+  /** ホログラムデコイを使った／効果が切れた */
+  decoyUse: { pos: THREE.Vector3 };
+  decoyEnd: {};
   /** 電力がエレベーターまで届いた */
   powerRestored: { pos: THREE.Vector3 };
   /** 電源のないエレベーターに近づいた */

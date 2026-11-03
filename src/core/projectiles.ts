@@ -7,7 +7,8 @@ import { damagePlayer, playerCenter, PLAYER_HIT_RADIUS } from './combat';
 import { damageEnemy } from '../enemies/api';
 import { damageBarrier, hitBarriers } from '../enemies/barrier';
 import { spawnBurst, spawnFlash, spawnShockwave } from './effects';
-import { GUN } from '../config/balance';
+import { GUN, COUNTER } from '../config/balance';
+import { toast } from './combat';
 
 export interface SpawnProjectileOpts {
   pos: THREE.Vector3;
@@ -29,6 +30,11 @@ export interface SpawnProjectileOpts {
   homing?: Projectile['homing'];
   blast?: Projectile['blast'];
   trail?: number;
+  /**
+   * 電気の弾か（敵弾のみ。プレイヤーの電気弾が当たるとカウンターされる）。
+   * 省略時は自動判定：ミサイル型・爆発する弾（blast あり＝ミサイル/爆撃の球）は false（撃ち落とし対象のまま）、それ以外の光弾・電撃は true
+   */
+  electric?: boolean;
 }
 
 const geoCache = new Map<number, THREE.SphereGeometry>();
@@ -78,6 +84,7 @@ export function spawnProjectile(world: World, o: SpawnProjectileOpts): Projectil
     pos: o.pos.clone(), vel: o.vel.clone(), radius, damage: o.damage, owner: o.owner,
     life: o.life ?? GUN.bulletLife, mesh, charged: o.charged, gravity: o.gravity ?? 0,
     shootable: o.shootable, hp: o.hp, homing: o.homing, blast: o.blast, orient: o.missile, trail: o.trail,
+    electric: o.owner === 'enemy' ? (o.electric ?? (!o.missile && !o.blast)) : undefined,
   };
   if (p.orient) orientMesh(p);
   if (o.blast?.warnRing) addLandingRing(world, p);
@@ -275,7 +282,64 @@ function blastAt(world: World, p: Projectile, pos: THREE.Vector3): void {
   _bf.copy(pos); _bf.y += 0.2;
   const t = raycastLevel(world.colliders, _bf, pc);
   if (t !== null && t < 0.98) return;
-  damagePlayer(world, b.damage * mul);
+  damagePlayer(world, b.damage * mul, pos);
+}
+
+/** カウンターの打ち返し弾メッシュ：電気の球（プレイヤー色）+ 敵弾色のハロー */
+function makeCounterMesh(size: number, enemyColor: number): THREE.Group {
+  const grp = makeOrbMesh(size, COUNTER.color);
+  const g = getOrbGeos();
+  const halo2 = new THREE.Mesh(g.core, new THREE.MeshBasicMaterial({ color: enemyColor, transparent: true, opacity: 0.3, depthWrite: false }));
+  halo2.scale.setScalar(size * 1.5);
+  grp.add(halo2);
+  return grp;
+}
+
+/**
+ * カウンター：プレイヤー弾 p が敵の電気弾 q に当たった。q を奪ってプレイヤー弾の向きへ打ち返す（p は呼び出し側で消す）。
+ * 威力 = (q.damage + p.damage) × dmgMul（溜め撃ちなら × chargedMul）、速さ = p の速さ × speedMul
+ */
+export function counterProjectile(world: World, p: Projectile, q: Projectile): void {
+  const enemyColor = ((q.mesh.userData.orb ? q.blast?.color : undefined) ?? q.trail ?? 0xff7a3d) as number;
+  const baseSize = (q.mesh.userData.orb as { size: number } | undefined)?.size ?? q.radius;
+  const size = Math.max(COUNTER.minSize, baseSize * COUNTER.sizeMul);
+  // 見た目を差し替え
+  removeRing(world, q);
+  world.scene.remove(q.mesh);
+  disposeMaterials(q.mesh);
+  const mesh = makeCounterMesh(size, enemyColor);
+  mesh.position.copy(q.pos);
+  world.scene.add(mesh);
+  q.mesh = mesh;
+  // 性質を書き換え：プレイヤー所有・直進・爆発/ホーミング/撃ち落としなし
+  const dir = p.vel.clone();
+  const spd = dir.length() || GUN.bulletSpeed;
+  dir.normalize();
+  q.damage = (q.damage + p.damage) * COUNTER.dmgMul * (p.charged ? COUNTER.chargedMul : 1);
+  q.owner = 'player';
+  q.vel.copy(dir).multiplyScalar(spd * COUNTER.speedMul);
+  q.radius = Math.max(q.radius, size) * COUNTER.radiusMul;
+  q.life = COUNTER.life;
+  q.age = 0;
+  q.gravity = 0;
+  q.homing = undefined;
+  q.blast = undefined;
+  q.shootable = false;
+  q.hp = undefined;
+  q.orient = false;
+  q.electric = false;
+  q.countered = true;
+  q.charged = true;
+  q.trail = COUNTER.trail;
+  q.trailT = 0;
+  // 演出：火花 + 閃光 + 衝撃波 + 専用SE。初回だけトースト
+  spawnBurst(world, q.pos, COUNTER.color, 16, 6, 0.4);
+  spawnBurst(world, q.pos, enemyColor, 10, 4, 0.35);
+  spawnBurst(world, q.pos, 0xffffff, 6, 3, 0.25);
+  spawnFlash(world, q.pos, 0xdff8ff, 6, 8, 0.15);
+  spawnShockwave(world, q.pos, COUNTER.color, 1.2, 0.25);
+  world.events.emit('counter', { pos: q.pos.clone() });
+  if (!world.level.data.counterShown) { world.level.data.counterShown = true; toast(world, 'カウンター！', 1.6); }
 }
 
 /** 弾の当たり判定にかける余裕（撃ち落としやすく） */
@@ -305,14 +369,28 @@ export function updateProjectiles(world: World, dt: number): void {
       // 撃ち落とせる敵弾
       let tm = Infinity, target: Projectile | null = null;
       for (const q of world.projectiles) {
-        if (q.dead || !q.shootable || q.owner !== 'enemy') continue;
+        if (q.dead || !q.shootable || q.electric || q.owner !== 'enemy') continue;
         const t = segmentSphere(p.pos, next, q.pos, q.radius + p.radius + SHOOT_PAD);
         if (t !== null && t < tm) { tm = t; target = q; }
       }
+      // カウンター：敵の電気弾に当たったら奪って打ち返す（撃ち落としより優先。pad で広めに判定）
+      let tc = Infinity, cTarget: Projectile | null = null;
+      if (!p.countered) {
+        for (const q of world.projectiles) {
+          if (q.dead || !q.electric || q.countered || q.owner !== 'enemy') continue;
+          const t = segmentSphere(p.pos, next, q.pos, q.radius + p.radius + COUNTER.hitRadiusPad);
+          if (t !== null && t < tc) { tc = t; cTarget = q; }
+        }
+      }
       // ドームシールド：外から入る弾は表面で止まる（先に当たるものがあればそちら）
       const bh = hitBarriers(world, p.pos, next, p.radius);
-      if (bh && bh.t <= tHit && bh.t <= tm && bh.t <= (hit ? hit.t : Infinity)) {
+      if (bh && bh.t <= tHit && bh.t <= tm && bh.t <= tc && bh.t <= (hit ? hit.t : Infinity)) {
         damageBarrier(world, bh.enemy, p.damage, bh.point);
+        p.dead = true;
+        continue;
+      }
+      if (cTarget && tc <= tHit && tc <= (hit ? hit.t : Infinity)) {
+        counterProjectile(world, p, cTarget);
         p.dead = true;
         continue;
       }
@@ -336,7 +414,7 @@ export function updateProjectiles(world: World, dt: number): void {
         continue;
       }
       if (hit && hit.t <= tHit) {
-        damageEnemy(world, hit.enemy, p.damage, { weak: hit.weak, how: 'shot', hitPos: hit.point });
+        damageEnemy(world, hit.enemy, p.damage, { weak: hit.weak, how: 'shot', hitPos: hit.point, part: hit.part });
         spawnBurst(world, hit.point, hit.weak ? 0xfff27a : 0x66e6ff, p.charged ? 18 : 7, p.charged ? 5 : 3);
         p.dead = true;
         continue;
@@ -346,7 +424,7 @@ export function updateProjectiles(world: World, dt: number): void {
       if (t !== null && t <= tHit) {
         const area = p.blast?.damage !== undefined;
         // 範囲ダメージ弾は爆発の範囲ダメージだけ（直撃の二重取りはしない）
-        if (!area) damagePlayer(world, p.damage);
+        if (!area) damagePlayer(world, p.damage, p.pos);
         const hp = p.pos.clone().lerp(next, t);
         if (!area) spawnBurst(world, hp, 0xff7a3d, 6, 3);
         blastAt(world, p, hp);

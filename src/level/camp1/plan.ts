@@ -34,6 +34,8 @@ export interface ZoneDef {
   spawns: SpawnDef[];
   /** trap の2つ目の波（1つ目の残りが CAMP1.bossWave2At 以下で出る） */
   wave2?: SpawnDef[];
+  /** zone の起動条件。指定すると近づいても起きず、プレイヤーがこの範囲に入ったとき一斉に起きる */
+  trigger?: { x0: number; x1: number; z0: number; z1: number };
 }
 /** シャッター（扉）。開口は x0..x1 × z0..z1、高さ h */
 export interface GateDef { id: string; x0: number; x1: number; z0: number; z1: number; h: number; closed: boolean; color: number; label: string }
@@ -56,6 +58,8 @@ export interface Plan {
   keyDoor: { x: number; z: number };
   /** バキュームの入手アイテム（A→E の縦通路） */
   vacuum: { x: number; y: number; z: number };
+  /** シールドの入手アイテム（J の隠し部屋） */
+  shield: { x: number; y: number; z: number };
   /** A の送電ソケット（床のハッチを開ける） */
   hatchSocket: { x: number; y: number; z: number; r: number };
   /** 床のハッチ（穴）と地下通路 */
@@ -86,6 +90,8 @@ export interface Plan {
 }
 
 export const T = 1;
+/** A 入口ホールの個室（内側 x0..x1。東の壁は x1..x1+T） */
+export const A_CELL = { x0: 3, x1: 15, z0: 56, z1: 76 };
 export const E_C = { x: 20, z: 18, r: 13, h: 12 };
 export const I_C = { x: 52, z: 50, r: 5, h: 5 };
 const DEG = Math.PI / 180;
@@ -189,6 +195,8 @@ export function generateCamp1(): Plan {
   room('A', 'A 入口ホール', 3, 37, 56, 76, 8, {
     s: [{ c: 11, w: 6, h: 5 }], n: [{ c: 20, w: 6, h: 6 }], e: [{ c: 65.5, w: 5, h: 6 }],
   }, { lamp: 0xffd2a8 });
+  // A の個室（スタート地点。ハッチ・送電ソケットもここ）。東の壁の戸口を出ると戦闘開始（zones の A.trigger）
+  wall('x', A_CELL.x1, 56, 76, 8, [{ c: 66, w: 4, h: 5 }]);
   corridor('z', 31, 55, 17, 23, 6);                         // A→E 縦通路（バキューム）
   // E：円形ホール
   {
@@ -382,7 +390,6 @@ export function generateCamp1(): Plan {
     { id: 'E', x: 16, y: 7.1, z: 9, area: 'E キャットウォーク' },
     { id: 'I', x: I_C.x + 1.2, y: 1.2, z: I_C.z + 1.2, area: 'I 隠し部屋' },
     { id: 'J', x: 101.5, y: 1.2, z: 73, area: 'J 隠し部屋' },
-    { id: 'duct', x: 83, y: 8.6, z: (duct.z0 + duct.z1) / 2, area: 'G→D 隠し通路' },
     { id: 'H', x: 86.5, y: 7.1, z: 6.5, area: 'H 高台' },
   ];
   const keys = [
@@ -400,8 +407,8 @@ export function generateCamp1(): Plan {
 
   // ================================================================ 敵（1〜11番だけ：ドローン・クローラー・ガンナー・ウォーカー・ヘビー・ヘビーウォーカー・ミサイル溜めロボット・ビーマー・リーチ・赤ウォーカー）
   const zones: ZoneDef[] = [
-    { id: 'A', name: 'A', mode: 'zone', face: { x: 20, z: 66 }, spawns: [
-      { kind: 'drone', x: 28, z: 62, mode: 'drop' }, { kind: 'drone', x: 14, z: 61, mode: 'drop' },
+    { id: 'A', name: 'A', mode: 'zone', face: { x: 20, z: 66 }, trigger: { x0: A_CELL.x1 + T + 0.5, x1: 37, z0: 56, z1: 76 }, spawns: [
+      { kind: 'drone', x: 28, z: 62, mode: 'drop' }, { kind: 'drone', x: 24, z: 71, mode: 'drop' },
     ] },
     { id: 'tunnel', name: '地下通路', mode: 'zone', face: { x: 20, z: 59 }, spawns: [
       { kind: 'leech', x: 31, z: 58.5, floor: -5, mode: 'awake' }, { kind: 'leech', x: 33.5, z: 62, floor: -5, mode: 'awake' },
@@ -430,8 +437,6 @@ export function generateCamp1(): Plan {
       { kind: 'gunner', x: 86, z: 15 }, { kind: 'gunner', x: 108, z: 14 },
       { kind: 'crawler', x: 94, z: 13 }, { kind: 'crawler', x: 99, z: 14 }, { kind: 'crawler', x: 96, z: 4.3 },
       { kind: 'drone', x: 92, z: 10, mode: 'drop' }, { kind: 'drone', x: 101, z: 10, mode: 'drop' },
-    ], wave2: [
-      { kind: 'heavyWalker', x: 96, z: 9 }, { kind: 'missile', x: 106, z: 7 }, { kind: 'walker', x: 86, z: 17 }, { kind: 'walker', x: 108.5, z: 17.5 },
     ] },
   ];
 
@@ -444,6 +449,7 @@ export function generateCamp1(): Plan {
     checkpoints: { entrance: start, boss: { x: 96, z: 46, yaw: 0 } },
     keys, keyDoor: { x: 92.5, z: 60 },
     vacuum: { x: 20, y: 1.2, z: 43 },
+    shield: { x: 100.2, y: 1.3, z: 75 },
     hatchSocket, hatch, tunnel, cSocket, brittle, laser, sources, duct,
     guide: { x: 79.6, z: (duct.z0 + duct.z1) / 2, room: { x0: 57, x1: 81, z0: 33, z1: 45 } },
     bossTrigger: { x0: 83, x1: 111, z0: 3, z1: 24 },

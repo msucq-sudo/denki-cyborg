@@ -24,7 +24,8 @@ let geo: THREE.CylinderGeometry | null = null;
 let holeGeo: THREE.CylinderGeometry | null = null;
 let mat: THREE.MeshStandardMaterial | null = null;
 let glowMat: THREE.MeshBasicMaterial | null = null;
-function makeMesh(value: number): THREE.Object3D {
+/** メタルの見た目（トロッコ面でも同じものを使う） */
+export function makeMesh(value: number): THREE.Object3D {
   geo ??= new THREE.CylinderGeometry(0.16, 0.16, 0.09, 6);
   holeGeo ??= new THREE.CylinderGeometry(0.065, 0.065, 0.1, 10);
   mat ??= new THREE.MeshStandardMaterial({ color: 0xc9d3e0, metalness: 0.85, roughness: 0.3, emissive: 0x2a5aa0, emissiveIntensity: 0.6, flatShading: true });

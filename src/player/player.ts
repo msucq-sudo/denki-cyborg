@@ -10,7 +10,7 @@ import { isGrappling, stepGrapple } from '../core/grapple';
 import { buildPlayerVisual, CYAN, type PlayerVisual } from './visual';
 import { WEAPONS } from './weapons';
 import {
-  dodgeCost, dodgeInvuln, flightDrainPerSec, gunChargeMaxDamage, gunDamage, gunTapCost, moveSpeed, syncPlayerStats,
+  dodgeCost, dodgeInvuln, flightDrainPerSec, freeFlightEnabled, gunChargeMaxDamage, gunDamage, gunTapCost, moveSpeed, syncPlayerStats,
 } from '../progression/effects';
 import { createAnimState, poseCharacter, type AnimState } from './pose';
 import {
@@ -160,13 +160,16 @@ export function updatePlayer(world: World, dt: number): void {
     drainEnergy(world, DASH.drainPerSec * dt);
     speed *= DASH.speedMul;
   }
+  // 自由飛行中は水平も速い（直前フレームの飛行状態で判定）
+  const freeFly = p.flying && freeFlightEnabled(world);
+  if (freeFly) speed *= FUNCTIONS.freeFlight.speedMul;
   if (dodging) {
     p.vel.x = p.dodgeDir.x * DODGE.speed;
     p.vel.z = p.dodgeDir.z * DODGE.speed;
   } else {
     let k: number;
     if (p.onGround) k = 1 - Math.exp(-18 * dt);
-    else if (p.flying) k = 1 - Math.exp(-4 * dt);
+    else if (p.flying) k = 1 - Math.exp(-(freeFly ? FUNCTIONS.freeFlight.airAccel : 4) * dt);
     else k = hasInput ? 1 - Math.exp(-5 * dt) : 1 - Math.exp(-0.8 * dt);
     p.vel.x += (mv.x * speed - p.vel.x) * k;
     p.vel.z += (mv.z * speed - p.vel.z) * k;
@@ -184,13 +187,17 @@ export function updatePlayer(world: World, dt: number): void {
   const F = FUNCTIONS.flight;
   const wasFlying = p.flying;
   // ジェットパック：空中で長押し → 落下し始めたらその高さで滞空（上昇はしない）
-  let wantFly = world.functions.flight && spaceDown && !p.onGround && p.energy > 0 && !p.absorbing
-    && (wasFlying || p.vel.y <= F.engageVy);
+  // 自由飛行（強化）：落下を待たずに上昇でき、飛び始めたらジャンプを離しても電力が続く限り飛び続ける
+  const free = world.functions.flight && freeFlightEnabled(world);
+  const FF = FUNCTIONS.freeFlight;
+  const engage = free || wasFlying || p.vel.y <= F.engageVy;
+  let wantFly = world.functions.flight && spaceDown && !p.onGround && p.energy > 0 && !p.absorbing && engage;
+  if (free && wasFlying && !spaceDown && !p.onGround && p.energy > 0 && !p.absorbing) wantFly = true;
   if (wantFly) {
-    const ratio = drainEnergy(world, flightDrainPerSec(world) * dt);
+    const ratio = drainEnergy(world, flightDrainPerSec(world) * (free ? FF.drainMul : 1) * dt);
     if (ratio < 1) wantFly = p.energy > 0;
   }
-  if (!wantFly && !wasFlying && world.functions.flight && spaceDown && !p.onGround && p.energy <= 0 && p.vel.y <= F.engageVy) {
+  if (!wantFly && !wasFlying && world.functions.flight && spaceDown && !p.onGround && p.energy <= 0 && engage) {
     world.events.emit('flightFail', {});
   }
   p.flying = wantFly;
@@ -199,6 +206,11 @@ export function updatePlayer(world: World, dt: number): void {
 
   if (dodging) {
     if (!p.onGround) p.vel.y = 0;
+  } else if (p.flying && free) {
+    // 自由飛行：長押しで上昇 / 離すとゆっくり下降 / 左Ctrlで速く下降（高度の上限は天井などの衝突だけ）
+    const down = input.isDown('ControlLeft') || input.isDown('ControlRight');
+    const target = down ? -FF.diveSpeed : spaceDown ? FF.riseSpeed : -FF.sinkSpeed;
+    p.vel.y += (target - p.vel.y) * (1 - Math.exp(-FF.vyAccel * dt));
   } else if (p.flying) {
     // 縦速度を0へ寄せて高度を維持（上昇させない）
     p.vel.y += (0 - p.vel.y) * (1 - Math.exp(-F.hoverDamp * dt));

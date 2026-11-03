@@ -15,7 +15,7 @@ const sample = (over: Partial<SaveData> = {}): SaveData => ({
   v: SAVE_VERSION, savedAt: 1, level: 'camp1', startAt: 'boss',
   inventory: { gears: 3, metal: 8 }, upgrades: { body: 2 },
   functions: { scouter: true, autoAim: false, flight: true },
-  unlocks: { autoAim: false, vacuum: true },
+  unlocks: { autoAim: false, vacuum: true, shield: false },
   loadout: { owned: ['pistol', 'shotgun'], current: 'shotgun' },
   selectedSkill: 'vacuum', levelMemo: { gears: ['g1'], keys: ['B'] },
   ...over,

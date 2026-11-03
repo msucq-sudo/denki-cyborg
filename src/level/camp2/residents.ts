@@ -2,9 +2,9 @@
 // 体の部品ごとに InstancedMesh を1つ（胴・頭・腕×2・脚×2）。毎フレーム、各住民の行動から部品の行列を計算し直す。
 // 行動：うろうろ歩く／格子をつかんで揺する／座り込む／立ち止まって見回す。解放後は跳びはねて喜ぶ。
 import * as THREE from 'three';
-import { CAGE, CAGE_Z } from './layout';
+import { CAGE, CAGE_Z, HALL } from './layout';
 
-type Act = 'wander' | 'grab' | 'sit' | 'idle' | 'cheer';
+type Act = 'wander' | 'grab' | 'sit' | 'idle' | 'cheer' | 'exit';
 
 interface Resident {
   x: number; z: number; yaw: number;
@@ -19,6 +19,10 @@ interface Resident {
   seed: number;
   /** 座り具合・つかみ具合などのなめらかな値 0..1 */
   sitK: number; grabK: number; cheerK: number;
+  /** 脱出：出発までの待ち時間・通る点・何番目の点へ向かっているか・出口を出て消えたか */
+  /** 前フレームの跳びの高さ（着地の検出用） */
+  hopPrev: number;
+  exitT: number; wp: { x: number; z: number }[]; wi: number; gone: boolean;
 }
 
 export interface Residents {
@@ -27,6 +31,12 @@ export interface Residents {
   update(dt: number, time: number): void;
   /** 解放された：喜ぶ */
   setFreed(on: boolean): void;
+  /** 扉が開いたあと、住民が跳びはねながら扉をくぐって南の出口から出ていく（出口を出たら見えなくなる） */
+  setExit(on: boolean): void;
+  /** 脱出中に走って跳ぶ1歩ごと（着地のたび）に呼ばれる。足音用 */
+  onStep: ((x: number, z: number) => void) | null;
+  /** テスト・ムービー用：脱出中の人数と、出口を出て消えた人数 */
+  exitStats(): { running: number; gone: number };
   /** テスト用：今の行動の数 */
   stats(): Record<Act, number>;
 }
@@ -71,6 +81,7 @@ export function buildResidents(count: number, seed = 7): Residents {
     const r: Resident = {
       x, z, yaw: rnd() * Math.PI * 2, act: 'idle', t: rnd() * 3, tx: x, tz: z, speed: 0.6 + rnd() * 0.5,
       phase: rnd() * 10, scale: 0.88 + rnd() * 0.22, seed: rnd() * 100, sitK: 0, grabK: 0, cheerK: 0,
+      hopPrev: 0, exitT: 0, wp: [], wi: 0, gone: false,
     };
     // 最初から格子をつかんでいる人・座っている人もいる
     const k = rnd();
@@ -134,7 +145,22 @@ export function buildResidents(count: number, seed = 7): Residents {
       r.t -= dt;
       let walking = false;
       // ---- 行動
-      if (r.act === 'cheer') {
+      if (r.act === 'exit') {
+        r.exitT -= dt;
+        const w = r.wp[r.wi];
+        if (r.exitT <= 0 && w) {
+          const dx = w.x - r.x, dz = w.z - r.z;
+          const d = Math.hypot(dx, dz);
+          if (d > 0.15) {
+            walking = true;
+            const sp = Math.min(d, r.speed * dt);
+            r.x += (dx / d) * sp;
+            r.z += (dz / d) * sp;
+            r.yaw = turn(r.yaw, Math.atan2(dx, dz), dt * 8);
+          } else r.wi++;
+        } else if (r.exitT > 0) r.yaw = turn(r.yaw, 0, dt * 3);
+        if (!r.wp[r.wi] || r.z > HALL.z1 + 0.8) r.gone = true;
+      } else if (r.act === 'cheer') {
         r.yaw = turn(r.yaw, 0, dt * 3);   // 前室（+Z）の方を向く
       } else if (r.act === 'wander' || r.act === 'grab') {
         const dx = r.tx - r.x, dz = r.tz - r.z;
@@ -151,20 +177,24 @@ export function buildResidents(count: number, seed = 7): Residents {
       } else if (r.act === 'idle') {
         r.yaw += Math.sin(time * 0.7 + r.seed) * dt * 0.6;   // 見回す
       }
-      if (r.t <= 0 && r.act !== 'cheer') pickNext(r);
+      if (r.t <= 0 && r.act !== 'cheer' && r.act !== 'exit') pickNext(r);
       const atBars = r.act === 'grab' && Math.hypot(r.tx - r.x, r.tz - r.z) <= 0.12;
       r.grabK = approach(r.grabK, atBars ? 1 : 0, dt * 3);
       r.sitK = approach(r.sitK, r.act === 'sit' ? 1 : 0, dt * 1.5);
-      r.cheerK = approach(r.cheerK, r.act === 'cheer' ? 1 : 0, dt * 3);
-      if (walking) r.phase += dt * r.speed * 7;
+      r.cheerK = approach(r.cheerK, r.act === 'cheer' || r.act === 'exit' ? 1 : 0, dt * 3);
+      if (walking) r.phase += dt * Math.min(r.speed, 2.6) * 7;
 
       // ---- 姿勢
-      const swing = walking ? Math.sin(r.phase) * 0.55 : 0;
+      const swing = walking ? Math.sin(r.phase) * (r.act === 'exit' ? 0.9 : 0.55) : 0;
       const shake = r.grabK * Math.sin(time * 17 + r.seed * 3) * 0.06;            // 格子を揺する
-      const hop = r.cheerK * Math.max(0, Math.sin(time * 7 + r.seed)) * 0.35;       // 喜んで跳ぶ
+      const hopSin = Math.sin(time * (r.act === 'exit' ? 10 : 7) + r.seed);
+      const hop = r.cheerK * Math.max(0, hopSin) * (r.act === 'exit' ? 0.5 : 0.35);
+      // 脱出中、跳びが地面に戻った瞬間が1歩
+      if (r.act === 'exit' && walking && !r.gone && r.hopPrev > 0 && hopSin <= 0) api.onStep?.(r.x, r.z);
+      r.hopPrev = hopSin;       // 喜んで跳ぶ
       const sit = r.sitK;
       const hipY = lerp(0.82, 0.32, sit) + hop;
-      base.compose(pos.set(r.x + shake * Math.cos(r.yaw), 0, r.z - shake * Math.sin(r.yaw)), q.setFromEuler(e.set(0, r.yaw, 0)), sc.setScalar(r.scale));
+      base.compose(pos.set(r.x + shake * Math.cos(r.yaw), r.gone ? -60 : 0, r.z - shake * Math.sin(r.yaw)), q.setFromEuler(e.set(0, r.yaw, 0)), sc.setScalar(r.scale));
       setPart(torso, i, 0, hipY + 0.31, shake * 0.3, 0.12 * r.grabK - 0.08 * sit, 0, 0);
       setPart(head, i, 0, hipY + 0.78, 0.02 + shake * 0.5, 0, Math.sin(time * 0.9 + r.seed) * 0.4 * (1 - r.grabK), 0);
       // 腕：歩き＝振る、つかむ＝前へ上げる（揺する）、喜ぶ＝上へ振り上げる、座る＝ひざの上
@@ -186,12 +216,36 @@ export function buildResidents(count: number, seed = 7): Residents {
     }
   }
 
+  function setExit(on: boolean): void {
+    if (!on) return;
+    for (const r of people) {
+      // 扉の前に近い人から先に出る。扉のすき間（x -2..2）を通ってから南の出口へ
+      const gx = (rnd() - 0.5) * 3;
+      const d = Math.hypot(r.x - gx, r.z - CAGE_Z);
+      r.act = 'exit';
+      r.t = 1e9;
+      r.exitT = d * 0.1 + rnd() * 0.8;
+      r.speed = 4.6 + rnd() * 1.8;
+      r.wi = 0;
+      r.wp = [];
+      if (r.z < CAGE_Z - 0.9) r.wp.push({ x: gx, z: CAGE_Z - 0.9 });
+      r.wp.push({ x: gx, z: CAGE_Z + 2.5 }, { x: gx * 1.4, z: HALL.z1 + 1.5 });
+    }
+  }
+
+  function exitStats(): { running: number; gone: number } {
+    let running = 0, gone = 0;
+    for (const r of people) { if (r.gone) gone++; else if (r.act === 'exit') running++; }
+    return { running, gone };
+  }
+
   function stats(): Record<Act, number> {
-    const o: Record<Act, number> = { wander: 0, grab: 0, sit: 0, idle: 0, cheer: 0 };
+    const o: Record<Act, number> = { wander: 0, grab: 0, sit: 0, idle: 0, cheer: 0, exit: 0 };
     for (const r of people) o[r.act]++;
     return o;
   }
 
   update(0, 0);
-  return { root, count, update, setFreed, stats };
+  const api: Residents = { root, count, update, setFreed, setExit, exitStats, stats, onStep: null };
+  return api;
 }

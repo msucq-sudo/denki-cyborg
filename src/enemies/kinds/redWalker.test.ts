@@ -4,7 +4,7 @@ import { createWorld } from '../../core/world';
 import { EventBus } from '../../core/events';
 import { makeAABB } from '../../core/collision';
 import type { Enemy, World } from '../../core/types';
-import { ENEMIES, HACK } from '../../config/balance';
+import { ENEMIES, HACK, PLAYER } from '../../config/balance';
 import { spawnEnemy, updateEnemies } from '../enemies';
 import { KIND_MODULES } from '.';
 import { REDWALKER_ALLY } from './redWalker';
@@ -42,27 +42,16 @@ describe('redWalker', () => {
     expect(e.ai.model.weakPoints).toHaveLength(1);
   });
 
-  it('rolls at the player and shoots like a walker', () => {
+  it('stays still and never shoots while an enemy (even when alerted or tethered)', () => {
     world.player.pos.set(0, 0, 14);
     const e = spawnEnemy(world, 'redWalker', V(0, 0.7, 0));
     e.ai.alert = 4;
     run(1);
-    expect(e.pos.z).toBeGreaterThan(0.5); // 前進する
+    e.tethered = true;
     run(4);
-    expect(world.projectiles.some((p) => p.owner === 'enemy')).toBe(true);
-  });
-
-  it('is slowed while tethered', () => {
-    const free = spawnEnemy(world, 'redWalker', V(-20, 0.7, 0));
-    const held = spawnEnemy(world, 'redWalker', V(20, 0.7, 0));
-    world.player.pos.set(0, 0, 40);
-    free.ai.alert = 4; held.ai.alert = 4;
-    held.tethered = true;
-    run(1.5);
-    const dFree = free.pos.z, dHeld = held.pos.z;
-    expect(dFree).toBeGreaterThan(1);
-    expect(dHeld).toBeLessThan(dFree * (HACK.jamSpeedMul + 0.25));
-    expect(dHeld).toBeGreaterThan(0);
+    expect(e.pos.z).toBeCloseTo(0, 5);
+    expect(e.pos.x).toBeCloseTo(0, 5);
+    expect(world.projectiles.some((p) => p.owner === 'enemy')).toBe(false);
   });
 
   it('as an ally shoots the nearest enemy, tints blue, and keeps its weapon off the player', () => {
@@ -105,6 +94,32 @@ describe('redWalker', () => {
     world.player.pos.set(0, 0, -25);
     run(4);
     expect(a.pos.z).toBeLessThan(-3);
+  });
+
+  it('keeps up with a running player while following the recent route', () => {
+    const a = ally(V(0, 0.7, 0));
+    const dt = 1 / 30;
+    world.player.pos.set(0, 0, 0);
+    for (let i = 0; i < 5 * 30; i++) {
+      world.player.vel.set(0, 0, -PLAYER.moveSpeed);
+      world.player.pos.z -= PLAYER.moveSpeed * dt;
+      world.time += dt;
+      updateEnemies(world, dt);
+    }
+    expect(Math.abs(a.pos.z - world.player.pos.z)).toBeLessThan(8);
+    expect(a.pos.z).toBeGreaterThan(world.player.pos.z + 1); // 追い越さず、後ろを保つ
+  });
+
+  it('drops an ally target immediately when a wall blocks its line of sight', () => {
+    const a = ally(V(0, 0.7, 0));
+    const foe = spawnEnemy(world, 'heavy', V(0, 1, -8));
+    world.player.pos.set(0, 0, 12);
+    world.colliders.push(makeAABB(V(-2, 0, -5), V(2, 4, -4)));
+    a.ai.allyTarget = foe;
+    a.ai.scanT = 2;
+    run(0.2);
+    expect(a.ai.allyTarget).toBeUndefined();
+    expect(a.pos.z).toBeGreaterThan(0); // 見えない敵を追い続けず、プレイヤーへ戻る
   });
 
   it('shuts down after allyTime without counting as a kill, and cleans up its bolts', () => {

@@ -92,6 +92,9 @@
 .dv-turn-sub { flex-basis: 100%; font-size: 14px; font-weight: 700; color: #cfe0ff; }
 .dv-turn.recover { border-color: var(--dv-coral); box-shadow: 0 0 26px rgba(255, 107, 138, 0.5); }
 .dv-turn.recover .dv-turn-arrow { color: var(--dv-coral); }
+/* ルート2（右折）：右側に出す */
+.dv-turn.right { left: auto; right: 4vw; animation-name: dvTurnR; }
+@keyframes dvTurnR { from { transform: translateX(0); } to { transform: translateX(10px); } }
 @keyframes dvTurn { from { transform: translateX(0); } to { transform: translateX(-10px); } }
 
 /* 右：はね飛ばした数 */

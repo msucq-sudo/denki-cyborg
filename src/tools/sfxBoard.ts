@@ -1,7 +1,7 @@
 // 効果音ボード：全 SE をボタンで試聴する。ゲームと同じ EventBus → sfx.ts の経路で鳴らす
 import * as THREE from 'three';
 import { EventBus, type GameEvents } from '../core/events';
-import { initAudio, resumeAudio, auditionLoop, auditionHeartbeat, playFootstep } from '../audio/sfx';
+import { initAudio, resumeAudio, auditionLoop, auditionHeartbeat, playFootstep, playResidentStep, playJetCharge, playJetLaunch, stopJetLaunch, playSpecialCharge, playSpecialFire, playSpecialBeam, stopSpecialSfx } from '../audio/sfx';
 import type { LoopName } from '../audio/synth';
 
 const bus = new EventBus();
@@ -28,6 +28,16 @@ function lp(label: string, loop: LoopName, ratio?: number): Item { return { labe
 
 const GROUPS: Array<{ title: string; items: Item[] }> = [
   {
+    title: '必殺技（電気のかめはめ波）',
+    items: [
+      { label: '溜め：キュイーン（約1.4秒・だんだん高く大きく）', ev: () => playSpecialCharge(1.4) },
+      { label: '発射：ドガーン', ev: () => playSpecialFire() },
+      { label: '照射：ごうっと轟音（約2秒で消える）', ev: () => playSpecialBeam(2.0) },
+      { label: '通し：溜め→発射→照射', ev: () => { stopSpecialSfx(); playSpecialCharge(1.4); setTimeout(() => { playSpecialFire(); playSpecialBeam(2.0); }, 1400); } },
+      { label: '止める', ev: () => stopSpecialSfx() },
+    ],
+  },
+  {
     title: 'プレイヤー',
     items: [
       e('ショット(タップ)', 'shot', { charged: false, power: 0 }),
@@ -48,6 +58,11 @@ const GROUPS: Array<{ title: string; items: Item[] }> = [
       { label: '低HPの心音', ev: () => auditionHeartbeat() },
       { label: '足音（歩き・4歩）', ev: () => { for (let i = 0; i < 4; i++) setTimeout(() => playFootstep(false), i * 600); } },
       { label: '足音（走り・6歩）', ev: () => { for (let i = 0; i < 6; i++) setTimeout(() => playFootstep(true), i * 280); } },
+      { label: '住民の足音（群れ・走り）', ev: () => { for (let i = 0; i < 60; i++) setTimeout(() => playResidentStep(), i * 35 + Math.random() * 30); } },
+      { label: 'ジェットパック発進（ブーン）：溜め→発進', ev: () => { playJetCharge(); setTimeout(() => playJetLaunch(), 600); } },
+      { label: 'ジェットパック発進：溜めだけ', ev: () => playJetCharge() },
+      { label: 'ジェットパック発進：ドゥン〜ブーン（約3秒）', ev: () => playJetLaunch() },
+      { label: 'ジェットパック発進：止める', ev: () => stopJetLaunch() },
       e('吸収アーム発射', 'absorbFire', {}),
       e('吸収くっつく', 'absorbAttach', { pos: P() }),
       e('吸収切れる', 'absorbBreak', {}),

@@ -1,5 +1,5 @@
 import * as THREE from 'three';
-import { CAMERA, PLAYER } from '../config/balance';
+import { CAMERA, PLAYER, SHIELD } from '../config/balance';
 import type { World } from './types';
 import type { Input } from './input';
 import type { EventBus } from './events';
@@ -50,7 +50,8 @@ export function createWorld(input: Input, events: EventBus, aspect: number): Wor
     toasts: [],
     nextId: 1,
     effects: [],
-    unlocks: { autoAim: false, vacuum: false },
+    unlocks: { autoAim: false, vacuum: false, shield: false },
+    shield: { hp: SHIELD.maxHp, broken: false, k: 0, hitAt: -99 },
     loadout: { owned: ['pistol'], current: 'pistol' },
     skills: {
       selected: 'vacuum', hover: null,
@@ -60,6 +61,7 @@ export function createWorld(input: Input, events: EventBus, aspect: number): Wor
     inventory: { gears: 0, metal: 0 },
     upgrades: {},
     drops: [],
+    special: { gauge: 0, phase: 'idle', t: 0, lastAbsorbed: -1, muteGain: false, dir: new THREE.Vector3(0, 0, -1) },
   };
   scene.add(world.player.root);
   return world;

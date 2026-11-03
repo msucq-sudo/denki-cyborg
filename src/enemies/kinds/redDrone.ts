@@ -1,12 +1,12 @@
 // 赤ドローン：ドローンの赤い版。吸収アームをつなぐとハッキング（abilities/hack.ts）ができ、
 // 成功すると一定時間 味方になって、プレイヤーのまわりを飛びながらほかの敵を撃つ
 import * as THREE from 'three';
-import { HACK } from '../../config/balance';
+import { HACK, PLAYER } from '../../config/balance';
 import { spawnBurst } from '../../core/effects';
 import { buildDroneWith, type DronePalette } from '../models';
 import { animateDrone, updateDrone } from '../ai';
 import { faceToward, moveFlyer } from '../common';
-import { addHackCue, animateAllyLook, beginAllyFrame, clearAllyBolts, fireAllyBolt, updateAllyTarget } from './allyBolts';
+import { ALLY, addHackCue, allyFollowWaypoint, animateAllyLook, beginAllyFrame, clearAllyBolts, fireAllyBolt, recordAllyTrail, updateAllyTarget } from './allyBolts';
 import type { KindModule } from './kind';
 
 /** 赤ドローンの味方時の調整値（弾・点滅などの共通値は allyBolts.ts の ALLY） */
@@ -33,6 +33,7 @@ const RED_PALETTE: DronePalette = { white: 0xd8322c, blue: 0x7d1620, dark: 0x2b0
 const _spark = new THREE.Vector3();
 const _want = new THREE.Vector3();
 const _wish = new THREE.Vector3();
+const _playerVelocity = new THREE.Vector3();
 
 export const redDrone: KindModule = {
   knockback: 1,
@@ -55,6 +56,7 @@ export const redDrone: KindModule = {
 
   update(c) {
     const { world, e, dt } = c;
+    recordAllyTrail(world, e);
     const jam = e.tethered;
     if (jam) {
       // つながれている間：ジャミングで周回も射撃もにぶる。火花が散る
@@ -68,26 +70,56 @@ export const redDrone: KindModule = {
     updateDrone(c, jam ? { speedMul: HACK.jamSpeedMul, intervalMul: 1 / HACK.jamSpeedMul } : {});
   },
 
-  /** 味方になっている間：プレイヤーのまわりを飛び、視界内の最も近い敵を撃つ */
+  /** 味方になっている間：敵との戦闘中は間合いを取り、平時はプレイヤーの後ろを飛ぶ */
   updateAlly(c) {
     const { world, e, dt, spec, pc } = c;
     const ai = e.ai;
     if (!beginAllyFrame(world, e, dt)) return;
+    recordAllyTrail(world, e);
     const target = updateAllyTarget(world, e, dt, spec.sightRange);
 
-    // 位置：プレイヤーのまわりをゆっくり周回（離れたら速く追いつく）
-    ai.orbitA = (ai.orbitA ?? e.id) + dt * REDDRONE_ALLY.orbitSpeed;
-    const a = ai.orbitA as number;
-    _want.set(
-      pc.x + Math.cos(a) * REDDRONE_ALLY.orbitRadius,
-      pc.y + REDDRONE_ALLY.hoverHeight + Math.sin(world.time * 1.3 + e.id) * 0.3,
-      pc.z + Math.sin(a) * REDDRONE_ALLY.orbitRadius,
-    );
-    _wish.copy(_want).sub(e.pos).multiplyScalar(1.6);
-    const far = e.pos.distanceTo(pc) > REDDRONE_ALLY.catchUpDist;
-    const maxSp = spec.speed * (far ? REDDRONE_ALLY.catchUpMul : 1.2);
-    if (_wish.length() > maxSp) _wish.setLength(maxSp);
-    moveFlyer(world, e, dt, _wish, 8);
+    if (target) {
+      // 戦闘中は味方らしく敵の周りを回り、攻撃に必要な距離を保つ
+      ai.orbitA = (ai.orbitA ?? e.id) + dt * REDDRONE_ALLY.orbitSpeed;
+      const a = ai.orbitA as number;
+      _want.set(
+        pc.x + Math.cos(a) * REDDRONE_ALLY.orbitRadius,
+        pc.y + REDDRONE_ALLY.hoverHeight + Math.sin(world.time * 1.3 + e.id) * 0.3,
+        pc.z + Math.sin(a) * REDDRONE_ALLY.orbitRadius,
+      );
+      _wish.copy(_want).sub(e.pos).multiplyScalar(1.6);
+      const far = e.pos.distanceTo(pc) > REDDRONE_ALLY.catchUpDist;
+      const maxSp = spec.speed * (far ? REDDRONE_ALLY.catchUpMul : 1.2);
+      if (_wish.length() > maxSp) _wish.setLength(maxSp);
+      moveFlyer(world, e, dt, _wish, 8);
+    } else {
+      // 戦闘外はプレイヤーの足跡をたどり、角を直線で抜けようとしない
+      const bob = Math.sin(world.time * 1.3 + e.id) * 0.3;
+      // 移動中は道なりの距離を保ち、立ち止まったら足跡の高低差を詰めて同じ階へ合流する。
+      const gap = world.player.vel.length() > 0.35 ? ALLY.followGap : 0.8;
+      let waypoint = allyFollowWaypoint(world, e, gap, PLAYER.height * 0.5 + REDDRONE_ALLY.hoverHeight + bob);
+      if (!waypoint.atTrailGoal) {
+        // 低いハッチや通路の経路点へ向かうときは、頭上の床に当たらない高さまで下げる。
+        const lowHeight = Math.max(e.radius + 0.1, PLAYER.height * 0.5 + bob);
+        waypoint = allyFollowWaypoint(world, e, gap, lowHeight);
+      }
+      _want.copy(waypoint.point);
+      const far = e.pos.distanceTo(_want) > REDDRONE_ALLY.catchUpDist;
+      const maxSp = Math.max(
+        spec.speed * (far ? REDDRONE_ALLY.catchUpMul : 1.2),
+        PLAYER.moveSpeed * (far ? 1.3 : 1.1),
+      );
+      _wish.copy(_want).sub(e.pos);
+      if (waypoint.atTrailGoal) {
+        // 追従点が一緒に移動する区間ではプレイヤー速度も加えて、細かい点への追従で減速しない
+        _wish.multiplyScalar(1.8).add(_playerVelocity.copy(world.player.vel));
+      } else if (_wish.length() > 0.3) {
+        // 経路途中の短いサンプル間も追いつける速度で進む
+        _wish.setLength(maxSp);
+      } else _wish.set(0, 0, 0);
+      if (_wish.length() > maxSp) _wish.setLength(maxSp);
+      moveFlyer(world, e, dt, _wish, 8);
+    }
 
     if (target) {
       const dx = target.pos.x - e.pos.x, dz = target.pos.z - e.pos.z;

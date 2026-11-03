@@ -179,6 +179,22 @@ html, body { margin: 0; height: 100%; overflow: hidden; background: #0d1420; }
 .boss.flash { animation: blink 0.4s steps(2, start) 2; }
 .boss-num { font-size: 12px; margin-top: 3px; opacity: 0.85; }
 
+/* ドレインガーディアン：部位HP（右腕・胴体・左腕） */
+.guard { position: fixed; top: 14px; left: 50%; transform: translateX(-50%); width: min(620px, 58vw); text-align: center; }
+.guard-name { font-size: 14px; font-weight: 800; letter-spacing: 0.22em; color: #d9fbff; text-shadow: 0 0 10px rgba(126, 243, 255, 0.6); margin-bottom: 4px; }
+.guard-row { display: flex; gap: 10px; align-items: flex-end; }
+.guard-part { flex: 1 1 0; min-width: 0; }
+.guard-part.body { flex: 1.7 1 0; }
+.guard-label { font-size: 12px; font-weight: 800; letter-spacing: 0.3em; color: #d9fbff; margin-bottom: 2px; }
+.guard-part .bar { height: 12px; border-radius: 10px; }
+.guard-part.body .bar { height: 15px; }
+.guard-part .fill { background: linear-gradient(90deg, var(--hud-cyan-deep), #c6fbff); }
+.guard-part.body.red .fill { background: linear-gradient(90deg, #ff5f74, #ff9a6b); }
+.guard-part.broken { opacity: 0.55; }
+.guard-part.regen .fill { background: repeating-linear-gradient(90deg, #66e6ff 0 8px, #ffffff 8px 12px); animation: blink 0.35s steps(2, start) infinite; }
+.guard-part.regen .guard-label { color: #8ff3ff; }
+.guard-num { font-size: 11px; margin-top: 2px; opacity: 0.85; }
+
 /* 目的・区画（右上） */
 .objective {
   position: fixed; top: 232px; right: 16px; max-width: min(260px, 36vw);
@@ -331,7 +347,31 @@ html, body { margin: 0; height: 100%; overflow: hidden; background: #0d1420; }
 .hpbar.low .hp-num { color: #ffb0a0; }
 .hpbar.low .bar.hp .fill { animation: blink 0.9s ease-in-out infinite; }
 .bleft .bar.hp { height: 12px; }
+.shbar.off { display: none; }
+.g-label.sh-l { color: #66e6ff; }
+.bleft .bar.sh { height: 8px; }
+.bleft .bar.sh .fill { background: linear-gradient(90deg, #2ea8d8, #9af0ff); }
+.shbar.broken .g-label, .shbar.broken .hp-num { color: #ffb0a0; }
+.shbar.broken .bar.sh .fill { background: linear-gradient(90deg, #8a4a5a, #ff9fb4); animation: blink 0.9s ease-in-out infinite; }
 .bleft .bar.hp .fill { background: linear-gradient(90deg, #ff6b8a, #ff9fb4); }
+
+/* 必殺技ゲージ：HPの下の細いバー（3分割）。満タンで虹色に流れて脈打つ */
+.spbar .g-head { margin-bottom: 2px; }
+.g-label.sp-l { color: #b9c8ff; }
+.sp-key { margin-left: auto; font-size: 12px; font-weight: 900; letter-spacing: 0.04em; color: #fff; text-shadow: 0 0 6px #9ff4ff, 0 0 12px #6a8cff; opacity: 0; transition: opacity 0.2s; }
+.spbar.full .sp-key { opacity: 1; animation: sp-pulse 0.9s ease-in-out infinite; }
+.sp-segs { display: flex; gap: 3px; }
+.sp-seg { position: relative; flex: 1; height: 7px; border-radius: 4px; overflow: hidden; background: rgba(4, 12, 22, 0.55); border: 1px solid rgba(255, 255, 255, 0.22); }
+.sp-fill { position: absolute; inset: 0 auto 0 0; width: 0; background: linear-gradient(90deg, #5aa8ff, #c8f4ff); transition: width 0.15s linear; }
+.spbar.full .sp-seg { border-color: rgba(255, 255, 255, 0.8); animation: sp-glow 0.9s ease-in-out infinite; }
+.spbar.full .sp-fill {
+  background: linear-gradient(90deg, #ff4d6d, #ffb44d, #fff04d, #5dff7a, #4de8ff, #6a7bff, #c04dff, #ff4d6d);
+  background-size: 300% 100%; animation: sp-flow 1.2s linear infinite;
+}
+.spbar.busy { opacity: 0.6; }
+@keyframes sp-flow { to { background-position: -300% 0; } }
+@keyframes sp-glow { 0%, 100% { box-shadow: 0 0 4px rgba(150, 220, 255, 0.5); } 50% { box-shadow: 0 0 12px rgba(255, 255, 255, 0.95), 0 0 18px rgba(120, 160, 255, 0.8); } }
+@keyframes sp-pulse { 0%, 100% { transform: scale(1); } 50% { transform: scale(1.12); } }
 
 .batt {
   position: relative; height: 28px; border-radius: 8px; overflow: hidden;

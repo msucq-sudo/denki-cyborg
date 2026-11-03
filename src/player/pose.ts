@@ -4,7 +4,8 @@ import * as THREE from 'three';
 import { ABSORB, CHARACTER, DODGE } from '../config/balance';
 import { moveSpeed } from '../progression/effects';
 import type { World } from '../core/types';
-import type { PlayerVisual, ArmRig } from './visual';
+import { setFingers, type PlayerVisual, type ArmRig } from './visual';
+import { handBasis, specialPoseNow, type SpecialPose } from './specialPose';
 
 const A = CHARACTER.anim;
 const G = CHARACTER.gun;
@@ -20,13 +21,15 @@ export interface AnimState {
   recoilT: number; prevShots: number; shotHold: number;
   ripple: number; rippleT: number; prevAbsPhase: string;
   scK: number; stretch: number;
+  /** 必殺技の姿勢をどれだけ重ねるか 0..1 と、直前の必殺技の姿勢（戻るときのブレンド用） */
+  spK: number; spLast: SpecialPose | null;
 }
 
 export function createAnimState(world: World): AnimState {
   return {
     phase: 0, moveK: 0, runK: 0, fwdF: 1, sideF: 0, airK: 0, flyK: 0, aimK: 0, supportK: 0, absK: 0, chargeK: 0,
     landT: 0, minVy: 0, prevGround: true, flinchT: 0, prevHp: world.player.hp,
-    recoilT: 0, prevShots: world.stats.shots, shotHold: 0, ripple: 0, rippleT: 0, prevAbsPhase: 'idle', scK: 0, stretch: 1,
+    recoilT: 0, prevShots: world.stats.shots, shotHold: 0, ripple: 0, rippleT: 0, prevAbsPhase: 'idle', scK: 0, stretch: 1, spK: 0, spLast: null,
   };
 }
 
@@ -86,7 +89,8 @@ export function poseCharacter(world: World, v: PlayerVisual, a: AnimState, dt: n
   const hs = Math.hypot(vx, vz);
   const fwd = -vx * Math.sin(f) - vz * Math.cos(f);
   const side = vx * Math.cos(f) - vz * Math.sin(f);
-  const grounded = p.onGround, flying = p.flying;
+  // world.level.data.poseFly=true：ムービーでジェットパックの姿勢にする
+  const grounded = p.onGround, flying = p.flying || world.level.data.poseFly === true;
   const dodging = playing && p.dodgeTimer > 0;
   const absPhase = world.absorb.phase;
   const absorbActive = absPhase === 'extending' || absPhase === 'attached' || absPhase === 'retracting';
@@ -143,6 +147,12 @@ export function poseCharacter(world: World, v: PlayerVisual, a: AnimState, dt: n
   const legAmp = mix(A.legAmpWalk, A.legAmpRun, runK) * ampScale;
   const k0 = mix(A.kneeWalk[0], A.kneeRun[0], runK), k1 = mix(A.kneeWalk[1], A.kneeRun[1], runK);
   const cK = a.chargeK;
+  // 必殺技の姿勢（world.special の段階から決まる）。終わったら少しずつ通常へ戻る
+  const spNow = playing ? specialPoseNow(world, f) : null;
+  if (spNow) a.spLast = spNow;
+  a.spK = smooth(a.spK, spNow ? 1 : 0, spNow ? 40 : 7, dt);
+  if (!spNow && a.spK < 0.003) { a.spK = 0; a.spLast = null; }
+  const sp = a.spLast, spK = a.spK;
   const stance = aimK * (1 - moveK);
   const rise = clamp(p.vel.y / 6, -1, 1) * 0.5 + 0.5;
 
@@ -182,6 +192,10 @@ export function poseCharacter(world: World, v: PlayerVisual, a: AnimState, dt: n
     th = mix(th, 1.25, tuck); flex = mix(flex, A.rollTuck + 0.2, tuck); z = mix(z, s * 0.1, tuck); ank = mix(ank, 0.2, tuck);
     // 着地の沈み込み
     flex += landK * 0.5; th += landK * 0.15;
+    if (sp && spK > 0) {
+      const L = sp.legs[i];
+      th = mix(th, L.th, spK); flex = mix(flex, L.flex, spK); z = mix(z, L.z, spK); ank = mix(ank, L.ank, spK);
+    }
     legT[i].th = th; legT[i].flex = flex; legT[i].z = z; legT[i].ank = ank;
   }
   const legs = [v.legL, v.legR];
@@ -231,6 +245,20 @@ export function poseCharacter(world: World, v: PlayerVisual, a: AnimState, dt: n
     v.pivot.quaternion.copy(_qLean);
   }
 
+  if (sp && spK > 0) {
+    v.hips.rotation.y = mix(v.hips.rotation.y, sp.hipsY, spK);
+    v.spine.rotation.x = mix(v.spine.rotation.x, sp.spineX, spK);
+    v.spine.rotation.y = mix(v.spine.rotation.y, sp.spineY, spK);
+    v.chest.rotation.x = mix(v.chest.rotation.x, sp.chestX, spK);
+    v.head.rotation.y = mix(v.head.rotation.y, sp.headY, spK);
+    v.chest.rotation.y = mix(v.chest.rotation.y, sp.chestY, spK);
+    v.chest.rotation.z = mix(v.chest.rotation.z, sp.chestZ, spK);
+  }
+  // 左の鎖骨：必殺技の溜めで左肩をアーマーごと右前へ丸める。腕の付け根も同じ回転で動かす（ふだんは元の位置）
+  const shRest = (v.armL.shoulder.userData.rest ??= v.armL.shoulder.position.clone()) as THREE.Vector3;
+  if (sp && spK > 0) v.clavL.rotation.set(sp.clav.x * spK, sp.clav.y * spK, sp.clav.z * spK);
+  else v.clavL.rotation.set(0, 0, 0);
+  v.armL.shoulder.position.copy(shRest).sub(v.clavL.position).applyEuler(v.clavL.rotation).add(v.clavL.position);
   p.root.updateMatrixWorld(true);
 
   // ---------- 腕・銃 ----------
@@ -315,6 +343,34 @@ export function poseCharacter(world: World, v: PlayerVisual, a: AnimState, dt: n
   v.springMat.emissiveIntensity = glow;
   v.springMat.emissive.setHex(p.overloading ? 0xff8a3c : CHARACTER.colors.cyan);
 
+  // ---------- 必殺技：両手を目標へ（IK）、指を開く ----------
+  if (sp && spK > 0.001) {
+    solveArm(armR.shoulder.position, sp.tR, armR.upper, armR.fore, POLE_R, _qs, _qe);
+    armR.shoulder.quaternion.slerp(_qs, spK);
+    armR.elbow.quaternion.slerp(_qe, spK);
+    const dL = sp.tL.distanceTo(armL.shoulder.position);
+    const stL = clamp((dL / 0.97 - armL.fore) / armL.upper, 1, 3);
+    solveArm(armL.shoulder.position, sp.tL, armL.upper * stL, armL.fore, POLE_L, _qs2, _qe2);
+    armL.shoulder.quaternion.slerp(_qs2, spK);
+    armL.elbow.quaternion.slerp(_qe2, spK);
+    a.stretch = mix(a.stretch, stL, spK);
+    v.springStretch.value = a.stretch;
+    armL.elbow.position.y = -armL.upper * a.stretch;
+  }
+  v.gunFrame.visible = spK < 0.5;
+  // 指：通常は握ったまま。必殺技中は開く／爪のように曲げる。手の向きは胸から見た目標の向きに合わせる
+  const curl = mix(1, sp ? sp.curl : 1, spK) + (sp ? Math.sin(t * 47) * 0.03 * spK : 0);
+  const spread = mix(0, sp ? sp.spread : 0, spK);
+  setFingers(v.handR, curl, spread);
+  setFingers(v.handL, curl, spread);
+  for (const [arm, hand, fd, pd] of [[armR, v.handR, sp?.fR, sp?.pR], [armL, v.handL, sp?.fL, sp?.pL]] as const) {
+    if (fd && pd && spK > 0.001) {
+      handBasis(fd, pd, _qs3);                                    // 手の目標の向き（胸ローカル）
+      _qe3.copy(arm.shoulder.quaternion).multiply(arm.elbow.quaternion).invert().multiply(_qs3);
+      hand.group.quaternion.copy(IDENT).slerp(_qe3, spK);
+    } else hand.group.quaternion.copy(IDENT);
+  }
+
   // ---------- 発光パーツ ----------
   const frac = p.energy / p.maxEnergy;
   let bi = 0.2 + frac * 0.9;
@@ -339,7 +395,6 @@ export function poseCharacter(world: World, v: PlayerVisual, a: AnimState, dt: n
   // ジェット噴射
   v.jets.children.forEach((c) => { if ((c as THREE.Mesh).isMesh) { c.visible = flying; c.scale.set(1, 0.8 + Math.random() * A.jetFlicker, 1); } });
   v.jetLight.intensity = flying ? 2.5 + Math.random() * 1.2 : 0;
-  v.jets.position.y = airLift;
 }
 
 const _c = new THREE.Color();

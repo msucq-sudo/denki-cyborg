@@ -12,6 +12,8 @@ import { initHack, updateHack } from './abilities/hack';
 import { updateGrapple } from './core/grapple';
 import { initFunctions, updateFunctions } from './abilities/functions';
 import { updateSkills } from './abilities/skills';
+import { updateShield } from './abilities/shield';
+import { updateDecoy } from './abilities/decoy';
 import { updateWeaponSwitch, giveWeapon, WEAPON_ORDER } from './player/weaponSwitch';
 import { updateEnemies } from './enemies/api';
 import { buildDungeon, updateLevel } from './level/dungeon';
@@ -22,22 +24,31 @@ import { buildCamp1, updateCamp1, CAMP1_EXPOSURE, getCamp1Memo, setCamp1Memo, pr
 import { readSave, readSaveHistory, getSaveCheckpointId, writeSave, describeSave, SAVE_VERSION, type SaveData } from './core/save';
 import { activeCheckpointId, checkpointChoices, CHECKPOINT_TARGETS, prepareFloor1Checkpoint } from './core/checkpoints';
 import { toast } from './core/combat';
+import { progress, resetProgress } from './core/progress';
 import { buildCamp2, updateCamp2, CAMP2_EXPOSURE } from './level/camp2';
+import { createMinecart } from './level/minecart';
+import { buildDrain, updateDrain, completeDrainMinecart, DRAIN_EXPOSURE, getDrainMemo, setDrainMemo, prepareDrainRoomResume } from './level/drain';
+import { buildDrainBoss, updateDrainBoss, DRAIN_BOSS_EXPOSURE, getDrainBossMemo, setDrainBossMemo } from './level/drainBoss';
 import { CAMERA, CHARACTER } from './config/balance';
 import { syncPlayerStats } from './progression/effects';
 import { createHUD } from './ui/hud';
 import { getDriveHud } from './ui/driveHud';
 import { createUpgradeScreen } from './ui/upgradeScreen';
 import { initAudio, resumeAudio, updateAudio } from './audio/sfx';
+import { movieNow } from './cinematic/movieMode';
+import { initSpecialHooks, specialFrozen, updateSpecial } from './special/special';
+import { updateSpecialMovie } from './special/movie';
 import './ui/style.css';
 
 // ?level=floor1 で研究所1階、?level=floor2 で2階（サイボーグ改造室）、?level=surge でガレージ→サージ収容所への道。
 // ?level=camp1 でサージ収容所 1階（&start=boss で中ボス戦の前から）。
+// ?level=drain でドレイン装置へ向かうダンジョン（&start=bTop|rope|dFront|eWest|goal でチェックポイントから）。
+// ?level=drainBoss でドレイン装置の部屋（&start=corridor 通路／boss ボス戦／movie 導入ムービーだけ）。
 // 既定はアルファ版ダンジョン。?start=drive のように開始地点を指定できる（レベルが world.level.data.startAt を読む）
-type LevelId = 'dungeon' | 'floor1' | 'floor2' | 'surge' | 'camp1' | 'camp2';
+type LevelId = 'dungeon' | 'floor1' | 'floor2' | 'surge' | 'camp1' | 'camp2' | 'drain' | 'drainBoss';
 const urlQ = new URLSearchParams(location.search);
 const levelParam = urlQ.get('level');
-let levelId: LevelId = levelParam === 'floor1' || levelParam === 'floor2' || levelParam === 'surge' || levelParam === 'camp1' || levelParam === 'camp2' ? levelParam : 'dungeon';
+let levelId: LevelId = levelParam === 'floor1' || levelParam === 'floor2' || levelParam === 'surge' || levelParam === 'camp1' || levelParam === 'camp2' || levelParam === 'drain' || levelParam === 'drainBoss' ? levelParam : 'dungeon';
 const initialLevelId = levelId;
 /** 次に作る World の開始地点（レベルごとの意味。リトライ地点にも使う） */
 let startAt: string | undefined = urlQ.get('start') ?? undefined;
@@ -50,6 +61,8 @@ const LEVELS: Record<LevelId, { build: (w: World) => void; tick: (w: World, dt: 
   surge: { build: buildSurge, tick: updateSurge, exposure: SURGE_EXPOSURE },
   camp1: { build: buildCamp1, tick: updateCamp1, exposure: CAMP1_EXPOSURE },
   camp2: { build: buildCamp2, tick: updateCamp2, exposure: CAMP2_EXPOSURE },
+  drain: { build: buildDrain, tick: updateDrain, exposure: DRAIN_EXPOSURE },
+  drainBoss: { build: buildDrainBoss, tick: updateDrainBoss, exposure: DRAIN_BOSS_EXPOSURE },
 };
 const container = document.getElementById('app')!;
 const renderer = new THREE.WebGLRenderer({ antialias: true, powerPreference: 'high-performance' });
@@ -63,6 +76,13 @@ container.appendChild(renderer.domElement);
 
 const events = new EventBus();
 const input = new Input(renderer.domElement);
+// トロッコ面（ドレイン装置への扉を調べると始まる横スクロール）。?minecart で直接始められる
+const minecart = createMinecart(input);
+let minecartAuto = urlQ.has('minecart');
+function startMinecart(): void {
+  const w = world;
+  minecart.start({ onClear: (m, g) => completeDrainMinecart(w, m, g) });
+}
 initAudio(events);
 
 // 強化画面（2階のベッドで眠り終わると開く）。画面は1つだけ作って使い回す
@@ -74,12 +94,14 @@ floor2Hooks.onSleepComplete = (w) => {
 };
 // ?gears=N で歯車 N 個から始める（強化画面の確認用）
 const gearsParam = Number(new URLSearchParams(location.search).get('gears'));
-// ?unlock=vacuum,autoAim,shotgun,assault（または ?unlock=all）で解放した状態から始める（開発中の確認用）
+// ?unlock=vacuum,shield,autoAim,shotgun,assault（または ?unlock=all）で解放した状態から始める（開発中の確認用）
 const unlockParam = (urlQ.get('unlock') ?? '').split(',').map((x) => x.trim()).filter(Boolean);
 function applyUnlocks(w: World, list: string[]): void {
   const all = list.includes('all');
   if (all || list.includes('vacuum')) w.unlocks.vacuum = true;
+  if (all || list.includes('shield')) w.unlocks.shield = true;
   if (all || list.includes('autoAim')) w.unlocks.autoAim = true;
+  if (all || list.includes('decoy')) w.unlocks.decoy = true;
   for (const id of WEAPON_ORDER) if (all || list.includes(id)) giveWeapon(w, id);
 }
 // 武器の切り替え（十字キー左右 / 1・3）→ 見た目の武器を差し替える
@@ -87,6 +109,8 @@ events.on('weaponSwitch', (p) => setPlayerWeapon(world, p.id));
 
 let world: World = newWorld();
 let hadLock = false;
+// 必殺技ゲージ：敵へのダメージ・撃破でたまる（吸収は updateSpecial が見る）
+initSpecialHooks(events, () => world);
 
 const hud = createHUD(document.getElementById('hud')!, {
   onStart: () => freshGame(),
@@ -104,6 +128,8 @@ hud.showScreen(world);
 let saveKey = '';
 let saveRetryAt = 0;
 let checkpointOverride: string | undefined;
+/** ムービー単体モード（movies.html から開いたとき）：タイトルなしで始め、ロックも保存もしない */
+function isMovieMode(): boolean { return movieNow() !== null || world?.level.data.startAt === 'movie'; }
 function checkpointId(): string { return checkpointOverride ?? activeCheckpointId(world, levelId, startAt, floor1Revisit); }
 function savePlace(): string {
   return `${levelId}|${checkpointId()}`;
@@ -113,19 +139,25 @@ function currentSaveKey(): string {
     inventory: world.inventory, upgrades: world.upgrades, functions: world.functions,
     unlocks: world.unlocks, loadout: world.loadout, selectedSkill: world.skills.selected,
     rested: levelId === 'floor2' && (world.level.data.floor2 as Floor2State).sleeps > 0,
+    camp2Cleared: progress.camp2Cleared,
   })}`;
 }
 function saveNow(): boolean {
+  if (isMovieMode()) return true;   // ムービー単体モードでは進行を保存しない（本編のセーブを上書きしない）
   return writeSave({
     v: SAVE_VERSION, savedAt: Date.now(), level: levelId,
     startAt: (world.level.data.retryAt as string | undefined) ?? startAt,
     floor1Revisit: levelId === 'floor1' && floor1Revisit,
+    // URL の ?route=drain で 2本目の道を試しているときも、その地点から再開できるよう立てて保存する
+    camp2Cleared: progress.camp2Cleared || (levelId === 'surge' && world.level.data.surgeRoute === 'drain') || undefined,
     checkpointId: checkpointId(),
     resume: levelId === 'camp1' || checkpointId() === 'surge:garage'
       ? { x: world.player.pos.x, y: world.player.pos.y, z: world.player.pos.z, yaw: world.player.yaw, pitch: world.player.pitch } : undefined,
     inventory: { ...world.inventory }, upgrades: { ...world.upgrades }, functions: { ...world.functions },
     unlocks: { ...world.unlocks }, loadout: { ...world.loadout, owned: [...world.loadout.owned] }, selectedSkill: world.skills.selected,
     levelMemo: levelId === 'camp1' ? getCamp1Memo()
+      : levelId === 'drain' ? getDrainMemo()
+      : levelId === 'drainBoss' ? getDrainBossMemo()
       : levelId === 'floor1' && !floor1Revisit ? getFloor1Memo(world)
       : levelId === 'floor2' ? { rested: (world.level.data.floor2 as Floor2State).sleeps > 0 } : undefined,
   });
@@ -170,7 +202,10 @@ function continueGame(): void {
 
 function restoreGame(s: SaveData): void {
   floor1Revisit = !!s.floor1Revisit;
+  progress.camp2Cleared = s.camp2Cleared === true;
   if (s.level === 'camp1') setCamp1Memo(s.levelMemo);
+  if (s.level === 'drain') setDrainMemo(s.levelMemo);
+  if (s.level === 'drainBoss') setDrainBossMemo(s.levelMemo);
   levelId = s.level as LevelId;
   startAt = s.startAt;
   renderer.toneMappingExposure = LEVELS[levelId].exposure;
@@ -219,16 +254,19 @@ function chooseCheckpoint(id: string): void {
     const prior = base?.level === target.level ? base.levelMemo
       : [...history].filter(h => h.level === target.level).sort((a, b) => b.savedAt - a.savedAt)[0]?.levelMemo;
     s.level = target.level; s.startAt = target.startAt; s.floor1Revisit = false;
+    if (id === 'surge:drive2') s.camp2Cleared = true;          // 2本目の道（ドレイン装置へ）
+    else if (id === 'surge:drive') s.camp2Cleared = undefined; // 1本目の道（収容所へ）
     s.resume = undefined; s.checkpointId = id;
     s.levelMemo = target.level === 'floor2' ? { rested: id === 'floor2:rested' }
       : target.level === 'camp1' ? prior ?? {
-        gears: ['tunnel', 'E', 'I', 'J', 'duct', 'H'], keys: ['B', 'F'], vacuum: s.unlocks.vacuum,
+        gears: ['tunnel', 'E', 'I', 'J', 'H'], keys: ['B', 'F'], vacuum: s.unlocks.vacuum, shield: s.unlocks.shield,
         ally: 'enemy', allyHp: 0, hatchOpen: true, cLit: true, wallBroken: true,
         laserOff: true, drained: ['L1', 'L2'], boss: false,
-      } : undefined;
+      } : target.level === 'drain' || target.level === 'drainBoss' ? prior : undefined;
     restoreGame(s);
     if (target.level === 'floor1') prepareFloor1Checkpoint(world, target.room, prior);
     if (target.level === 'camp1' && target.room) prepareCamp1RoomResume(world, target.room);
+    if (target.level === 'drain' && target.room) prepareDrainRoomResume(world, target.room);
     if (id === 'surge:garage') { world.player.pos.set(0, 0, 8); world.player.yaw = 0; }
   }
   checkpointOverride = id;
@@ -245,6 +283,7 @@ function newWorld(): World {
   if ((globalThis as any).__oldWorld) disposeWorld((globalThis as any).__oldWorld);
   const w = createWorld(input, events, window.innerWidth / window.innerHeight);
   if (startAt) w.level.data.startAt = startAt;
+  w.level.data.camp2Cleared = progress.camp2Cleared;   // 収容所 2階クリア済みか（サージの道のルート・2階の出口が読む）
   LEVELS[levelId].build(w);
   if (Number.isFinite(gearsParam) && gearsParam > 0) w.inventory.gears = Math.floor(gearsParam);
   applyUnlocks(w, unlockParam);
@@ -272,7 +311,7 @@ function changeLevel(to: LevelId, start?: string, opts: { keepHp?: boolean } = {
   const prev = world;
   const keep = {
     hp: prev.player.hp, energy: prev.player.energy, inventory: { ...prev.inventory }, upgrades: { ...prev.upgrades }, functions: { ...prev.functions },
-    stats: { ...prev.stats },
+    stats: { ...prev.stats }, specialGauge: prev.special.gauge,
     unlocks: { ...prev.unlocks }, loadout: { ...prev.loadout, owned: [...prev.loadout.owned] }, selectedSkill: prev.skills.selected,
   };
   levelId = to;
@@ -287,6 +326,7 @@ function changeLevel(to: LevelId, start?: string, opts: { keepHp?: boolean } = {
   world.unlocks = keep.unlocks;
   world.loadout = keep.loadout;
   world.skills.selected = keep.selectedSkill;
+  world.special.gauge = keep.specialGauge;
   if (world.loadout.current !== 'pistol') setPlayerWeapon(world, world.loadout.current);
   // 部屋判定が進む前のステージ入口も履歴に残す（所持品の引き継ぎ後に保存）。
   world.level.data.saveDirty = true;
@@ -333,7 +373,7 @@ function startGame(): void {
   world.state = 'playing';
   world.stats.startTime = world.time;
   input.enabled = true;
-  input.requestLock();
+  if (!isMovieMode()) input.requestLock();
   events.emit('gameStart', {});
   // 既存セーブは新規開始だけでは上書きしない。初回プレイは開始地点を確保する。
   saveKey = currentSaveKey();
@@ -348,7 +388,10 @@ function freshGame(): void {
   levelId = initialLevelId;
   startAt = urlQ.get('start') ?? undefined;
   floor1Revisit = false;
+  resetProgress();
   setCamp1Memo(null);
+  setDrainMemo(null);
+  setDrainBossMemo(null);
   renderer.toneMappingExposure = LEVELS[levelId].exposure;
   world = newWorld();
   startGame();
@@ -373,10 +416,10 @@ function pause(): void {
 
 document.addEventListener('pointerlockchange', () => {
   if (document.pointerLockElement) hadLock = true;
-  else if (hadLock && world.state === 'playing' && !upgradeScreen.isOpen) pause();
+  else if (hadLock && !isMovieMode() && world.state === 'playing' && !upgradeScreen.isOpen && !minecart.active) pause();
 });
 renderer.domElement.addEventListener('click', () => {
-  if (world.state === 'playing' && !document.pointerLockElement) input.requestLock();
+  if (world.state === 'playing' && !document.pointerLockElement && !isMovieMode()) input.requestLock();
 });
 
 window.addEventListener('resize', () => {
@@ -397,6 +440,7 @@ function frame(): void {
 
 /** 強化画面が開いている間は、本編のシーンの代わりに画面の3Dモデルを描く */
 function drawScene(): void {
+  if (minecart.active) { minecart.render(renderer); return; }
   if (upgradeScreen.isOpen) upgradeScreen.render(renderer);
   else renderer.render(world.scene, world.camera);
 }
@@ -404,21 +448,34 @@ function drawScene(): void {
 /** 1ステップ進める（テストからも呼べる） */
 function step(dt: number): void {
   input.pollGamepad(dt);
+  if (!minecart.active && world.state === 'playing' && !pendingFloor && (world.level.data.minecartRequest || minecartAuto)) {
+    world.level.data.minecartRequest = false;
+    minecartAuto = false;
+    startMinecart();
+  }
+  if (minecart.active) { minecart.update(dt); input.endFrame(); return; }
   world.time += dt;
   if (world.state === 'playing') {
     if (input.pressed('KeyP')) { pause(); input.endFrame(); return; }
     updatePlayer(world, dt);
-    updateFunctions(world, dt);
-    updateGun(world, dt);
-    updateAbsorb(world, dt);
-    updateHack(world, dt);
-    updateGrapple(world, dt);
-    updateEnemies(world, dt);
-    updateSkills(world, dt); // 敵の更新の後（バキュームで吸われている敵の見た目を上書きする）
-    updateWeaponSwitch(world);
-    updateProjectiles(world, dt);
-    updatePickups(world, dt);
-    LEVELS[levelId].tick(world, dt);
+    updateSpecial(world, dt);
+    if (movieNow() === 'special') updateSpecialMovie(world, dt);
+    // 必殺技の演出①〜③の間は、敵・弾・ステージの時間を止める
+    if (!specialFrozen(world)) {
+      updateFunctions(world, dt);
+      updateGun(world, dt);
+      updateAbsorb(world, dt);
+      updateHack(world, dt);
+      updateGrapple(world, dt);
+      updateEnemies(world, dt);
+      updateShield(world, dt);
+      updateDecoy(world, dt);
+      updateSkills(world, dt); // 敵の更新の後（バキュームで吸われている敵の見た目を上書きする）
+      updateWeaponSwitch(world);
+      updateProjectiles(world, dt);
+      updatePickups(world, dt);
+      LEVELS[levelId].tick(world, dt);
+    }
     for (const t of world.toasts) t.timer -= dt;
     world.toasts = world.toasts.filter((t) => t.timer > 0);
     if (!pendingFloor && world.player.hp > 0) autoSave();
@@ -501,9 +558,19 @@ function exposeDebug(w: World): void {
     /** 強化画面を開く（確認用。ベッドを使わずに開ける。閉じても起き上がりの処理は無い） */
     openUpgrade: () => upgradeScreen.open(world),
     upgradeScreen,
+    minecart,
+    startMinecart,
     get current() { return world; },
     THREE,
   };
+}
+
+// ムービー単体モード：タイトルを出さずにすぐ始める。ブラウザの自動再生制限で音が止まっていても、最初の操作で鳴らす
+if (movieNow() !== null) {
+  const wake = (): void => { resumeAudio(); window.removeEventListener('keydown', wake); window.removeEventListener('pointerdown', wake); };
+  window.addEventListener('keydown', wake);
+  window.addEventListener('pointerdown', wake);
+  freshGame();
 }
 
 requestAnimationFrame(frame);

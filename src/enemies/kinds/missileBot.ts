@@ -2,8 +2,6 @@ import * as THREE from 'three';
 import { Builder, COLORS, boxGeo, taperGeo } from '../models';
 import { moveGround, faceToward } from '../common';
 import type { Ctx } from '../common';
-import { ENEMIES } from '../../config/balance';
-import type { EnemyKind } from '../../config/balance';
 import type { Enemy, World } from '../../core/types';
 import { spawnProjectile } from '../../core/projectiles';
 import { spawnBurst, spawnFlash, spawnShockwave } from '../../core/effects';
@@ -13,12 +11,6 @@ import type { KindModule } from './kind';
 export const MISSILE_BOT = {
   /** 好む距離（m） */
   keepMin: 12, keepMax: 18,
-  /** 護衛 */
-  escortKinds: ['crawler', 'drone', 'walker'] as EnemyKind[],
-  escortMax: 3,           // 同時に生きている護衛の上限
-  escortPerCast: 2,       // 1回の召喚で出す数
-  summonCooldown: 6,      // 召喚の間隔（秒）
-  summonRadius: 3.2,
   /** ミサイル */
   missiles: 6,            // 1回の斉射数
   volleyTime: 1.0,        // 斉射にかける時間（秒）
@@ -52,40 +44,6 @@ function tubeTipLocal(i: number, out: THREE.Vector3): THREE.Vector3 {
   const c = Math.cos(POD_TILT), s = Math.sin(POD_TILT);
   const y = TUBE_TOP;
   return out.set(POD_POS.x + x, POD_POS.y + y * c - z * s, POD_POS.z + y * s + z * c);
-}
-
-function aliveEscorts(world: World, e: Enemy): Enemy[] {
-  const ids: number[] = e.ai.escorts ?? [];
-  const list: Enemy[] = [];
-  for (const id of ids) {
-    const o = world.enemies.find((x) => x.id === id);
-    if (o && (o.status === 'active' || o.status === 'stunned')) list.push(o);
-  }
-  e.ai.escorts = list.map((o) => o.id);
-  return list;
-}
-
-function summonEscorts(c: Ctx, spawn: Parameters<KindModule['update']>[1], count: number): void {
-  const { world, e } = c;
-  const M = MISSILE_BOT;
-  const ids: number[] = e.ai.escorts ?? (e.ai.escorts = []);
-  const base = Math.random() * Math.PI * 2;
-  for (let i = 0; i < count; i++) {
-    const kind = M.escortKinds[Math.floor(Math.random() * M.escortKinds.length)];
-    const a = base + (i / count) * Math.PI * 2;
-    const feet = e.pos.y - e.radius;
-    const rr = ENEMIES[kind].radius;
-    const pos = new THREE.Vector3(
-      e.pos.x + Math.cos(a) * M.summonRadius, feet + rr + (kind === 'drone' ? 1.4 : 0.1), e.pos.z + Math.sin(a) * M.summonRadius,
-    );
-    const s = spawn(world, kind, pos);
-    s.ai.alert = 5;
-    ids.push(s.id);
-    spawnFlash(world, pos, 0x5ab8ff, 6, 6, 0.25);
-    spawnBurst(world, pos, 0x9cc2ff, 8, 3);
-  }
-  spawnShockwave(world, e.pos, 0x5ab8ff, 3, 0.4);
-  world.events.emit('enemyAction', { kind: e.kind, pos: e.pos.clone(), action: 'summon' });
 }
 
 function fireOne(c: Ctx, idx: number): void {
@@ -190,11 +148,11 @@ export const missileBot: KindModule = {
     return b.done();
   },
 
-  update(c, spawn) {
+  update(c) {
     const { world, e, dt, spec, dirXZ, dist2d } = c;
     const ai = e.ai;
     const M = MISSILE_BOT;
-    ai.charge ??= 0; ai.stunC ??= 0; ai.summonCd ??= 0.4; ai.volley ??= 0; ai.recover ??= 0;
+    ai.charge ??= 0; ai.stunC ??= 0; ai.volley ??= 0; ai.recover ??= 0;
     ai.hpPrev ??= e.hp; ai.dmgWin ??= 0; ai.dmgWinT ??= 0;
     ai.walk ??= 0;
 
@@ -224,36 +182,18 @@ export const missileBot: KindModule = {
     ai.stunC = Math.max(0, ai.stunC - dt);
 
     const awake = ai.alert > 0;
-    const escorts = aliveEscorts(world, e);
-
-    // ---- 移動：距離を保ち、護衛の後ろに隠れる
+    // ---- 移動：プレイヤーとの距離を保つ
     faceToward(e, dirXZ.x, dirXZ.z, dt, 4);
     let wx = 0, wz = 0;
     if (awake && !e.tethered && ai.volley <= 0) {
       const sp = spec.speed;
       if (dist2d < M.keepMin) { wx = -dirXZ.x * sp; wz = -dirXZ.z * sp; }
       else if (dist2d > M.keepMax) { wx = dirXZ.x * sp; wz = dirXZ.z * sp; }
-      else if (escorts.length > 0) {
-        // 護衛の重心の向こう側へ寄る
-        let cx = 0, cz = 0;
-        for (const o of escorts) { cx += o.pos.x; cz += o.pos.z; }
-        cx /= escorts.length; cz /= escorts.length;
-        const tx = cx - dirXZ.x * 3.5 - e.pos.x, tz = cz - dirXZ.z * 3.5 - e.pos.z;
-        const d = Math.hypot(tx, tz);
-        if (d > 1) { wx = (tx / d) * sp * 0.6; wz = (tz / d) * sp * 0.6; }
-      }
     }
     moveGround(world, e, dt, wx, wz, 12);
     ai.walk = Math.hypot(e.vel.x, e.vel.z);
 
     if (!awake) { ai.warn = 0; return; }
-
-    // ---- 護衛の召喚
-    ai.summonCd -= dt;
-    if (ai.summonCd <= 0 && escorts.length < M.escortMax && ai.volley <= 0) {
-      ai.summonCd = M.summonCooldown;
-      summonEscorts(c, spawn, Math.min(M.escortPerCast, M.escortMax - escorts.length));
-    }
 
     // ---- 溜め／斉射
     if (ai.volley > 0) {

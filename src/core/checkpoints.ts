@@ -2,6 +2,7 @@ import type { World } from './types';
 import { describeSave, getSaveCheckpointId, type SaveData } from './save';
 import { generateCamp1 } from '../level/camp1/plan';
 import { generateFloor1 } from '../level/floor1/plan';
+import { generateDrain } from '../level/drain/plan';
 import { getFloor1Memo, restoreFloor1Memo } from '../level/floor1';
 
 export interface CheckpointChoice {
@@ -19,6 +20,7 @@ export interface CheckpointTarget {
 }
 const camp = generateCamp1();
 const floor = generateFloor1();
+const drain = generateDrain();
 export const CHECKPOINT_TARGETS: CheckpointTarget[] = [
   { id: 'floor1:start', level: 'floor1', label: '研究所1階・入口' },
   ...floor.rooms.map(r => ({ id: `floor1:room.${r.id}`, level: 'floor1', room: r.id, label: `研究所1階・${r.name === 'エレベーター' ? 'エレベーター前' : r.name}` })),
@@ -27,6 +29,7 @@ export const CHECKPOINT_TARGETS: CheckpointTarget[] = [
   { id: 'surge:stairs', level: 'surge', startAt: 'stairs', label: 'ガレージへの階段' },
   { id: 'surge:garage', level: 'surge', startAt: 'stairs', label: 'ガレージ・車に乗る前' },
   { id: 'surge:drive', level: 'surge', startAt: 'drive', label: '車の運転開始' },
+  { id: 'surge:drive2', level: 'surge', startAt: 'drive', label: 'ドレイン装置への道・車に乗ったところ' },
   { id: 'camp1:entrance', level: 'camp1', startAt: 'entrance', label: '収容所1階・入口' },
   ...camp.rooms.map(r => ({ id: `camp1:room.${r.id}`, level: 'camp1', startAt: 'entrance', room: r.id, label: `収容所1階・${r.name}` })),
   { id: 'camp1:room.tunnel', level: 'camp1', startAt: 'entrance', room: 'tunnel', label: '収容所1階・地下通路' },
@@ -35,8 +38,19 @@ export const CHECKPOINT_TARGETS: CheckpointTarget[] = [
   { id: 'camp2:start', level: 'camp2', label: '収容所2階・前室' },
   { id: 'camp2:boss', level: 'camp2', startAt: 'boss', label: '収容所2階・ボス戦の前' },
   { id: 'camp2:freed', level: 'camp2', startAt: 'freed', label: '収容所2階・住民解放後' },
+  { id: 'camp2:movie', level: 'camp2', startAt: 'movie', label: 'ムービー：ジェネレーター撃破〜脱出（見るだけ）' },
+  { id: 'drain:entrance', level: 'drain', startAt: 'entrance', label: 'ドレイン装置ダンジョン・入口（A）' },
+  { id: 'drain:bTop', level: 'drain', startAt: 'bTop', label: 'ドレイン装置ダンジョン・B の入口（吹き抜けの上）' },
+  { id: 'drain:rope', level: 'drain', startAt: 'rope', label: 'ドレイン装置ダンジョン・綱渡りの手前' },
+  { id: 'drain:dFront', level: 'drain', startAt: 'dFront', label: 'ドレイン装置ダンジョン・D の手前' },
+  { id: 'drain:eWest', level: 'drain', startAt: 'eWest', label: 'ドレイン装置ダンジョン・E の西側' },
+  { id: 'drain:goal', level: 'drain', startAt: 'goal', label: 'ドレイン装置ダンジョン・G 前室（目的地）' },
+  { id: 'drainBoss:corridor', level: 'drainBoss', startAt: 'corridor', label: 'ドレイン装置・通路' },
+  { id: 'drainBoss:boss', level: 'drainBoss', startAt: 'boss', label: 'ドレイン装置・ボス戦' },
+  ...drain.rooms.map(r => ({ id: `drain:room.${r.id}`, level: 'drain', startAt: 'entrance', room: r.id, label: `ドレイン装置ダンジョン・${r.name}` })),
 ];
-const ORDER: Record<string, number> = { dungeon: 0, floor1: 1, floor2: 2, surge: 3, camp1: 4, camp2: 5 };
+// drain（ドレイン装置へ向かうダンジョン）は進行順に縛らず、ステージ選択から常に入れる（0）
+const ORDER: Record<string, number> = { dungeon: 0, floor1: 1, floor2: 2, surge: 3, camp1: 4, camp2: 5, drain: 0, drainBoss: 0 };
 
 export function checkpointChoices(latest: SaveData | null, history: SaveData[], initialLevel = 'floor1'): CheckpointChoice[] {
   const saves = latest ? [...history, latest] : history;
@@ -44,7 +58,9 @@ export function checkpointChoices(latest: SaveData | null, history: SaveData[], 
   const choices = CHECKPOINT_TARGETS.map(t => {
     const recorded = history.find(s => getSaveCheckpointId(s) === t.id)
       ?? (latest && getSaveCheckpointId(latest) === t.id ? latest : null);
-    const disabled = (ORDER[t.level] ?? 0) > reached || (t.id === 'camp2:freed' && !recorded);
+    // 2本目の道は、収容所 2階をクリアした記録（camp2Cleared）があるときだけ選べる
+    const drain2Locked = t.id === 'surge:drive2' && !recorded && !saves.some(s => s.camp2Cleared === true);
+    const disabled = (ORDER[t.level] ?? 0) > reached || (t.id === 'camp2:freed' && !recorded) || drain2Locked;
     return { id: t.id, label: t.label, disabled,
       detail: disabled ? 'まだ到達していないステージです'
         : recorded ? '初回到達時の記録あり：その時の所持品・強化・進行から再開します'
@@ -63,7 +79,7 @@ export function activeCheckpointId(w: World, level: string, startAt?: string, re
   if (level === 'floor1' && revisit) return 'floor1:revisit';
   if (level === 'floor2') return (w.level.data.floor2 as { sleeps: number }).sleeps > 0 ? 'floor2:rested' : 'floor2:start';
   if (level === 'surge') {
-    if (w.level.data.retryAt === 'drive' || startAt === 'drive') return 'surge:drive';
+    if (w.level.data.retryAt === 'drive' || startAt === 'drive') return w.level.data.surgeRoute === 'drain' ? 'surge:drive2' : 'surge:drive';
     if (w.player.pos.y < 1.5 && w.player.pos.z < 14 && w.player.pos.z > -10) return 'surge:garage';
     return 'surge:stairs';
   }

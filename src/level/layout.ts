@@ -45,13 +45,13 @@ export const ROOM_DEFS: RoomDef[] = [
   },
   {
     name: '第1区画：搬入ホール', title: '第1区画  搬入ホール', w: 26, d: 30, h: 9,
-    waves: [[{ kind: 'drone', count: 2 }, { kind: 'redDrone', count: 1 }]],
+    waves: [[{ kind: 'drone', count: 2 }, { kind: 'drone', count: 1 }]],
     blocks: [cover(-7, 2), cover(7, 2), cover(0, 8, 4, 1.6, 2), cover(-9, -6, 2, 2.4, 2)],
     pads: [], kits: [{ lx: -11, lz: -13 }], lightColor: 0xd9d0ff,
   },
   {
     name: '第2区画：配電室', title: '第2区画  配電室', w: 30, d: 34, h: 10,
-    waves: [[{ kind: 'crawler', count: 3 }, { kind: 'bomber', count: 1 }], [{ kind: 'drone', count: 1 }, { kind: 'leech', count: 2 }, { kind: 'redWalker', count: 1 }]],
+    waves: [[{ kind: 'crawler', count: 3 }, { kind: 'bomber', count: 1 }], [{ kind: 'drone', count: 1 }, { kind: 'leech', count: 2 }, { kind: 'walker', count: 1 }]],
     blocks: [cover(-9, 4), cover(9, 4), cover(0, -2, 5, 1.6, 2), cover(-11, -9), cover(11, -9)],
     pads: [], kits: [{ lx: -11, lz: -13 }, { lx: 12, lz: 14 }], lightColor: 0xffe0d0,
   },
@@ -77,7 +77,7 @@ export const ROOM_DEFS: RoomDef[] = [
   {
     name: '第5区画：中央制御室', title: '第5区画  中央制御室', w: 40, d: 40, h: 12,
     waves: [
-      [{ kind: 'crawler', count: 2 }, { kind: 'drone', count: 1 }, { kind: 'leech', count: 1 }, { kind: 'bomber', count: 1 }, { kind: 'redWalker', count: 1 }],
+      [{ kind: 'crawler', count: 2 }, { kind: 'drone', count: 1 }, { kind: 'leech', count: 1 }, { kind: 'bomber', count: 1 }, { kind: 'walker', count: 1 }],
       [{ kind: 'heavy', count: 1 }, { kind: 'beamer', count: 1 }, { kind: 'jumper', count: 1 }, { kind: 'missileDrone', count: 1 }],
     ],
     blocks: [cover(-12, 6), cover(12, 6), cover(0, 0, 4, 1.8, 4), cover(-14, -6), cover(14, -6), cover(-6, -12, 3, 1.6, 2), cover(6, -12, 3, 1.6, 2)],

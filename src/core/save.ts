@@ -12,7 +12,7 @@ const MAX_RESUME_POSITION = 10_000;
 const MAX_RESUME_YAW = 1_000_000;
 export const SAVE_VERSION = 1;
 
-const LEVEL_NAMES = ['dungeon', 'floor1', 'floor2', 'surge', 'camp1', 'camp2'] as const;
+const LEVEL_NAMES = ['dungeon', 'floor1', 'floor2', 'surge', 'camp1', 'camp2', 'drain', 'drainBoss'] as const;
 type SaveLevel = typeof LEVEL_NAMES[number];
 const CHECKPOINTS: Record<SaveLevel, readonly string[]> = {
   dungeon: [],
@@ -20,7 +20,9 @@ const CHECKPOINTS: Record<SaveLevel, readonly string[]> = {
   floor2: [],
   surge: ['stairs', 'drive'],
   camp1: ['entrance', 'boss'],
-  camp2: ['boss', 'freed'],
+  camp2: ['boss', 'freed', 'ending', 'movie'],
+  drain: ['entrance', 'bTop', 'rope', 'dFront', 'eWest', 'goal'],
+  drainBoss: ['corridor', 'boss'],
 };
 const WEAPONS = ['pistol', 'shotgun', 'assault'] as const;
 const UPGRADE_MAX_LEVEL = new Map(ALL_TRACKS.map((track) => [track.id, maxLevel(track)]));
@@ -35,6 +37,8 @@ export interface SaveData {
   startAt?: string;
   /** 研究所1階へ2階から戻ってきた状態か */
   floor1Revisit?: boolean;
+  /** 収容所 2階のボスを倒した（core/progress.ts）。サージの道が 2本目（ドレイン装置へ）になる。無い＝まだ */
+  camp2Cleared?: boolean;
   inventory: World['inventory'];
   upgrades: World['upgrades'];
   functions: World['functions'];
@@ -115,6 +119,7 @@ function isSaveData(value: unknown): value is SaveData {
   }
   if (hasOwn(value, 'floor1Revisit') && typeof value.floor1Revisit !== 'boolean') return false;
   if (value.floor1Revisit === true && level !== 'floor1') return false;
+  if (hasOwn(value, 'camp2Cleared') && value.camp2Cleared !== undefined && typeof value.camp2Cleared !== 'boolean') return false;
   if (hasOwn(value, 'checkpointId') && value.checkpointId !== undefined) {
     if (typeof value.checkpointId !== 'string' || !/^[a-zA-Z0-9_.:-]{1,100}$/.test(value.checkpointId)) return false;
   }
@@ -223,9 +228,18 @@ export function clearSave(): void {
 
 const LEVEL_NAME: Record<string, string> = {
   dungeon: '動力炉', floor1: '研究所 1階', floor2: '研究所 2階', surge: 'サージ収容所への道', camp1: 'サージ収容所 1階', camp2: 'サージ収容所 2階',
+  drain: 'ドレイン装置へ向かうダンジョン', drainBoss: 'ドレイン装置の部屋',
 };
-const START_NAME: Record<string, string> = { boss: 'ボス戦の前', drive: '車に乗ったところ', entrance: '入口', freed: '住民解放後' };
-const ROOM_NAME: Partial<Record<'camp1' | 'floor1', Record<string, string>>> = {
+const START_NAME: Record<string, string> = {
+  boss: 'ボス戦の前', drive: '車に乗ったところ', entrance: '入口', freed: '住民解放後',
+  bTop: 'B の入口（吹き抜けの上）', rope: '綱渡りの手前', dFront: 'D の手前', eWest: 'E の西側', goal: 'G 前室',
+  corridor: '通路',
+};
+const ROOM_NAME: Partial<Record<'camp1' | 'floor1' | 'drain', Record<string, string>>> = {
+  drain: {
+    A: 'A 入口ホール', shaft: 'A〜B 吹き抜け', abase: 'A 地下室', B: 'B 空中の制御室', rope: '綱渡り', duct: '隠し通路', G: 'G 前室',
+    C: 'C 配電室', I: 'I 隠し部屋', D: 'D 動力室', dbase: 'D 地下', E: 'E 暗い長廊下', pass: '狭い通路', F: 'F 冷却ポンプ室',
+  },
   camp1: {
     A: 'A 入口ホール', B: 'B 倉庫', C: 'C 配電室', D: 'D 前室', E: 'E 円形ホール', F: 'F 資材室',
     G: 'G 監視室', H: 'H 大ホール', I: 'I 隠し部屋', J: 'J 隠し部屋', tunnel: '地下通路', duct: '隠しダクト',
@@ -239,9 +253,13 @@ const CHECKPOINT_NAME: Record<string, string> = {
   'camp1:boss': '中ボス戦の前',
   'camp2:boss': 'ボス戦の前',
   'camp2:freed': '住民解放後',
+  'camp2:ending': 'ジェネレーター撃破後のムービー',
+  'camp2:movie': 'ムービー：ジェネレーター撃破〜脱出',
   'floor2:start': '強化前',
   'floor2:rested': '強化後',
   'surge:garage': '車に乗る前',
+  'surge:drive2': 'ドレイン装置への道・車に乗ったところ',
+  'drainBoss:corridor': '通路', 'drainBoss:boss': 'ボス戦',
 };
 
 function lookupLabel(labels: Record<string, string> | undefined, key: string | undefined): string | undefined {
@@ -252,7 +270,7 @@ function lookupLabel(labels: Record<string, string> | undefined, key: string | u
 export function describeSave(d: SaveData): string {
   const where = lookupLabel(LEVEL_NAME, d.level) ?? d.level;
   const roomId = d.checkpointId?.startsWith(`${d.level}:room.`) ? d.checkpointId.slice(`${d.level}:room.`.length) : undefined;
-  const rooms = d.level === 'camp1' ? ROOM_NAME.camp1 : d.level === 'floor1' ? ROOM_NAME.floor1 : undefined;
+  const rooms = d.level === 'camp1' ? ROOM_NAME.camp1 : d.level === 'floor1' ? ROOM_NAME.floor1 : d.level === 'drain' ? ROOM_NAME.drain : undefined;
   const room = lookupLabel(rooms, roomId);
   const checkpoint = lookupLabel(CHECKPOINT_NAME, d.checkpointId) ?? room;
   const at = lookupLabel(START_NAME, d.startAt);

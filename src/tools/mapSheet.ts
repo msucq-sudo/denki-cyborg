@@ -9,19 +9,25 @@ import { createSurgeSheet } from './mapsheet/surge';
 import { createCamp1Sheet } from './mapsheet/camp1';
 import { createCamp2Sheet } from './mapsheet/camp2';
 import { createDungeonSheet } from './mapsheet/dungeon';
+import { createDrainSheet } from './mapsheet/drain';
+import { createSparkLabSheet } from './mapsheet/sparkLab';
 
 interface StageDef {
   id: string; label: string; title: string; level: string;
+  /** ゲーム本編ではなく別ページで見るステージ（指定すると level の代わりにこちらを開く） */
+  href?: string;
   /** 途中から始めるリンク（クエリの追加分） */
   starts?: { label: string; q: string }[];
   make: () => StageSheet;
 }
 const STAGES: StageDef[] = [
+  { id: 'sparkLab', label: 'スパーク特別研究室', title: 'スパーク特別研究室', level: '', href: './lab.html', make: createSparkLabSheet },
   { id: 'floor1', label: '研究所1階', title: '研究所1階', level: 'floor1', make: createFloor1Sheet },
   { id: 'floor2', label: '研究所2階', title: '研究所2階（サイボーグ改造室）', level: 'floor2', make: createFloor2Sheet },
   { id: 'surge', label: 'サージ収容所への道', title: 'サージ収容所への道', level: 'surge', starts: [{ label: '車に乗った所から', q: '&start=drive' }], make: createSurgeSheet },
   { id: 'camp1', label: '収容所1階', title: 'サージ収容所 1階', level: 'camp1', starts: [{ label: '中ボス前から', q: '&start=boss' }], make: createCamp1Sheet },
   { id: 'camp2', label: '収容所2階', title: 'サージ収容所 2階', level: 'camp2', starts: [{ label: 'ボス戦から', q: '&start=boss' }], make: createCamp2Sheet },
+  { id: 'drain', label: 'ドレイン装置ダンジョン', title: 'ドレイン装置へ向かうダンジョン', level: 'drain', starts: [{ label: 'B の入口から', q: '&start=bTop' }, { label: '綱渡りの手前から', q: '&start=rope' }, { label: 'D の手前から', q: '&start=dFront' }, { label: 'E の西側から', q: '&start=eWest' }, { label: 'G 前室から', q: '&start=goal' }, { label: 'トロッコ面から', q: '&minecart' }], make: createDrainSheet },
   { id: 'dungeon', label: '動力炉', title: '動力炉（アルファ版ダンジョン）', level: 'dungeon', make: createDungeonSheet },
 ];
 
@@ -100,7 +106,9 @@ function show(id: string): void {
   history.replaceState(null, '', '#' + def.id);
   // ゲームで開くリンク
   const q = def.level === 'dungeon' ? './?level=dungeon' : `./?level=${def.level}`;
-  playLinks.innerHTML = `<a href="${q}" target="_blank">▶ ゲームで開く（?level=${def.level}）↗</a>` +
+  playLinks.innerHTML = (def.href
+    ? `<a href="${def.href}" target="_blank">▶ 3D で見る（${def.href.slice(2)}）↗</a>`
+    : `<a href="${q}" target="_blank">▶ ゲームで開く（?level=${def.level}）↗</a>`) +
     (def.starts ?? []).map((st) => `<a href="${q}${st.q}" target="_blank">▶ ${st.label} ↗</a>`).join('');
   buildFilter(sheet);
   buildTable(sheet);

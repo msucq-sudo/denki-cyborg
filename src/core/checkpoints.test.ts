@@ -8,7 +8,7 @@ import { PLAYER } from '../config/balance';
 
 const save: SaveData = {
   v: 1, savedAt: 1, level: 'camp1', startAt: 'boss', inventory: { gears: 7, metal: 20 }, upgrades: { body: 2 },
-  functions: { scouter: true, autoAim: false, flight: true }, unlocks: { autoAim: true, vacuum: true },
+  functions: { scouter: true, autoAim: false, flight: true }, unlocks: { autoAim: true, vacuum: true, shield: false },
   loadout: { owned: ['pistol'], current: 'pistol' }, selectedSkill: 'vacuum',
 };
 

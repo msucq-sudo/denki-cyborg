@@ -3,6 +3,7 @@ import { ENEMIES, ENEMY_NOTICE, PLAYER } from '../config/balance';
 import type { Enemy, World } from '../core/types';
 import { hasLineOfSight, moveCharacter, resolveSphere } from '../core/collision';
 import { playerCenter } from '../core/combat';
+import { decoyTarget } from '../abilities/decoy';
 
 export type Spec = (typeof ENEMIES)[keyof typeof ENEMIES];
 
@@ -25,7 +26,8 @@ const _feet = new THREE.Vector3();
 
 export function makeCtx(world: World, e: Enemy, dt: number): Ctx {
   const spec = ENEMIES[e.kind];
-  const pc = playerCenter(world);
+  // ホログラムデコイが出ている間は、敵はそちらを標的にする（abilities/decoy.ts）
+  const pc = decoyTarget(world, e.pos) ?? playerCenter(world);
   const dx = pc.x - e.pos.x, dy = pc.y - e.pos.y, dz = pc.z - e.pos.z;
   const dist2d = Math.hypot(dx, dz);
   const dist = Math.hypot(dist2d, dy);

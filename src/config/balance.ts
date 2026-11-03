@@ -164,9 +164,14 @@ export const FUNCTIONS = {
    * 高く飛ぶのではなく「その高さを維持」する。滞空中だけ消費
    */
   flight: { flyingDrainPerSec: 6, engageVy: 0.5, hoverDamp: 10 },
+  /**
+   * ジェットパック：自由飛行（強化 skill.jetpackFree）。ジャンプ長押しで上昇（高度の上限なし）、離すとゆっくり下降、
+   * しゃがみ（左Ctrl）で速く下降。水平はカメラ向きに speedMul 倍の速さ。電力は滞空より多めに減る
+   */
+  freeFlight: { riseSpeed: 7, sinkSpeed: 1.2, diveSpeed: 7, vyAccel: 8, speedMul: 1.3, airAccel: 6, drainMul: 1.5 },
 };
 
-export type EnemyKind = 'drone' | 'crawler' | 'gunner' | 'heavy' | 'walker' | 'redWalker' | 'heavyWalker' | 'missile' | 'beamer' | 'leech' | 'jumper' | 'missileDrone' | 'bomber' | 'redDrone' | 'domer' | 'redCrawler' | 'ringer' | 'medic' | 'boss';
+export type EnemyKind = 'drone' | 'crawler' | 'gunner' | 'heavy' | 'walker' | 'redWalker' | 'heavyWalker' | 'missile' | 'beamer' | 'leech' | 'jumper' | 'missileDrone' | 'bomber' | 'redDrone' | 'domer' | 'redCrawler' | 'ringer' | 'medic' | 'redMedic' | 'drainGuard' | 'boss';
 
 export const ENEMIES: Record<EnemyKind, {
   hp: number; speed: number; radius: number; damage: number;
@@ -184,7 +189,7 @@ export const ENEMIES: Record<EnemyKind, {
   walker:  { hp: 50,  speed: 1.6, radius: 0.7,  damage: 3,  attackInterval: 2.0, projectileSpeed: 16, weakMultiplier: 2, overloadCap: 18, sightRange: 30 },
   /** ヘビーウォーカー：突進＋踏みつけ電撃（範囲）。damage=踏みつけ */
   heavyWalker: { hp: 220, speed: 2.2, radius: 1.3, damage: 9, attackInterval: 3.0, projectileSpeed: 0, weakMultiplier: 2.5, overloadCap: 42, sightRange: 30 },
-  /** ミサイル溜めロボット：護衛を召喚→ミサイルを溜めて発射。damage=ミサイル1発、attackInterval=溜め時間 */
+  /** ミサイル溜めロボット：増援なしでミサイルを溜めて発射。damage=ミサイル1発、attackInterval=溜め時間 */
   missile: { hp: 160, speed: 1.8, radius: 1.1,  damage: 8, attackInterval: 7.0, projectileSpeed: 11, weakMultiplier: 2.5, overloadCap: 34, sightRange: 34 },
   /** 赤ウォーカー：ウォーカーの赤い版。ハッキングできる（吸収アームをつなぐとコード入力）。T3-C で調整 */
   redWalker: { hp: 60, speed: 1.8, radius: 0.7, damage: 3.5, attackInterval: 1.8, projectileSpeed: 17, weakMultiplier: 2, overloadCap: 20, sightRange: 30 },
@@ -208,6 +213,10 @@ export const ENEMIES: Record<EnemyKind, {
   ringer:  { hp: 90,  speed: 1.8, radius: 0.8,  damage: 6,  attackInterval: 3.2, projectileSpeed: 7, weakMultiplier: 2.5, overloadCap: 24, sightRange: 30 },
   /** メディック：とても小さい。アームを伸ばして仲間（とドーム）を回復する。攻撃はしない */
   medic:   { hp: 26,  speed: 4.2, radius: 0.3,  damage: 0,  attackInterval: 0.5, projectileSpeed: 0, weakMultiplier: 2, overloadCap: 8, sightRange: 30 },
+  /** 赤メディック：メディックの赤い版。ハッキングできる（つなぐと動きがにぶる）。味方になるとプレイヤーと味方を回復する。吸収が遅くなる分、体力は多め */
+  redMedic: { hp: 45, speed: 4.4, radius: 0.3, damage: 0, attackInterval: 0.5, projectileSpeed: 0, weakMultiplier: 2, overloadCap: 12, sightRange: 30 },
+  /** ドレインガーディアン：ドレイン装置の部屋のボス。hp=胴体のHP（腕は DRAIN_BOSS.hp）。数値の詳細は DRAIN_BOSS */
+  drainGuard: { hp: 1800, speed: 2.4, radius: 2.8, damage: 10, attackInterval: 2.0, projectileSpeed: 12, weakMultiplier: 2, overloadCap: 90, sightRange: 80 },
   boss:    { hp: 900, speed: 2.5, radius: 2.4,  damage: 3,  attackInterval: 2.0, projectileSpeed: 16, weakMultiplier: 2.5, overloadCap: 60, sightRange: 60 },
 };
 
@@ -226,7 +235,7 @@ export const ENEMY_NOTICE = {
  * drop=1体あたりの量。見た目のかけらは最大 maxPieces 個に分けて散らばる
  */
 export const METAL = {
-  drop: { drone: 1, crawler: 1, redCrawler: 2, domer: 4, ringer: 4, medic: 2, gunner: 2, walker: 2, heavy: 6, heavyWalker: 8, missile: 10, boss: 30 } as Record<EnemyKind, number>,
+  drop: { drone: 1, crawler: 1, redCrawler: 2, domer: 4, ringer: 4, medic: 2, redMedic: 3, gunner: 2, walker: 2, heavy: 6, heavyWalker: 8, missile: 10, drainGuard: 40, boss: 30 } as Record<EnemyKind, number>,
   maxPieces: 6,
   /** 逆流（送電）で爆発させて倒したときの倍率（2＝通常の2倍） */
   overloadMul: 2,
@@ -265,6 +274,41 @@ export const GENERATOR = {
   chargeDamage: 14,
 };
 
+/**
+ * ボス「ドレインガーディアン」（ドレイン装置の部屋。enemies/kinds/drainGuard*.ts、level/drainBoss.ts が読む）。
+ * HP・ダメージ・時間（秒）はここだけ触れば調整できる。HP は3つの部位ごと（右腕・胴体・左腕）。胴体が 0 で撃破。
+ * 「右腕・左腕」はボス自身から見た左右（プレイヤーの正面に立つとプレイヤーから見て逆側）。
+ */
+export const DRAIN_BOSS = {
+  hp: { rArm: 500, body: 1800, lArm: 500 },
+  /** 胴体HPがこの割合以下で第2形態 */
+  phase2At: 0.5,
+  /** 腕の再生：壊れた腕を、残った腕が現HPの giveRatio を渡して再生する。残った腕の現HPが minHp 未満だと再生しない（両腕を壊せる）。time=再生にかかる秒 */
+  regen: { minHp: 120, giveRatio: 0.5, time: 3.6 },
+  /** 目の弱点（胴体の上の目玉）への倍率は ENEMIES.drainGuard.weakMultiplier */
+  speed: 2.4,
+  /** 攻撃と攻撃の間（秒）[最短, 最長]。第1形態 / 第2形態 / 両腕なし */
+  gap: { p1: [1.5, 2.6], p2: [1.0, 1.9], armless: [0.8, 1.5] } as Record<string, [number, number]>,
+  /** 右腕：ホーミングミサイル（撃ち落とせる） */
+  missiles: { count: 4, windup: 1.1, interval: 0.24, damage: 7, speed: 11, turnRate: 1.4, hp: 12, radius: 1.7, life: 7, recover: 0.9 },
+  /** 左腕：電撃弾（まっすぐ速い。第2形態は3方向） */
+  bolt: { windup: 1.0, damage: 10, speed: 30, size: 0.38, fan: 3, fanSpread: 0.2, recover: 0.8, life: 3 },
+  /** パンチ：近いときだけ。床の円が予兆 */
+  punch: { range: 6.5, windup: 0.85, damage: 16, hitRadius: 4.4, recover: 1.0 },
+  /** 突進：赤い帯が予兆 */
+  rush: { windup: 1.2, speed: 24, maxTime: 1.15, damage: 18, width: 3.4, wallStun: 1.6, recover: 0.7, minDist: 8 },
+  /** 第2形態：ミサイルの雨（床に赤い円が出て、遅れて着弾。円の中だけダメージ） */
+  rain: { count: 22, radius: 2.3, delayMin: 1.5, delayMax: 2.5, damage: 14, windup: 1.0, nearPlayer: 0.55, spread: 15, recover: 1.2 },
+  /** 第2形態：瞬間移動（消える→現れる場所に輪→現れて攻撃）。behindChance=背後に出る確率 */
+  teleport: { vanish: 0.45, hidden: 0.75, appear: 0.3, behindChance: 0.5, dist: 5.5, followWindup: 0.5 },
+  /** 両腕なし：目玉のビーム（予兆の赤い線→照射） */
+  beam: { windup: 1.6, lockAt: 1.1, fire: 1.4, sweep: 0.9, damage: 8, tick: 0.2, width: 0.75, length: 55, recover: 1.0 },
+  /** 第2形態に入るときの咆哮（秒） */
+  roar: 1.6,
+  /** 撃破後：崩れる演出の長さ（秒。enemies.ts の BOSS_DEATH_TIME と同じ演出を使う） */
+  deathTime: 2.8,
+};
+
 /** サージ収容所 2階（?level=camp2。level/camp2.ts）。ボス戦 */
 export const CAMP2 = {
   /** 扉を調べられる距離（m） */
@@ -273,11 +317,13 @@ export const CAMP2 = {
   residents: 64,
   /** 檻の扉が開く時間（秒） */
   doorOpenTime: 2.0,
+  /** 天井のひび割れ（ボス戦中も狙える）を割る溜め量（0..1）。最大溜めの一発だけ */
+  holeCharge: 0.97,
   /** ボスが倒れてから扉が開き始めるまで（秒）。爆発の演出のあと */
   openDelay: 3.2,
   /** ジェネレーターが呼ぶ雑魚（第1形態 / 第2形態）。図鑑 No.1〜11 から */
   summon1: ['drone', 'walker'] as EnemyKind[],
-  summon2: ['crawler', 'redWalker', 'drone'] as EnemyKind[],
+  summon2: ['crawler', 'walker', 'drone'] as EnemyKind[],
 };
 
 /** 閉じ込め戦の演出。enabled=false で赤い警報照明とサイレンを両方止める（ドアの開閉はそのまま） */
@@ -419,6 +465,23 @@ export const HACK = {
 };
 
 /**
+ * シールド（world.unlocks.shield で解放）。LT（照準）を構えている間、プレイヤーの前に水色の盾が出て、前方からの攻撃だけを受け止める。
+ * 盾が壊れたら、電力をじわじわ使って自動で回復する（電力が尽きると回復も止まる）
+ */
+export const SHIELD = {
+  /** 盾の耐久（受け止められるダメージの合計） */
+  maxHp: 60,
+  /** 前方の判定：視線の水平方向からこの角度（度）以内の攻撃を受け止める */
+  halfAngleDeg: 75,
+  /** 壊れてから回復するまでに毎秒使う電力 */
+  recoverDrainPerSec: 4,
+  /** 壊れてから回復するまでに毎秒回復する耐久（電力が足りたぶんだけ進む）。maxHp / これ ＝ 回復にかかる秒数 */
+  recoverPerSec: 6,
+  /** 盾が出る・消えるときの速さ（1/秒） */
+  blendRate: 18,
+} as const;
+
+/**
  * バキューム（スキル。world.unlocks.vacuum で解放）。発動すると、自分を中心とした円の中にいる敵全員から
  * duration 秒かけて電力（敵HP）を吸い取り、自分の電力にする。吸収アーム（ABSORB）と同じく drainEnemy で吸う
  */
@@ -477,10 +540,102 @@ export const CAMP1 = {
   laserInterval: 0.6,
   /** 赤ウォーカーの案内：G に入ったら隠し通路の下へ歩く速さの倍率・到着とみなす距離 */
   guideArrive: 1.2,
+  /** 案内はG内で近くにいるときだけ。移動を再開したら追従を優先する */
+  guideMaxDistance: 12,
+  guideIdleSpeed: 0.5,
   /** 床のハッチが開くのにかかる時間（秒） */
   hatchTime: 1.2,
   /** 中ボス戦：2つ目の波を出す、1つ目の波の残り数 */
   bossWave2At: 2,
   /** 実ライトを割り当てる天井灯の数 */
   lampSlots: 8,
+};
+
+/** 必殺技（電気のかめはめ波）。special/*.ts と ui/hud.ts が読む。強化（skill.special）で変わる数値は progression/upgrades.ts */
+export const SPECIAL = {
+  /** ゲージの最大（3分割）。1つ分 = max / segments */
+  max: 120,
+  segments: 3,
+  /** ゲージのたまり方：与えたダメージ1あたり／敵を倒した1体あたり／吸収した電力1あたり */
+  gainPerDamage: 0.1,
+  gainPerKill: 4,
+  gainPerAbsorb: 0.25,
+  /** 弱点に当てたとき、ダメージ分のたまり方をこの倍率にする（弱点ダメージ自体の倍率とは別に上乗せ） */
+  gainWeakMul: 2.5,
+  /** 狙える敵までの距離（m）。視線が通っていること */
+  range: 35,
+  /** 通常の敵は即死、ボスは最大HPのこの割合（Lv1。強化で上がる） */
+  bossDamagePct: 25,
+  /** 貫通：ビームに触れた他の敵が受けるダメージ（最大HPに対する%。Lv1。強化で上がる） */
+  pierceDamagePct: 60,
+  /** 貫通の太さ（半径 m。Lv1。強化で上がる） */
+  beamRadius: 1.4,
+  /** ビームが狙いの先まで伸びる余分な長さ（m） */
+  beamOvershoot: 25,
+  /** 演出の長さ（秒）。movieCatalog.ts もここを読む */
+  pose: 0.25,     // ① 構え（速い）
+  charge: 3.2,    // ② 溜め（スロー）
+  /** ② のうち、両手を右腰へゆっくり移すのに使う割合。残りは腰で溜め続ける（終わりぎわに震える） */
+  chargeHandsK: 0.6,
+  /**
+   * ② で上半身をひねり、左肩を右方向へ丸める量（rad）。
+   * twist=胸のひねり（負で左肩が前へ）、roll=胸の横の傾き（正で左肩が下がる）、
+   * clav=左の鎖骨の回転 [前へ倒す(負), 右前へ巻き込む(負), 下げる(正)]（首の付け根が軸。左肩アーマーごと動く）
+   */
+  shoulderRoll: { twist: -0.7, roll: 0.16, clav: [-0.2, -0.6, 0.3] as [number, number, number] },
+  fire: 0.08,     // ③ 発射の瞬間（ごく速い）
+  fireHold: 0.5,  // ③ 横からの発射カット（発射後の見せ場）
+  beam: 2.0,      // ④ 照射（通常カメラ）
+  /** 演出中のカメラ */
+  cam: {
+    /** ① 正面やや右から見る：前方・右・高さ・注視点の高さ（m） */
+    poseFwd: 3.2, poseRight: 1.0, poseUp: 1.55, poseLook: 1.2,
+    /** ② 右側を回り込む（前右 → 右後ろ）：開始・終了角（度。0=正面、90=真横右、180=真後ろ）と距離・高さ */
+    orbitFrom: 35, orbitTo: 150, orbitDist: 3.1, orbitUp: 1.15, orbitLook: 0.95,
+    /** ③ 真横（右側）：距離・高さ。ビームの向きに垂直 */
+    sideDist: 5.6, sideUp: 1.5, sideLook: 1.4,
+    fov: 52,
+  },
+  /** 溜めの球：最大の半径（m）と手の位置（胸ローカル：右の腰あたり） */
+  ballMax: 0.3,
+  /** 画面効果 */
+  flash: 0.85,
+  shake: 0.9,
+  /** ビームの見た目：根元の太さ（m）・先の太さ（m）・見える長さ（m） */
+  beamBase: 0.7,
+  beamTip: 3.2,
+  beamLength: 60,
+  /** 手のスパーク（ゲージ満タンの間）の頻度（回/秒） */
+  handSparkRate: 6,
+};
+
+/** 必殺技の強化段階（Lv1〜5）。upgrades.ts の skill.special が読む */
+export const SPECIAL_UPGRADE = {
+  pierce: [60, 70, 80, 90, 100],
+  gaugeMul: [100, 115, 130, 150, 170],
+  beamWidth: [1.4, 1.7, 2.0, 2.4, 2.8],
+  boss: [25, 30, 36, 43, 50],
+  costs: [2, 3, 4, 6],
+};
+
+/** カウンター：プレイヤーの電気弾が敵の電気弾に当たると、敵弾を奪って打ち返す */
+export const COUNTER = {
+  /** 打ち返し弾のダメージ = (敵弾 + プレイヤー弾) × dmgMul */
+  dmgMul: 2.5,
+  /** 溜め撃ちでカウンターしたときの追加倍率 */
+  chargedMul: 1.5,
+  /** 打ち返し弾の速さ = プレイヤー弾の速さ × speedMul */
+  speedMul: 1.3,
+  /** 判定の余裕（m）。撃ち落としより広めにして狙いやすく */
+  hitRadiusPad: 0.45,
+  /** 打ち返し弾の見た目の大きさ倍率（敵弾のサイズ基準）と下限 */
+  sizeMul: 1.6,
+  minSize: 0.3,
+  /** 当たり判定の半径倍率 */
+  radiusMul: 1.5,
+  /** 打ち返し弾の寿命（秒） */
+  life: 2.5,
+  /** 色：プレイヤー側（芯・殻）と軌跡 */
+  color: 0x9ff4ff,
+  trail: 0xfff0b0,
 };

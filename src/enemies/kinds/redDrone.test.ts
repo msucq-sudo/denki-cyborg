@@ -4,9 +4,10 @@ import { createWorld } from '../../core/world';
 import { EventBus } from '../../core/events';
 import { makeAABB } from '../../core/collision';
 import type { Enemy, World } from '../../core/types';
-import { HACK } from '../../config/balance';
+import { HACK, PLAYER } from '../../config/balance';
 import { spawnEnemy, updateEnemies } from '../enemies';
 import { KIND_MODULES } from '.';
+import { REDDRONE_ALLY } from './redDrone';
 
 const V = (x: number, y: number, z: number) => new THREE.Vector3(x, y, z);
 
@@ -43,26 +44,16 @@ describe('redDrone', () => {
     expect(e.ai.model.weakPoints).toHaveLength(1);
   });
 
-  it('behaves like a drone: closes in and shoots', () => {
+  it('stays still and never shoots while an enemy (even when alerted or tethered)', () => {
     world.player.pos.set(0, 0, 20);
     const e = spawnEnemy(world, 'redDrone', V(0, 2, 0));
     e.ai.alert = 4;
     run(1.5);
-    expect(e.pos.z).toBeGreaterThan(1);
+    e.tethered = true;
     run(6);
-    expect(world.projectiles.some((p) => p.owner === 'enemy')).toBe(true);
-  });
-
-  it('is slower while tethered', () => {
-    world.player.pos.set(0, 0, 60);
-    const free = spawnEnemy(world, 'redDrone', V(-30, 2, 0));
-    const held = spawnEnemy(world, 'redDrone', V(30, 2, 0));
-    free.ai.alert = 4; held.ai.alert = 4;
-    held.tethered = true;
-    run(2);
-    expect(free.pos.z).toBeGreaterThan(2);
-    expect(held.pos.z).toBeGreaterThan(0);
-    expect(held.pos.z).toBeLessThan(free.pos.z * (HACK.jamSpeedMul + 0.3));
+    expect(e.pos.z).toBeCloseTo(0, 5);
+    expect(e.pos.x).toBeCloseTo(0, 5);
+    expect(world.projectiles.some((p) => p.owner === 'enemy')).toBe(false);
   });
 
   it('as an ally flies near the player, shoots the nearest enemy, and tints blue', () => {
@@ -82,6 +73,60 @@ describe('redDrone', () => {
     (a.ai.model.bodyMats[0].base as THREE.Color).getHSL(hsl);
     expect(hsl.h).toBeGreaterThan(0.45);
     expect(hsl.h).toBeLessThan(0.7);
+  });
+
+  it('follows behind a running player and catches up when there is no enemy', () => {
+    const a = ally(V(0, 2, 0));
+    const dt = 1 / 30;
+    world.player.pos.set(0, 0, 0);
+    for (let i = 0; i < 5 * 30; i++) {
+      world.player.vel.set(0, 0, -PLAYER.moveSpeed);
+      world.player.pos.z -= PLAYER.moveSpeed * dt;
+      world.time += dt;
+      updateEnemies(world, dt);
+    }
+    const horizontalGap = Math.hypot(a.pos.x - world.player.pos.x, a.pos.z - world.player.pos.z);
+    expect(horizontalGap).toBeLessThan(8);
+    expect(a.pos.z).toBeGreaterThan(world.player.pos.z + 1); // プレイヤーの後ろ
+  });
+
+  it('regroups at the player height after a vertical climb and return', () => {
+    const a = ally(V(0, 2, 0));
+    world.player.pos.set(0, 0, 0);
+    run(0.1);
+
+    world.player.pos.set(0, 6, 0);
+    run(4);
+    expect(Math.abs(a.pos.y - (world.player.pos.y + PLAYER.height * 0.5 + REDDRONE_ALLY.hoverHeight))).toBeLessThan(1.5);
+
+    world.player.pos.set(0, 0, 0);
+    run(4);
+    expect(Math.abs(a.pos.y - (world.player.pos.y + PLAYER.height * 0.5 + REDDRONE_ALLY.hoverHeight))).toBeLessThan(1.5);
+  });
+
+  it('stays with the newest route around a crate when the player reverses', () => {
+    const a = ally(V(-3, 2.4, 0));
+    world.player.pos.set(0, 0, 0);
+    world.colliders.push(makeAABB(V(-1, 0, -6), V(1, 4, -4)));
+    const dt = 1 / 30;
+    const route: Array<[number, number]> = [[4, 0], [4, -10], [-4, -10], [-4, 0], [4, 0], [4, -10], [-4, -10]];
+    let maxGap = 0;
+    for (const [x, z] of route) {
+      for (let i = 0; i < 800; i++) {
+        const dx = x - world.player.pos.x, dz = z - world.player.pos.z;
+        const d = Math.hypot(dx, dz);
+        if (d < 0.25) break;
+        const speed = Math.min(PLAYER.moveSpeed, d * 30);
+        world.player.vel.set(dx / d * speed, 0, dz / d * speed);
+        world.player.pos.x += world.player.vel.x * dt;
+        world.player.pos.z += world.player.vel.z * dt;
+        world.time += dt;
+        updateEnemies(world, dt);
+        maxGap = Math.max(maxGap, Math.hypot(a.pos.x - world.player.pos.x, a.pos.z - world.player.pos.z));
+      }
+    }
+    expect(maxGap).toBeLessThan(14);
+    expect(Math.hypot(a.pos.x - world.player.pos.x, a.pos.z - world.player.pos.z)).toBeLessThan(8);
   });
 
   it('does not shoot through walls', () => {

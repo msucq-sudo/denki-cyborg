@@ -2,7 +2,7 @@
 // 外（サージ収容所への道で車が激突した建物）の左側の入口 → A。A〜J の部屋とギミック：
 //  - セキュリティキー2本（B・F の高い所）→ C の上の青い扉が開いて D へ
 //  - J の脆い壁：撃つたびにひびが広がり、最大まで溜めた溜め撃ちで壊れる（中に歯車）
-//  - G と D の間の厚い壁の天井付近に隠し通路（グラップルで上がる。中に歯車）
+//  - G と D の間の厚い壁の天井付近に隠し通路（グラップルで上がる）
 //  - E→I の斜め通路のレーザー網：E の電力源2つを吸収アームで吸い尽くすと消える（I に歯車）
 //  - A の赤ウォーカー：ハッキングで恒久の仲間（時間切れなし）。ついてきて、G では隠し通路の下へ案内する。送電で回復／吸収もできる
 //  - A の送電ソケット → 床のハッチが開いて地下通路（歯車）／C の電源スイッチ → 暗い C の明かりがつく
@@ -17,7 +17,8 @@ import { clearGrapplePoints, registerGrapplePoint } from '../core/grapple';
 import { clearGrabbables, getGrabbables, registerGrabbable } from '../core/armGrab';
 import { clearPowerSources, getPowerSources } from '../core/powerSources';
 import { damagePlayer, toast } from '../core/combat';
-import { segmentAABB } from '../core/collision';
+import { giveShield } from '../abilities/shield';
+import { moveCharacter, segmentAABB } from '../core/collision';
 import { spawnBurst } from '../core/effects';
 import { spawnEnemy } from '../enemies/api';
 import { wakeDormant } from '../enemies/dormant';
@@ -47,6 +48,8 @@ export interface Camp1State {
   drained: string[];
   laserOff: boolean;
   vacuum: boolean;
+  /** J のシールドを入手した */
+  shield: boolean;
   /** 赤ウォーカー：敵のまま／仲間／いない（倒された） */
   ally: 'enemy' | 'ally' | 'dead';
   /** 案内中（G で隠し通路の下へ歩いている） */
@@ -120,6 +123,8 @@ const roomResumePoints: Record<Camp1RoomResumeId, { x: number; y: number; z: num
 interface Memo {
   gears: string[]; keys: ('B' | 'F')[]; vacuum: boolean; ally: 'enemy' | 'ally' | 'dead'; allyHp: number;
   hatchOpen: boolean; cLit: boolean; wallBroken: boolean; laserOff: boolean; drained: string[]; boss: boolean;
+  /** 旧セーブとの互換性のため任意 */
+  shield?: boolean;
   /** v1 セーブとの互換性のため任意。戦闘状況は次回の戦闘再開に使う。 */
   fights?: Record<string, Fight>;
 }
@@ -144,7 +149,7 @@ function validateMemo(value: unknown): Memo | null {
   if (!isRecord(value)) return null;
   const m = value;
   if (!validStringArray(m.gears, MEMO_GEAR_IDS) || !validStringArray(m.keys, new Set(['B', 'F'])) ||
-      typeof m.vacuum !== 'boolean' || !['enemy', 'ally', 'dead'].includes(m.ally as string) ||
+      typeof m.vacuum !== 'boolean' || (m.shield !== undefined && typeof m.shield !== 'boolean') || !['enemy', 'ally', 'dead'].includes(m.ally as string) ||
       typeof m.allyHp !== 'number' || !Number.isFinite(m.allyHp) ||
       typeof m.hatchOpen !== 'boolean' || typeof m.cLit !== 'boolean' || typeof m.wallBroken !== 'boolean' ||
       typeof m.laserOff !== 'boolean' || !validStringArray(m.drained, MEMO_DRAIN_IDS) || typeof m.boss !== 'boolean') return null;
@@ -159,7 +164,7 @@ function validateMemo(value: unknown): Memo | null {
     }
   }
   return {
-    gears: [...new Set(m.gears)], keys: [...new Set(m.keys)] as ('B' | 'F')[], vacuum: m.vacuum,
+    gears: [...new Set(m.gears)], keys: [...new Set(m.keys)] as ('B' | 'F')[], vacuum: m.vacuum, ...(m.shield !== undefined ? { shield: m.shield } : {}),
     ally: m.ally as Memo['ally'], allyHp: Math.max(0, m.allyHp), hatchOpen: m.hatchOpen, cLit: m.cLit,
     wallBroken: m.wallBroken, laserOff: m.laserOff, drained: [...new Set(m.drained)], boss: m.boss, ...(fights ? { fights } : {}),
   };
@@ -284,7 +289,7 @@ export function buildCamp1(world: World): void {
 
   const state: Camp1State = {
     keys: [], keyDoorOpen: false, hatchOpen: false, cLit: false, crack: 0, wallBroken: false, drained: [], laserOff: false,
-    vacuum: false, ally: 'enemy', guiding: false, fights: {}, boss: 'idle', wave2: false, exitOpen: false, exitReached: false,
+    vacuum: false, shield: false, ally: 'enemy', guiding: false, fights: {}, boss: 'idle', wave2: false, exitOpen: false, exitReached: false,
     checkpoint: startAt, gears: [], lockdown: false,
   };
   world.level.data.camp1 = state;
@@ -340,6 +345,7 @@ export function buildCamp1(world: World): void {
   // ---- アームで掴める物（歯車・キー・バキューム）
   for (const g of vis.gears) registerGrabbable(world, { pos: new THREE.Vector3(g.x, g.y, g.z), radius: 1.0, enabled: true, obj: g.group, onGrab: () => takeGear(world, rt, g.id) });
   for (const k of vis.keys) registerGrabbable(world, { pos: new THREE.Vector3(k.x, k.y, k.z), radius: 0.8, enabled: true, obj: k.group, onGrab: () => takeKey(world, rt, k.id) });
+  registerGrabbable(world, { pos: new THREE.Vector3(plan.shield.x, plan.shield.y, plan.shield.z), radius: 0.9, enabled: true, obj: vis.shield.group, onGrab: () => takeShield(world, rt) });
   registerGrabbable(world, { pos: new THREE.Vector3(plan.vacuum.x, plan.vacuum.y, plan.vacuum.z), radius: 0.9, enabled: true, obj: vis.vacuum.group, onGrab: () => takeVacuum(world, rt) });
 
   // ---- グラップルポイント（B の木箱の上：キー①の場所の目印）
@@ -366,6 +372,7 @@ function restoreMemo(world: World, rt: Runtime, m: Memo): void {
   state.keys = [...m.keys];
   if (state.keys.length >= CAMP1.keysNeeded) { state.keyDoorOpen = true; forceGate(rt, 'key', true); }
   if (m.vacuum) { state.vacuum = true; hidePick(world, rt.vis.vacuum); world.unlocks.vacuum = true; }
+  if (m.shield || world.unlocks.shield) { state.shield = true; hidePick(world, rt.vis.shield); world.unlocks.shield = true; }
   if (m.hatchOpen) openHatch(world, rt, true);
   if (m.cLit) lightC(world, rt, true);
   if (m.wallBroken) breakWall(world, rt, true);
@@ -396,7 +403,7 @@ function restoreMemo(world: World, rt: Runtime, m: Memo): void {
 function snapshot(rt: Runtime): Memo {
   const s = rt.state;
   return {
-    gears: [...s.gears], keys: [...s.keys], vacuum: s.vacuum, ally: s.ally, allyHp: rt.walker?.hp ?? 0,
+    gears: [...s.gears], keys: [...s.keys], vacuum: s.vacuum, shield: s.shield, ally: s.ally, allyHp: rt.walker?.hp ?? 0,
     hatchOpen: s.hatchOpen, cLit: s.cLit, wallBroken: s.wallBroken, laserOff: s.laserOff, drained: [...s.drained], boss: s.boss === 'done',
     fights: { ...s.fights },
   };
@@ -461,6 +468,16 @@ function takeVacuum(world: World, rt: Runtime): void {
   world.unlocks.vacuum = true;
   world.events.emit('gearPickup', {});
   toast(world, 'バキュームを手に入れた（十字キー下で選んで Y で発動）', 5);
+  remember(rt);
+}
+
+function takeShield(world: World, rt: Runtime): void {
+  if (rt.state.shield) return;
+  rt.state.shield = true;
+  hidePick(world, rt.vis.shield);
+  giveShield(world);
+  world.events.emit('gearPickup', {});
+  toast(world, 'シールドを手に入れた（LT／右クリックで構えると、前からの攻撃を防ぐ）', 5);
   remember(rt);
 }
 
@@ -591,7 +608,7 @@ const yaw90 = (z: ZoneDef, s: SpawnDef): number => Math.round(Math.atan2(z.face.
 function spawnZones(world: World, rt: Runtime): void {
   for (const z of rt.zones) {
     if (z.state === 'done') continue;
-    const trap = z.def.mode === 'trap';
+    const trap = z.def.mode === 'trap' || !!z.def.trigger;
     z.enemies = z.def.spawns.filter((s) => !inBox(s)).map((s) => spawnOne(world, rt, z.def, s, trap)).filter((e): e is Enemy => !!e);
     z.wave2 = (z.def.wave2 ?? []).filter((s) => !inBox(s)).map((s) => spawnOne(world, rt, z.def, s, true)).filter((e): e is Enemy => !!e);
     // 箱に隠れている敵：近づくと開く（閉じ込め戦は 0＝トリガーでだけ開く）。2波目はコンテナから
@@ -627,6 +644,10 @@ function updateZones(world: World, rt: Runtime): void {
   for (const z of rt.zones) {
     if (z.def.mode !== 'zone' || z.state === 'done') continue;
     // 1体でも目覚めた／箱が1つでも開き始めたら、区画の全員が出てくる
+    const pp = world.player.pos, tr = z.def.trigger;
+    if (z.state === 'idle' && tr && pp.x > tr.x0 && pp.x < tr.x1 && pp.z > tr.z0 && pp.z < tr.z1) {
+      for (const e of z.enemies) if (e.ai.dormant) e.ai.dormant.wakeRadius = 1e9;   // 距離・高さに関係なく目覚めさせる
+    }
     if (z.state === 'idle' && (z.enemies.some((e) => !e.ai.dormant && e.status !== 'dead') || z.boxes.some((b) => b.state !== 'closed'))) {
       z.state = 'active';
       st.fights[z.def.id] = 'active';
@@ -638,7 +659,7 @@ function updateZones(world: World, rt: Runtime): void {
       z.state = 'done'; st.fights[z.def.id] = 'done'; fightChanged = true;
     }
   }
-  // ---- 中ボス戦（H）：入ると扉が閉まり、敵が一斉に目覚める。1つ目の波が減ると2つ目の波
+  // ---- 中ボス戦（H）：入ると扉が閉まり、敵が一斉に目覚める。
   const boss = rt.zones.find((z) => z.def.id === 'boss')!;
   const p = world.player.pos;
   const T = rt.plan.bossTrigger;
@@ -656,14 +677,15 @@ function updateZones(world: World, rt: Runtime): void {
     toast(world, '扉が閉まった！ ビーマーが2体いる！', 4);
   }
   if (st.boss === 'active') {
-    if (!st.wave2 && zoneAlive(boss) <= CAMP1.bossWave2At) {
+    const hasWave2 = (boss.def.wave2?.length ?? 0) > 0;
+    if (hasWave2 && !st.wave2 && zoneAlive(boss) <= CAMP1.bossWave2At) {
       st.wave2 = true;
       wakeAll(world, boss.wave2, 0.25);
       openSpawnBoxes(world, boss.boxes2, 0.3);
       world.events.emit('zoneWave', { wave: 2 });
       toast(world, '増援だ！', 2.5);
     }
-    if (st.wave2 && zoneAlive(boss) === 0 && zoneAlive(boss, 2) === 0) {
+    if ((!hasWave2 || st.wave2) && zoneAlive(boss) === 0 && (!hasWave2 || zoneAlive(boss, 2) === 0)) {
       st.boss = 'done';
       boss.state = 'done';
       st.fights.boss = 'done';
@@ -680,6 +702,27 @@ function updateZones(world: World, rt: Runtime): void {
 }
 
 // ---------------------------------------------------------------- 赤ウォーカー（仲間）
+const _allySafeFeet = new THREE.Vector3();
+const _allySafeStart = new THREE.Vector3();
+const _allySafeVelocity = new THREE.Vector3();
+
+/** 接地した足跡の上に、ウォーカーの体が収まり、床に支えられる場合だけ復帰位置を返す。 */
+function safeAllyTrailPosition(world: World, e: Enemy, foot: THREE.Vector3): THREE.Vector3 | undefined {
+  const margin = e.radius * 0.5;
+  const hasFloor = world.colliders.some((b) => b.active
+    && Math.abs(b.max.y - foot.y) <= 0.16
+    && foot.x >= b.min.x + margin && foot.x <= b.max.x - margin
+    && foot.z >= b.min.z + margin && foot.z <= b.max.z - margin);
+  if (!hasFloor) return undefined;
+
+  _allySafeFeet.set(foot.x, foot.y + 0.05, foot.z);
+  _allySafeStart.copy(_allySafeFeet);
+  _allySafeVelocity.set(0, 0, 0);
+  const result = moveCharacter(world.colliders, _allySafeFeet, _allySafeVelocity, 0, e.radius, e.radius * 2);
+  if (!result.onGround || _allySafeFeet.distanceToSquared(_allySafeStart) > 0.0004) return undefined;
+  return new THREE.Vector3(_allySafeFeet.x, _allySafeFeet.y + e.radius, _allySafeFeet.z);
+}
+
 function updateAlly(world: World, rt: Runtime, dt: number): void {
   const st = rt.state;
   const e = rt.walker;
@@ -709,7 +752,10 @@ function updateAlly(world: World, rt: Runtime, dt: number): void {
   const p = world.player.pos;
   const G = rt.plan.guide.room;
   const inG = (x: number, z: number) => x > G.x0 && x < G.x1 && z > G.z0 && z < G.z1;
-  const guide = inG(p.x, p.z) && p.y < 5;
+  const guide = inG(p.x, p.z) && inG(e.pos.x, e.pos.z) && p.y < 5
+    && Math.abs(e.pos.y - p.y) < 1.5
+    && Math.hypot(e.pos.x - p.x, e.pos.z - p.z) < CAMP1.guideMaxDistance
+    && Math.hypot(world.player.vel.x, world.player.vel.z) < CAMP1.guideIdleSpeed;
   if (guide) {
     e.ai.guideTo = { x: rt.plan.guide.x, z: rt.plan.guide.z, arrive: CAMP1.guideArrive };
     if (!st.guiding) {
@@ -724,7 +770,7 @@ function updateAlly(world: World, rt: Runtime, dt: number): void {
     st.guiding = false;
   }
 
-  // はぐれた（隠し通路を抜けた・高い所へ行った）：しばらく離れたままなら、プレイヤーの足跡の少し後ろへワープ
+  // 高低差や遮蔽物で止まった場合だけ復帰を検討する。戦闘中・案内中・空中では行わない。
   rt.trailT -= dt;
   if (rt.trailT <= 0 && world.player.onGround) {
     rt.trailT = 0.5;
@@ -732,16 +778,46 @@ function updateAlly(world: World, rt: Runtime, dt: number): void {
     if (rt.trail.length > 12) rt.trail.shift();
   }
   const d = e.pos.distanceTo(p);
-  if (d > 28 && !guide) rt.farT += dt; else rt.farT = 0;
-  if (rt.farT > 3 && rt.trail.length >= 4) {
-    const to = rt.trail[rt.trail.length - 4];
-    if (to.distanceTo(p) < 12 && Math.abs(to.y - p.y) < 1.5) {
-      e.pos.set(to.x, to.y + e.radius + 0.1, to.z);
+  const checkT = (e.ai.campFollowCheckT ?? 0) - dt;
+  if (checkT <= 0) {
+    const last = e.ai.campFollowSample as THREE.Vector3 | undefined;
+    const distance = e.ai.allyFollowWaypointDistance as number | undefined;
+    const lastDistance = e.ai.campFollowWaypointDistance as number | undefined;
+    const hasProgressSample = Number.isFinite(distance) && Number.isFinite(lastDistance);
+    const noProgress = hasProgressSample ? distance! >= lastDistance! - 0.2 : !last || last.distanceTo(e.pos) < 0.3;
+    const still = !!last && noProgress;
+    e.ai.campFollowStallT = still ? (e.ai.campFollowStallT ?? 0) + 0.5 : 0;
+    e.ai.campFollowSample = e.pos.clone();
+    e.ai.campFollowWaypointDistance = distance;
+    e.ai.campFollowCheckT = 0.5;
+  } else e.ai.campFollowCheckT = checkT;
+  const highMismatch = Math.abs(e.pos.y - p.y) > 2;
+  const sameFloorFar = d > 28 && !highMismatch;
+  const mayRecover = world.player.onGround && !guide && !e.ai.allyTarget;
+  if (mayRecover && (highMismatch || (sameFloorFar && (e.ai.campFollowStallT ?? 0) >= 1))) rt.farT += dt;
+  else rt.farT = 0;
+
+  if (rt.farT > 3 && rt.trail.length >= 4 && world.player.onGround) {
+    const newestCandidate = rt.trail.length - 4;
+    let destination: THREE.Vector3 | undefined;
+    for (let i = newestCandidate; i >= 0; i--) {
+      const foot = rt.trail[i];
+      if (foot.distanceTo(p) >= 12 || Math.abs(foot.y - p.y) >= 1.5) continue;
+      destination = safeAllyTrailPosition(world, e, foot);
+      if (destination) break;
+    }
+    if (destination) {
+      e.pos.copy(destination);
       e.vel.set(0, 0, 0);
+      e.ai.onGround = true;
+      e.ai.allyTrail = [p.clone()];
+      e.ai.campFollowSample = e.pos.clone();
+      e.ai.campFollowStallT = 0;
+      e.ai.campFollowWaypointDistance = undefined;
       e.root.position.copy(e.pos);
       spawnBurst(world, e.pos, 0x66e6ff, 12, 3, 0.4);
       rt.farT = 0;
-    }
+    } else rt.farT = 2.5;
   }
 }
 
@@ -937,6 +1013,12 @@ export function updateCamp1(world: World, dt: number): void {
     vis.vacuum.group.rotation.y = t * 1.5;
     vis.vacuum.group.position.y = vis.vacuum.y + Math.sin(t * 2) * 0.15;
     if (near(vis.vacuum.x, vis.vacuum.y, vis.vacuum.z)) takeVacuum(world, rt);
+  }
+
+  if (!vis.shield.taken) {
+    vis.shield.group.rotation.y = t * 1.5;
+    vis.shield.group.position.y = vis.shield.y + Math.sin(t * 2 + 1) * 0.12;
+    if (near(vis.shield.x, vis.shield.y, vis.shield.z)) takeShield(world, rt);
   }
 
   // ---- キー扉：足りないときは近づくと「キーが必要（n/2）」

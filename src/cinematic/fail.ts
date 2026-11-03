@@ -15,6 +15,10 @@ const smooth = (t: number) => { t = clamp01(t); return t * t * (3 - 2 * t); };
 
 /** ヘビーの当たりの半径（腕を前に出した分を含む）m */
 const RH = 1.55;
+/** 突っ込む車の速さ m/s（約250km/h）。減速せずにそのまま激突する */
+const V_FAST = 70;
+/** 衝突でヘビーが押し戻される距離 m（少し下がりながら止める） */
+const PUSH_BACK = 3.2;
 /** 衝突シーンのスロー倍率 */
 export const FAIL_SLOW = 0.3;
 
@@ -50,7 +54,7 @@ export function failScript(rt: Runtime, drive: DriveState, probe?: FailProbe): S
   ];
 
   const st = {
-    carX: drive.pos.x, speed: 11,
+    carX: drive.pos.x, speed: V_FAST, brake: 0,
     // ⑤の衝突
     contact: false, stopped: false, stopReal: 0, rebound: 0, pushed: 0, fadeStarted: false,
     // 1次元（西向きを正とした距離）での位置
@@ -59,6 +63,8 @@ export function failScript(rt: Runtime, drive: DriveState, probe?: FailProbe): S
   };
   /** 車の位置を、A の正面からの距離 gap で決める */
   const setGap = (gap: number) => { st.carX = spots[0].x + RH + gap + front; };
+  /** 高速のまま dur 秒走って、最後に endGap の距離まで来るように開始位置を決める */
+  const approach = (dur: number, endGap: number) => { setGap(V_FAST * dur + endGap); st.speed = V_FAST; };
 
   function spawn(i: number, x: number, z: number, yaw: number): HeavyActor {
     const h = new HeavyActor(world.scene, x, z, yaw);
@@ -79,7 +85,7 @@ export function failScript(rt: Runtime, drive: DriveState, probe?: FailProbe): S
     {
       name: '車内・ヘビー出現', duration: 2.6, shake: 0.6,
       enter() {
-        setGap(72); st.speed = 12; clock.t = 0;
+        approach(2.6, 30); clock.t = 0;
         drive.car.setDriverPose('drive');
         car.setDriverVisible(true);
         spawn(0, spots[0].x, zc + 9.5, Math.PI);
@@ -99,7 +105,7 @@ export function failScript(rt: Runtime, drive: DriveState, probe?: FailProbe): S
     // ② 主人公の顔：「なんだあれ」と身を乗り出す
     {
       name: '顔・身を乗り出す', duration: 1.6, shake: 0.35, caption: '…なんだ、あれは？',
-      enter() { setGap(42); st.speed = 11.2; clock.t = 0; },
+      enter() { approach(1.6, 26); clock.t = 0; },
       camera(u, t, pose) {
         car.headLocal(headL);
         car.toWorld(headL.x + 0.3, headL.y + 0.12, headL.z - 2.6 + 0.5 * u, pose.pos);
@@ -112,7 +118,7 @@ export function failScript(rt: Runtime, drive: DriveState, probe?: FailProbe): S
     {
       name: '主人公の視点', duration: 2.2, shake: 0.5, caption: 'ヘビーが…三体！？',
       enter() {
-        setGap(34); st.speed = 10.4; clock.t = 0;
+        approach(2.2, 22); clock.t = 0;
         car.setDriverVisible(false);
         spawn(1, spots[1].x, spots[1].z - 10.5, 0);
         spawn(2, spots[2].x, spots[2].z + 10.5, Math.PI);
@@ -140,7 +146,7 @@ export function failScript(rt: Runtime, drive: DriveState, probe?: FailProbe): S
     {
       name: '俯瞰', duration: 1.8, shake: 0.08,
       enter() {
-        setGap(25); st.speed = 9.8; clock.t = 0;
+        approach(1.8, 20); clock.t = 0;
         car.setDriverVisible(true);
       },
       camera(u, _t, pose) {
@@ -156,7 +162,7 @@ export function failScript(rt: Runtime, drive: DriveState, probe?: FailProbe): S
     {
       name: '真横・衝突', duration: 9, shake: 0.12,
       enter() {
-        setGap(7.5); st.speed = 11; clock.t = 0;
+        setGap(26); st.speed = V_FAST; clock.t = 0;
         car.setDriverVisible(true);
         drive.car.setDriverPose('brace');
         st.dA = -spots[0].x; st.dB = -spots[1].x; st.dC = -spots[2].x;
@@ -229,11 +235,12 @@ export function failScript(rt: Runtime, drive: DriveState, probe?: FailProbe): S
       } else if (si === 4) {
         // 1次元（西向きを正）で衝突を解く
         if (!st.contact) {
-          st.speed = Math.max(0, st.speed - 0.4 * dt);
           st.carX -= st.speed * dt;
           if (-st.carX + front >= st.dA - RH) {
             st.contact = true;
             clock.t = 0;
+            // 速さに関わらず、ちょうど PUSH_BACK だけ押し戻して止まる減速度
+            st.brake = (st.speed * st.speed) / (2 * PUSH_BACK);
             const hit = tmpA.set(spots[0].x + RH, 1.0, zc);
             world.events.emit('carCaught', { pos: hit.clone() });
             rt.fx.flash(hit, 9, 0xfff0c0, 0.35);
@@ -249,8 +256,8 @@ export function failScript(rt: Runtime, drive: DriveState, probe?: FailProbe): S
           st.dB = Math.max(st.dB, st.dA + 3.2);
           st.dC = Math.max(st.dC, st.dB + 3.2);
           const engaged = (st.dA > spots[0].x * -1 + 0.001 ? 1 : 0) + (st.dB > -spots[1].x + 0.001 ? 1 : 0) + (st.dC > -spots[2].x + 0.001 ? 1 : 0);
-          // 押すほど強くブレーキがかかる（3体が踏ん張る）
-          st.speed = Math.max(0, st.speed - (10 + 15 * engaged) * dt);
+          // 3体が踏ん張って、PUSH_BACK ほど押されたところで止める
+          st.speed = Math.max(0, st.speed - st.brake * (0.7 + 0.1 * engaged) * dt);
           st.carX -= st.speed * dt;
           st.pushed = st.dA + spots[0].x;
           // 足元の火花・土煙（押されて滑っている間）
@@ -277,7 +284,7 @@ export function failScript(rt: Runtime, drive: DriveState, probe?: FailProbe): S
         }
         // ヘビーの位置・姿勢
         applyHeavyPos();
-        const push = st.contact ? clamp01(st.speed / 8) : 0;
+        const push = st.contact ? clamp01(st.speed / 25) : 0;
         if (a) a.lean = -0.18 * push - (st.contact ? 0.05 : 0);
         if (b) b.lean = -0.12 * push;
         if (c) c.lean = -0.1 * push;
