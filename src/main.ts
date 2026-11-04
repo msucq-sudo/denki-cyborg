@@ -5,7 +5,9 @@ import { createWorld } from './core/world';
 import type { World } from './core/types';
 import { updateProjectiles } from './core/projectiles';
 import { updatePickups } from './core/pickups';
-import { updateEffects } from './core/effects';
+import { buildModel } from './enemies/models';
+import { ENEMY_ORDER } from './config/enemyInfo';
+import { updateEffects, spawnBurst, spawnShockwave, spawnFlash } from './core/effects';
 import { initPlayer, updatePlayer, updateGun, setPlayerWeapon } from './player/player';
 import { initAbsorb, updateAbsorb } from './abilities/absorb';
 import { initHack, updateHack } from './abilities/hack';
@@ -20,6 +22,7 @@ import { buildDungeon, updateLevel } from './level/dungeon';
 import { buildFloor1, buildFloor1Revisit, updateFloor1, FLOOR1_EXPOSURE, getFloor1Memo, restoreFloor1Memo } from './level/floor1';
 import { buildFloor2, updateFloor2, floor2Hooks, wakeFromRest, FLOOR2_EXPOSURE, type Floor2State } from './level/floor2';
 import { buildSurge, updateSurge, SURGE_EXPOSURE } from './level/surge';
+import { buildIntro, updateIntro, INTRO_EXPOSURE } from './level/intro';
 import { buildCamp1, updateCamp1, CAMP1_EXPOSURE, getCamp1Memo, setCamp1Memo, prepareCamp1RoomResume } from './level/camp1';
 import { readSave, readSaveHistory, getSaveCheckpointId, writeSave, describeSave, SAVE_VERSION, type SaveData } from './core/save';
 import { activeCheckpointId, checkpointChoices, CHECKPOINT_TARGETS, prepareFloor1Checkpoint } from './core/checkpoints';
@@ -31,7 +34,9 @@ import { buildDrain, updateDrain, completeDrainMinecart, DRAIN_EXPOSURE, getDrai
 import { buildDrainBoss, updateDrainBoss, DRAIN_BOSS_EXPOSURE, getDrainBossMemo, setDrainBossMemo } from './level/drainBoss';
 import { CAMERA, CHARACTER } from './config/balance';
 import { syncPlayerStats } from './progression/effects';
+import { findTrack, getLevel, grantCamp2Rewards, maxLevel } from './progression/upgrades';
 import { createHUD } from './ui/hud';
+import { createHoloComm } from './comm/holoComm';
 import { getDriveHud } from './ui/driveHud';
 import { createUpgradeScreen } from './ui/upgradeScreen';
 import { initAudio, resumeAudio, updateAudio } from './audio/sfx';
@@ -44,17 +49,18 @@ import './ui/style.css';
 // ?level=camp1 でサージ収容所 1階（&start=boss で中ボス戦の前から）。
 // ?level=drain でドレイン装置へ向かうダンジョン（&start=bTop|rope|dFront|eWest|goal でチェックポイントから）。
 // ?level=drainBoss でドレイン装置の部屋（&start=corridor 通路／boss ボス戦／movie 導入ムービーだけ）。
-// 既定はアルファ版ダンジョン。?start=drive のように開始地点を指定できる（レベルが world.level.data.startAt を読む）
-type LevelId = 'dungeon' | 'floor1' | 'floor2' | 'surge' | 'camp1' | 'camp2' | 'drain' | 'drainBoss';
+// 既定は導入（スパークの研究室。?level=intro）。アルファ版ダンジョンは ?level=dungeon。?start=drive のように開始地点を指定できる（レベルが world.level.data.startAt を読む）
+type LevelId = 'intro' | 'dungeon' | 'floor1' | 'floor2' | 'surge' | 'camp1' | 'camp2' | 'drain' | 'drainBoss';
 const urlQ = new URLSearchParams(location.search);
 const levelParam = urlQ.get('level');
-let levelId: LevelId = levelParam === 'floor1' || levelParam === 'floor2' || levelParam === 'surge' || levelParam === 'camp1' || levelParam === 'camp2' || levelParam === 'drain' || levelParam === 'drainBoss' ? levelParam : 'dungeon';
+let levelId: LevelId = levelParam === 'intro' || levelParam === 'dungeon' || levelParam === 'floor1' || levelParam === 'floor2' || levelParam === 'surge' || levelParam === 'camp1' || levelParam === 'camp2' || levelParam === 'drain' || levelParam === 'drainBoss' ? levelParam : 'intro';
 const initialLevelId = levelId;
 /** 次に作る World の開始地点（レベルごとの意味。リトライ地点にも使う） */
 let startAt: string | undefined = urlQ.get('start') ?? undefined;
 /** 2階から1階へ戻ってきた（戦闘は解決済みの状態で始める） */
 let floor1Revisit = false;
 const LEVELS: Record<LevelId, { build: (w: World) => void; tick: (w: World, dt: number) => void; exposure: number }> = {
+  intro: { build: buildIntro, tick: updateIntro, exposure: INTRO_EXPOSURE },
   dungeon: { build: buildDungeon, tick: updateLevel, exposure: 1.05 },
   floor1: { build: (w) => (floor1Revisit ? buildFloor1Revisit(w) : buildFloor1(w)), tick: updateFloor1, exposure: FLOOR1_EXPOSURE },
   floor2: { build: buildFloor2, tick: updateFloor2, exposure: FLOOR2_EXPOSURE },
@@ -66,10 +72,10 @@ const LEVELS: Record<LevelId, { build: (w: World) => void; tick: (w: World, dt: 
 };
 const container = document.getElementById('app')!;
 const renderer = new THREE.WebGLRenderer({ antialias: true, powerPreference: 'high-performance' });
-renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+renderer.setPixelRatio(Math.min(window.devicePixelRatio, 1.5));
 renderer.setSize(window.innerWidth, window.innerHeight);
 renderer.shadowMap.enabled = true;
-renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+renderer.shadowMap.type = THREE.PCFShadowMap;
 renderer.toneMapping = THREE.ACESFilmicToneMapping;
 renderer.toneMappingExposure = LEVELS[levelId].exposure;
 container.appendChild(renderer.domElement);
@@ -112,6 +118,8 @@ let hadLock = false;
 // 必殺技ゲージ：敵へのダメージ・撃破でたまる（吸収は updateSpecial が見る）
 initSpecialHooks(events, () => world);
 
+const holoComm = createHoloComm(events);
+
 const hud = createHUD(document.getElementById('hud')!, {
   onStart: () => freshGame(),
   onContinue: () => continueGame(),
@@ -144,6 +152,7 @@ function currentSaveKey(): string {
 }
 function saveNow(): boolean {
   if (isMovieMode()) return true;   // ムービー単体モードでは進行を保存しない（本編のセーブを上書きしない）
+  if (levelId === 'intro') return true;   // 導入は保存しない（終わって研究所 1 階に着いたところから保存される）
   return writeSave({
     v: SAVE_VERSION, savedAt: Date.now(), level: levelId,
     startAt: (world.level.data.retryAt as string | undefined) ?? startAt,
@@ -163,7 +172,11 @@ function saveNow(): boolean {
   });
 }
 /** 毎フレーム（プレイ中）：セーブ地点が変わったか、レベルが記録を更新したらセーブ */
-function autoSave(): void {
+let saveKeyAt = 0;
+function autoSave(force = false): void {
+  // 保存するかの判定（JSON を作る）は毎フレームやらない。レベルが「保存して」と言ったとき・強制のときはすぐ
+  if (!force && !world.level.data.saveDirty && world.time - saveKeyAt < 0.25 && world.time >= saveKeyAt) return;
+  saveKeyAt = world.time;
   const key = currentSaveKey();
   if ((key !== saveKey || world.level.data.saveDirty) && Date.now() >= saveRetryAt) {
     const placeChanged = key.split('|').slice(0, 2).join('|') !== saveKey.split('|').slice(0, 2).join('|');
@@ -182,7 +195,7 @@ function autoSave(): void {
 function flushSave(): void {
   if ((world.state === 'playing' || world.state === 'paused') && world.player.hp > 0 && !pendingFloor) {
     saveRetryAt = 0;
-    autoSave();
+    autoSave(true);
   }
 }
 window.addEventListener('pagehide', flushSave);
@@ -216,6 +229,7 @@ function restoreGame(s: SaveData): void {
   world.unlocks = { ...world.unlocks, ...s.unlocks };
   world.loadout = { ...s.loadout, owned: [...s.loadout.owned] };
   world.skills.selected = s.selectedSkill;
+  if (s.camp2Cleared === true) grantCamp2Rewards(world);   // 収容所 2階クリア済みのセーブ：ごほうび（自由飛行・ジェット強化・アサルト）が無ければ付ける
   syncPlayerStats(world);
   world.player.hp = world.player.maxHp;
   if (levelId === 'floor1' && !floor1Revisit) restoreFloor1Memo(world, s.levelMemo);
@@ -271,7 +285,7 @@ function chooseCheckpoint(id: string): void {
   }
   checkpointOverride = id;
   world.level.data.saveDirty = true;
-  autoSave();
+  autoSave(true);
   checkpointOverride = undefined;
   input.resetAll();
 }
@@ -306,9 +320,21 @@ const fadeEl = document.createElement('div');
 fadeEl.style.cssText = 'position:fixed;inset:0;background:#000;opacity:0;z-index:30;pointer-events:none';
 document.body.appendChild(fadeEl);
 
+/** ジェネレーター撃破のごほうび（1回だけ）：ジェットパックが 1 レベル上がってジェットブーストを覚え、強化画面にライフルの解放が出る */
+function grantGeneratorRewards(w: World): void {
+  if (w.unlocks.jetBoost) return;
+  w.unlocks.jetBoost = true;
+  w.unlocks.rifleAvail = true;
+  const jet = findTrack('skill.jetpack');
+  if (jet) w.upgrades[jet.id] = Math.min(maxLevel(jet), getLevel(w, jet.id) + 1);
+  toast(w, 'ジェットパックが強化された！ 飛行中にダッシュを押すと前へ進み、Lスティックで向きを変えられる', 6);
+  toast(w, '強化画面（ベッド）で、アサルトライフルを解放できる', 6);
+}
+
 /** 次のステージ（または同じステージの別の開始地点）へ。所持品・強化などは引き継ぐ */
 function changeLevel(to: LevelId, start?: string, opts: { keepHp?: boolean } = { keepHp: true }): void {
   const prev = world;
+  const from = levelId;
   const keep = {
     hp: prev.player.hp, energy: prev.player.energy, inventory: { ...prev.inventory }, upgrades: { ...prev.upgrades }, functions: { ...prev.functions },
     stats: { ...prev.stats }, specialGauge: prev.special.gauge,
@@ -328,9 +354,17 @@ function changeLevel(to: LevelId, start?: string, opts: { keepHp?: boolean } = {
   world.skills.selected = keep.selectedSkill;
   world.special.gauge = keep.specialGauge;
   if (world.loadout.current !== 'pistol') setPlayerWeapon(world, world.loadout.current);
+  // 研究所（1階・2階）に着いたら、体力と電力を全回復する
+  if (opts.keepHp && (to === 'floor1' || to === 'floor2')) {
+    syncPlayerStats(world);
+    world.player.hp = world.player.maxHp;
+    world.player.energy = world.player.maxEnergy;
+  }
+  // ジェネレーターを倒して研究所 2 階に戻った：ジェットパックが強化され（ジェットブースト）、強化画面でライフルを解放できるようになる
+  if (from === 'camp2' && to === 'floor2') grantGeneratorRewards(world);
   // 部屋判定が進む前のステージ入口も履歴に残す（所持品の引き継ぎ後に保存）。
   world.level.data.saveDirty = true;
-  autoSave();
+  autoSave(true);
 }
 
 /**
@@ -344,7 +378,7 @@ function retry(): void {
   startGame();
   // 死亡フレームで到達した地点は未保存の場合がある。生存状態へ戻したリトライ地点を確定する。
   world.level.data.saveDirty = true;
-  autoSave();
+  autoSave(true);
 }
 
 function changeFloor(to: 1 | 2): void {
@@ -379,7 +413,7 @@ function startGame(): void {
   saveKey = currentSaveKey();
   saveRetryAt = 0;
   world.level.data.saveDirty = false;
-  if (!readSave()) { saveKey = ''; autoSave(); }
+  if (!readSave()) { saveKey = ''; autoSave(true); }
   hud.showScreen(world);
   // スパークとの会話（'comm' イベント）は後で実装。仕組みだけ HUD にある
 }
@@ -428,19 +462,85 @@ window.addEventListener('resize', () => {
   world.camera.updateProjectionMatrix();
 });
 
+// ---- 自動画質：重いとき（フレームが長いとき）は描画の解像度を下げ、軽くなったら少しずつ戻す
+const MAX_PR = Math.min(window.devicePixelRatio, 1.5);
+const MIN_PR = 0.6;
+let pixelRatio = MAX_PR;
+renderer.setPixelRatio(pixelRatio);
+let slowT = 0, fastT = 0;
+// 解像度の上げ下げを繰り返すと、そのたびに描画バッファを作り直して「カクッ」となる。
+// 上げた直後（UP_PROBE 秒以内）にまた重くなったら、その解像度は無理なので上限にして、しばらく（ceilHold 秒）上げない。上げるまでの待ちも長くする（upWait）
+const UP_PROBE = 12;
+let ceilPR = MAX_PR, ceilHold = 0, upWait = 6, sinceUp = 99;
+function adaptQuality(rawDt: number): void {
+  sinceUp += rawDt;
+  if (ceilHold > 0) { ceilHold -= rawDt; if (ceilHold <= 0) ceilPR = MAX_PR; }
+  if (rawDt > 1 / 40) { slowT += rawDt; fastT = 0; } else if (rawDt < 1 / 55) { fastT += rawDt; slowT = 0; } else { slowT = fastT = 0; }
+  let next = pixelRatio;
+  if (slowT > 0.6) {
+    next = Math.max(MIN_PR, pixelRatio - 0.15); slowT = 0;
+    if (sinceUp < UP_PROBE) { ceilPR = Math.max(MIN_PR, next); ceilHold = 90; upWait = Math.min(40, upWait * 2); }   // 上げたせいで重くなった
+  } else if (fastT > upWait && pixelRatio < ceilPR) {
+    next = Math.min(ceilPR, MAX_PR, pixelRatio + 0.1); fastT = 0; sinceUp = 0;
+  }
+  if (next !== pixelRatio) {
+    pixelRatio = next;
+    renderer.setPixelRatio(pixelRatio);
+    renderer.setSize(window.innerWidth, window.innerHeight);
+  }
+}
+
 const clock = new THREE.Clock();
 // ?manual を付けると自動ループを止める（テストから __game.step / __game.render で駆動）
 const manual = new URLSearchParams(location.search).has('manual');
 function frame(): void {
-  const dt = Math.min(clock.getDelta(), 1 / 20);
+  const raw = clock.getDelta();
+  if (raw < 0.25 && document.visibilityState === 'visible') adaptQuality(raw);
+  const dt = Math.min(raw, 1 / 20);
   step(dt);
   drawScene();
   if (!manual) requestAnimationFrame(frame);
 }
 
+/**
+ * シェーダーの先読み：ステージができた直後に1回だけ、まだ画面に出ていない物（ポッドや天井で待つ敵・出番を待つ演出など）のシェーダーもまとめてコンパイルしておく。
+ * しないと、初めて見える瞬間（ジャンパーが跳んでくる・爆発・衝撃波が出る瞬間）に100ms前後のカクつきが出る。
+ * 見えない物（visible=false）は renderer.compile が飛ばすので、一時的に見える状態にして終わったら戻す。ライトは数が変わるとシェーダーが変わるのでそのまま。
+ */
+let warmedWorld: World | null = null;
+function prewarmShaders(w: World): void {
+  const hidden: THREE.Object3D[] = [];
+  const dummies = new THREE.Group();
+  const t0 = performance.now();
+  const programs0 = renderer.info.programs?.length ?? 0;
+  try {
+    const far = new THREE.Vector3(w.player.pos.x, w.player.pos.y - 500, w.player.pos.z);   // 画面の外（すぐ消える）
+    spawnBurst(w, far, 0xffffff, 4, 1);
+    spawnShockwave(w, far, 0xffffff, 1, 0.1);
+    spawnFlash(w, far, 0xffffff, 1, 0.1);
+    // そのステージにまだ出ていない種類の敵（あとから呼ばれる増援など）のモデルも、画面の外に置いてコンパイルしておく
+    for (const k of ENEMY_ORDER) {
+      if (k === 'boss' || k === 'drainGuard') continue;
+      const m = buildModel(k);
+      m.root.position.copy(far);
+      dummies.add(m.root);
+    }
+    w.scene.add(dummies);
+    w.scene.traverse((o) => { if (!o.visible && !(o as THREE.Light).isLight) { hidden.push(o); o.visible = true; } });
+    renderer.compile(w.scene, w.camera);
+  } catch (err) {
+    console.warn('[prewarm] failed', err);
+  } finally {
+    for (const o of hidden) o.visible = false;
+    w.scene.remove(dummies);
+    console.info(`[prewarm] ${Math.round(performance.now() - t0)}ms, programs ${programs0} -> ${renderer.info.programs?.length ?? 0}`);
+  }
+}
+
 /** 強化画面が開いている間は、本編のシーンの代わりに画面の3Dモデルを描く */
 function drawScene(): void {
   if (minecart.active) { minecart.render(renderer); return; }
+  if (warmedWorld !== world && world.state === 'playing' && !upgradeScreen.isOpen) { warmedWorld = world; prewarmShaders(world); }
   if (upgradeScreen.isOpen) upgradeScreen.render(renderer);
   else renderer.render(world.scene, world.camera);
 }
@@ -458,6 +558,7 @@ function step(dt: number): void {
   if (world.state === 'playing') {
     if (input.pressed('KeyP')) { pause(); input.endFrame(); return; }
     updatePlayer(world, dt);
+    holoComm.update(world, dt);
     updateSpecial(world, dt);
     if (movieNow() === 'special') updateSpecialMovie(world, dt);
     // 必殺技の演出①〜③の間は、敵・弾・ステージの時間を止める
@@ -562,6 +663,7 @@ function exposeDebug(w: World): void {
     startMinecart,
     get current() { return world; },
     THREE,
+    renderer,
   };
 }
 

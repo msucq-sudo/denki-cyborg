@@ -120,13 +120,16 @@ const KEY_ROWS: KeyRow[] = [
   { id: 'hack', keys: '表示のキー', pad: '十字・ABXY', label: '吸収中 ハッキング（赤い敵）' },
   { id: 'shift', keys: 'C', pad: 'RB', label: '回避' },
   { id: 'interact', keys: 'R', pad: 'B（装置の近く）', label: '調べる / 2階：ベッドで休む' },
-  { id: 'dash', keys: 'Shift', pad: 'L押込', label: 'ダッシュ（移動中のみ低消費）' },
+  { id: 'dash', keys: 'Shift', pad: 'L3（Lスティック押込）', label: 'ダッシュ（移動中のみ低消費）' },
   { id: 'space', keys: 'Space', pad: 'A', label: 'ジャンプ' },
   { id: 'jet', keys: 'Space長押し（空中）', pad: 'A長押し', label: 'ジェット（ホバー）' },
-  { id: 'k2', keys: '2', pad: '十字上', label: 'オートエイム' },
+  { id: 'boost', keys: '飛行中 Shift長押し', pad: '飛行中 L3長押し', label: 'ジェットブースト（前へ進む。WASD / Lスティックで向きを変える）' },
+  { id: 'k2', keys: '2', pad: '—', label: 'オートエイム' },
+  { id: 'light', keys: 'L', pad: '十字上', label: '体の発光（周りを照らす）' },
   { id: 'wswap', keys: '1 / 3', pad: '十字左右', label: '武器の切り替え（前 / 次）' },
   { id: 'skill', keys: 'Y', pad: '十字下＋Rスティック → Y', label: 'スキル（選ぶ → 発動）' },
-  { id: 'decoy', keys: 'N', pad: 'R押込', label: 'ホログラムデコイ（敵の的を3体出す）' },
+  { id: 'decoy', keys: 'N', pad: 'R3（Rスティック押込）', label: 'ホログラムデコイ（敵の的を3体出す）' },
+  { id: 'special', keys: 'V', pad: 'L3+R3 同時押し', label: '必殺技（ゲージ満タンで）' },
   { id: 'p', keys: 'P', pad: 'Start', label: '一時停止' },
   { id: 'h', keys: 'H', pad: '—', label: '操作表示の切替' },
 ];
@@ -1281,7 +1284,8 @@ export function createHUD(root: HTMLElement, cb: HudCallbacks): Hud {
     setCls(keyEls.lmb, 'dim', p.energy < gunTapCost(world));
     setCls(keyEls.k2, 'off', !world.unlocks.autoAim); // 未解放の機能は操作一覧にも出さない
     setCls(keyEls.k2, 'dim', empty);
-    setCls(keyEls.decoy, 'off', !world.unlocks.decoy); // 入手するまで操作一覧に出さない
+    setCls(keyEls.decoy, 'off', !world.unlocks.decoy);
+    setCls(keyEls.boost, 'off', !world.unlocks.jetBoost); // 入手するまで操作一覧に出さない
     setCls(keyEls.wswap, 'off', world.loadout.owned.length < 2); // 武器が1つなら切り替えは出さない
     setCls(keyEls.skill, 'hl', !!world.input.skillMenuHeld);
 

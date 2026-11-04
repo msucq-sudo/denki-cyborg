@@ -40,6 +40,8 @@ export interface Player {
   /** 溜めで消費済みの電力 */
   chargeSpent: number;
   flying: boolean;
+  /** スーパーヒーロー飛行（自由飛行）中。ジャンプを2回押すと入り、着地か電力切れで終わる。体を横にして腕を前へ伸ばし、常に前へ進む */
+  superFlying?: boolean;
   /** absorb モジュールが毎フレーム設定 */
   absorbing: boolean;
   overloading: boolean;
@@ -238,7 +240,11 @@ export interface World {
    * 後から解放する特殊機能（スカウター・ジェットパックは最初から使える基本機能なので含めない）。
    * どれも未解放のうちは左上の「特殊機能」パネルを出さない
    */
-  unlocks: { autoAim: boolean; vacuum: boolean; shield: boolean; /** ホログラムデコイ（abilities/decoy.ts。無ければ未入手） */ decoy?: boolean };
+  unlocks: { autoAim: boolean; vacuum: boolean; shield: boolean; /** ホログラムデコイ（abilities/decoy.ts。無ければ未入手） */ decoy?: boolean;
+    /** ジェネレーターを倒して研究所に戻った：強化画面にライフルの解放が出る */
+    rifleAvail?: boolean;
+    /** ジェットパックの強化（ジェットブースト：ダッシュ長押しで前進、Lスティックで向きを変える）を覚えた */
+    jetBoost?: boolean };
   /** シールド（abilities/shield.ts が更新）。hp が 0 になると broken で、電力を使って回復する */
   shield: ShieldState;
   /** 武器の所持と装備中の武器（player/weaponSwitch.ts が切り替える） */

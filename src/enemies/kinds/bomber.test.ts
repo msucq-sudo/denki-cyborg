@@ -171,7 +171,7 @@ test('ボンバーは山なりの球を投げ、止まっているプレイヤ�
 
 test('スタン中は投げない・警戒していなければ投げない', () => {
   const w = mkWorld();
-  const e = spawnEnemy(w, 'bomber', V(0, 0.45, -10));
+  const e = spawnEnemy(w, 'bomber', V(0, 0.45, -20));   // 気づく距離（ENEMY_NOTICE.range）の外
   e.ai.alert = 0;
   e.ai.atkTimer = 0;
   step(w, 0.6);

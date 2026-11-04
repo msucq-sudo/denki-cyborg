@@ -7,6 +7,7 @@ import type { CutsceneHandle } from './api';
 import { createOverlay } from './overlay';
 import type { Overlay } from './overlay';
 import { Fx, SpeedLines } from './fx';
+import { playVoice, stopVoice } from './voice';
 
 export interface CamPose {
   pos: THREE.Vector3;
@@ -31,6 +32,8 @@ export interface Shot {
   shake?: number;
   /** 画面下の字幕 */
   caption?: string;
+  /** このショットに入ったときに鳴らす台詞の音声（cinematic/voice.ts。public/assets/voice/<id>.mp3） */
+  voice?: string;
   /** 時間の流れ（1=等倍、0.15=スロー）。省略=1 */
   timeScale?: (u: number, t: number) => number;
 }
@@ -202,6 +205,8 @@ export class Cutscene implements CutsceneHandle, Runtime {
     this.idx = i;
     this.shotT = 0;
     this.script.shots[i].enter?.();
+    const v = this.script.shots[i].voice;
+    if (v) playVoice(v);
   }
 
   private start(): void {
@@ -278,6 +283,7 @@ export class Cutscene implements CutsceneHandle, Runtime {
     if (this._done) return;
     this._done = true;
     if (this.slow) { this.slow = false; this.world.events.emit('slowmo', { on: false }); }
+    stopVoice();
     if (this.timer) clearInterval(this.timer);
     if (typeof window !== 'undefined') {
       if (this.onKey) window.removeEventListener('keydown', this.onKey);

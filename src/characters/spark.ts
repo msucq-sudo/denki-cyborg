@@ -4,10 +4,20 @@ import * as THREE from 'three';
 import { RoundedBoxGeometry } from 'three/examples/jsm/geometries/RoundedBoxGeometry.js';
 import { CHARACTER as C } from '../config/balance';
 
-export type SparkPose = 'idle' | 'tablet' | 'talk' | 'wave';
+export type SparkPose =
+  | 'idle' | 'tablet' | 'talk' | 'wave'
+  // 導入ムービー用：人差し指を立てる／遠くを指す／腰に手／ビンタ（振りかぶり・振り抜き）／腕組み／なだめる／万歳／指さしで命令／逃げ腰／ハイキック
+  | 'fingerUp' | 'point' | 'hips' | 'slapWind' | 'slap' | 'crossed' | 'placate' | 'cheer' | 'command' | 'panic' | 'kick';
 export interface Spark {
   root: THREE.Group;
-  setPose(p: SparkPose): void;
+  /** speed：ポーズへ寄せる速さ（既定 6。ビンタなど一瞬の動きは 18 くらい） */
+  setPose(p: SparkPose, speed?: number): void;
+  /** 歩き/走りの足と腕の振り（0=立ち、0.5=歩き、1=走り） */
+  setGait(g: number): void;
+  /** しゃべっている間は口をぱくぱくさせる（腕のポーズとは別） */
+  setSpeaking(on: boolean): void;
+  /** 右手のタブレットの表示（導入ムービーでは持たない） */
+  setTablet(on: boolean): void;
   update(dt: number): void;
   setGlasses(on: boolean): void;
   dispose(): void;
@@ -250,7 +260,7 @@ export function createSpark(opts: { glasses?: boolean } = {}): Spark {
   }
 
   // ================= 腕 =================
-  interface ArmRig { sh: THREE.Group; el: THREE.Group; hand: THREE.Group }
+  interface ArmRig { sh: THREE.Group; el: THREE.Group; hand: THREE.Group; finger: THREE.Group }
   const UP = 0.27, FORE = 0.25;
   const arm = (s: number): ArmRig => {
     const sx = s * 0.175, sy = 1.385;
@@ -267,7 +277,11 @@ export function createSpark(opts: { glasses?: boolean } = {}): Spark {
     put(el, cyl(0.038, 0.03, FORE - 0.085, 12), toon(K.black), [sx, sy - UP - 0.095 - (FORE - 0.095) / 2 + 0.01, 0], [0, 0, 0], 0.004);
     put(hand, sph(0.033, 0.85, 1.2, 0.7), toon(K.skin), [sx, sy - UP - FORE - 0.02, 0], [0, 0, 0], 0.003);
     put(hand, sph(0.014, 0.8, 1.3, 0.8), toon(K.skin), [sx + s * -0.028, sy - UP - FORE - 0.03, 0.018], [0.5, 0, 0], 0.002); // 親指
-    return { sh, el, hand };
+    // 人差し指（立てる・指さすときだけ出す）。手の先から腕の向きへ伸びる
+    const finger = joint(hand, sx, sy - UP - FORE - 0.04, 0);
+    put(finger, cyl(0.0105, 0.009, 0.11, 8), toon(K.skin), [sx, sy - UP - FORE - 0.1, 0.004], [0, 0, 0], 0.002);
+    finger.visible = false;
+    return { sh, el, hand, finger };
   };
   const armR = arm(-1), armL = arm(1);
 
@@ -461,35 +475,70 @@ export function createSpark(opts: { glasses?: boolean } = {}): Spark {
   }
 
   // ================= アニメーション =================
+  // 腕：sx=前後（負で前へ）、sz=横（左腕は正、右腕は負で外へ上がる）、el の x=肘の曲げ（負で前腕が前へ）、z=肘を体の内側へ（左は負、右は正）
+  // lhx/lkx=左足の股関節・膝（負で前へ上げる）、ux=上体の前傾（正で前へ）、mo=口の開き、rf/lf=人差し指を出す
+  const BASE: Record<string, number> = { rsx: -0.3, rsz: -0.1, rex: -1.55, rez: 0, lsx: 0.04, lsz: 0.1, lex: -0.45, lez: 0, hp: 0, hr: 0, tb: 0, lhx: 0, lkx: 0, ux: 0, mo: 0, rf: 0, lf: 0 };
+  const P = (o: Record<string, number>): Record<string, number> => ({ ...BASE, ...o });
   const POSES: Record<SparkPose, Record<string, number>> = {
-    idle:   { rsx: -0.3, rsz: -0.1, rex: -1.55, lsx: 0.04, lsz: 0.1, lex: -0.45, lez: 0, hp: 0.0, hr: 0, tb: 0 },
-    tablet: { rsx: -0.55, rsz: -0.08, rex: -1.8, lsx: 0.05, lsz: 0.1, lex: -0.6, lez: 0, hp: 0.28, hr: 0.03, tb: 0.1 },
-    talk:   { rsx: -0.3, rsz: -0.1, rex: -1.55, lsx: -0.25, lsz: 0.28, lex: -1.0, lez: 0, hp: -0.02, hr: 0.09, tb: 0 },
-    wave:   { rsx: -0.3, rsz: -0.1, rex: -1.55, lsx: 0.1, lsz: 2.55, lex: -0.2, lez: 0, hp: -0.04, hr: -0.08, tb: 0 },
+    idle:   P({ rsx: -0.3, rsz: -0.1, rex: -1.55, lsx: 0.04, lsz: 0.1, lex: -0.45, lez: 0, hp: 0.0, hr: 0, tb: 0 }),
+    tablet: P({ rsx: -0.55, rsz: -0.08, rex: -1.8, lsx: 0.05, lsz: 0.1, lex: -0.6, lez: 0, hp: 0.28, hr: 0.03, tb: 0.1 }),
+    talk:   P({ rsx: -0.3, rsz: -0.1, rex: -1.55, lsx: -0.25, lsz: 0.28, lex: -1.0, lez: 0, hp: -0.02, hr: 0.09, tb: 0 }),
+    wave:   P({ rsx: -0.3, rsz: -0.1, rex: -1.55, lsx: 0.1, lsz: 2.55, lex: -0.2, lez: 0, hp: -0.04, hr: -0.08, tb: 0 }),
+    // 「ただ一つ！」右の人差し指を立てて、顔を近づける
+    fingerUp: P({ rsx: -0.9, rsz: -0.2, rex: -1.9, rf: 1, lsx: -0.1, lsz: 0.35, lex: -0.9, hp: -0.04, hr: 0.05, ux: 0.22 }),
+    // 遠くを指さして決めポーズ：右腕を前へまっすぐ、左手は腰
+    point:  P({ rsx: -1.5, rsz: -0.3, rex: -0.1, rf: 1, lsx: 0.1, lsz: 0.6, lex: 0, lez: -1.3, hp: -0.12, hr: -0.06, ux: -0.04 }),
+    hips:   P({ rsx: 0.1, rsz: -0.6, rex: 0, rez: 1.3, lsx: 0.1, lsz: 0.6, lex: 0, lez: -1.3, hp: -0.05, hr: 0.06, mo: 0.2 }),
+    // ビンタ：右腕を外へ振りかぶる → 体の前を振り抜く
+    slapWind: P({ rsx: -0.2, rsz: -1.55, rex: -0.3, lsx: 0.1, lsz: 0.45, lex: 0, lez: -1.3, hp: 0, hr: 0.1, ux: -0.05 }),
+    slap:   P({ rsx: -1.45, rsz: 0.6, rex: -0.2, lsx: 0.1, lsz: 0.45, lex: 0, lez: -1.3, hp: 0.05, hr: -0.1, ux: 0.12, mo: 0.45 }),
+    crossed: P({ rsx: -0.8, rsz: 0.1, rex: 0, rez: 1.45, lsx: -0.7, lsz: -0.05, lex: 0, lez: -1.45, hp: 0.02, hr: 0.1 }),
+    // なだめる：両手を前へ出して、手のひらを下へ
+    placate: P({ rsx: -1.1, rsz: -0.25, rex: -0.5, lsx: -1.1, lsz: 0.25, lex: -0.5, hp: 0.03, hr: 0.04 }),
+    cheer:  P({ rsx: -0.2, rsz: -2.6, rex: -0.3, lsx: -0.2, lsz: 2.6, lex: -0.3, hp: -0.1, hr: 0, ux: -0.05, mo: 0.5 }),
+    // 「やっちまいなさい！」右腕を前へ突き出して指さす
+    command: P({ rsx: -1.35, rsz: -0.15, rex: -0.2, rf: 1, lsx: 0.1, lsz: 0.6, lex: 0, lez: -1.3, hp: -0.04, hr: 0.04, ux: 0.1, mo: 0.4 }),
+    panic:  P({ rsx: -0.9, rsz: -0.35, rex: -1.1, lsx: -0.9, lsz: 0.35, lex: -1.1, hp: 0.06, ux: 0.12, mo: 0.4 }),
+    // ハイキック：左足を前へ高く上げる。腕で釣り合いを取る
+    kick:   P({ rsx: -0.2, rsz: -0.9, rex: -0.5, lsx: -0.2, lsz: 0.9, lex: -0.5, lhx: -1.55, lkx: 0.05, ux: -0.2, hp: -0.1, mo: 0.4 }),
   };
   let pose: SparkPose = 'idle';
   const cur: Record<string, number> = { ...POSES.idle };
-  let time = 0, blinkT = 2.5, blink = 0;
-  const setPose = (p: SparkPose): void => { pose = p; };
+  let time = 0, blinkT = 2.5, blink = 0, follow = 6, gait = 0, gaitPhase = 0, speaking = false;
+  const setPose = (p: SparkPose, speed = 6): void => { pose = p; follow = speed; };
+  const setGait = (g: number): void => { gait = Math.max(0, g); };
+  const setSpeaking = (on: boolean): void => { speaking = on; };
+  const setTablet = (on: boolean): void => { tabMount.visible = on; };
   const update = (dt: number): void => {
     time += dt;
     const tgt = POSES[pose];
-    const kk = 1 - Math.exp(-6 * dt);
+    const kk = 1 - Math.exp(-follow * dt);
     for (const k of Object.keys(tgt)) cur[k] += (tgt[k] - cur[k]) * kk;
+    // 歩き・走り：足を前後に振り、腕も逆位相で振る
+    gaitPhase += dt * (4.5 + gait * 5);
+    const sw = Math.sin(gaitPhase) * gait;
+    const bend = Math.max(0, Math.cos(gaitPhase)) * gait;
     const br = Math.sin(time * 1.7); // 呼吸
     upper.scale.set(1 + br * 0.005, 1 + br * 0.006, 1 + br * 0.012);
-    upper.rotation.x = br * 0.006;
+    upper.rotation.x = br * 0.006 + cur.ux + gait * 0.08;
     const wv = pose === 'wave' ? Math.sin(time * 7) : 0;
-    const up = cur.lsz > 1 ? 1 : 0;
-    armR.sh.rotation.set(cur.rsx + br * 0.01, 0, cur.rsz);
-    armR.el.rotation.set(cur.rex, 0, 0);
-    armL.sh.rotation.set(cur.lsx + br * 0.01, 0, cur.lsz + wv * 0.04 * up);
-    armL.el.rotation.set(cur.lex + (pose === 'talk' ? Math.sin(time * 3.1) * 0.12 : 0), 0, cur.lez + wv * 0.35 * up);
+    const up = cur.lsz > 1 && pose === 'wave' ? 1 : 0;
+    const pan = pose === 'panic' ? Math.sin(time * 18) : 0;
+    legs[0].hip.rotation.x = -sw * 0.7;
+    legs[0].knee.rotation.x = bend * 0.9 * (sw < 0 ? 0 : 1);
+    legs[1].hip.rotation.x = sw * 0.7 + cur.lhx;
+    legs[1].knee.rotation.x = Math.max(0, -Math.cos(gaitPhase)) * gait * 0.9 + cur.lkx;
+    armR.sh.rotation.set(cur.rsx + br * 0.01 + sw * 0.5 * (1 - cur.rf) + pan * 0.15, 0, cur.rsz);
+    armR.el.rotation.set(cur.rex - gait * 0.3, 0, cur.rez);
+    armL.sh.rotation.set(cur.lsx + br * 0.01 - sw * 0.5 + pan * 0.15, 0, cur.lsz + wv * 0.04 * up);
+    armL.el.rotation.set(cur.lex + (pose === 'talk' ? Math.sin(time * 3.1) * 0.12 : 0) - gait * 0.3, 0, cur.lez + wv * 0.35 * up);
+    armR.finger.visible = cur.rf > 0.5;
+    armL.finger.visible = cur.lf > 0.5;
     tabMount.rotation.x = 2.5 + cur.tb + Math.sin(time * 1.1) * 0.01;
     headJ.rotation.set(cur.hp + Math.sin(time * 0.8) * 0.01, Math.sin(time * 0.37) * 0.04, cur.hr + (pose === 'talk' ? Math.sin(time * 1.3) * 0.03 : 0));
-    const talking = pose === 'talk' ? Math.max(0, Math.sin(time * 11) * Math.sin(time * 4.3 + 1)) : 0;
-    mouthOpen.scale.y = 0.01 + talking * 1.1 + (pose === 'wave' ? 0.35 : 0);
-    smile.scale.y = 1 - talking * 0.4;
+    const talking = pose === 'talk' || speaking ? Math.max(0, Math.sin(time * 11) * Math.sin(time * 4.3 + 1)) : 0;
+    mouthOpen.scale.y = 0.01 + talking * 1.1 + (pose === 'wave' ? 0.35 : 0) + cur.mo;
+    smile.scale.y = 1 - Math.min(1, talking * 0.4 + cur.mo * 0.5);
     blinkT -= dt; // まばたき
     if (blinkT <= 0) { blink = 0.16; blinkT = 2.5 + Math.random() * 3; }
     if (blink > 0) blink -= dt;
@@ -507,5 +556,5 @@ export function createSpark(opts: { glasses?: boolean } = {}): Spark {
     gradient.dispose();
   };
   update(0);
-  return { root, setPose, update, setGlasses, dispose };
+  return { root, setPose, setGait, setSpeaking, setTablet, update, setGlasses, dispose };
 }

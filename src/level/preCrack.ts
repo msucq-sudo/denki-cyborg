@@ -46,12 +46,12 @@ export function addPreCracks(mesh: THREE.Mesh, size: THREE.Vector3, face: PreCra
   const hw = W / 2 - 0.08, hh = H / 2 - 0.08;
   const clampU = (u: number) => Math.max(-hw, Math.min(hw, u));
   const clampV = (v: number) => Math.max(-hh, Math.min(hh, v));
-  const main = Math.max(4, Math.round(W * 1.6));
+  const main = Math.max(2, Math.round(W * 0.6));
   for (let i = 0; i < main; i++) {
     let u = (rand() - 0.5) * W * 0.9;
     let v = rand() < 0.5 ? hh : -hh;
     let a = v > 0 ? -Math.PI / 2 : Math.PI / 2; // 縁から内側へ
-    const steps = 4 + Math.floor(rand() * 4);
+    const steps = 3 + Math.floor(rand() * 3);
     for (let k = 0; k < steps; k++) {
       a += (rand() - 0.5) * 1.2;
       const len = 0.35 + rand() * 0.55;
@@ -59,7 +59,7 @@ export function addPreCracks(mesh: THREE.Mesh, size: THREE.Vector3, face: PreCra
       const thick = 0.07 - k * 0.006;
       seg(glowMat, u, v, u2, v2, thick + 0.1, 0.004);
       seg(crackMat, u, v, u2, v2, Math.max(0.03, thick), 0.012);
-      if (rand() < 0.4) { // 枝
+      if (rand() < 0.2) { // 枝
         const ab = a + (rand() < 0.5 ? 1 : -1) * (0.6 + rand() * 0.5);
         const lb = 0.25 + rand() * 0.4;
         const ub = clampU(u2 + Math.cos(ab) * lb), vb = clampV(v2 + Math.sin(ab) * lb);

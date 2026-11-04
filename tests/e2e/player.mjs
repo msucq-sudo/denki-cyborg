@@ -19,9 +19,9 @@ const check = (name, ok, info) => { results.push(ok); console.log(ok ? 'PASS' : 
 
 try {
   // 初回は vite の依存最適化でリロードが入ることがあるので、2回読み込む
-  await page.goto(`http://localhost:${port}/`, { waitUntil: 'load', timeout: 180000 });
+  await page.goto(`http://localhost:${port}/?level=dungeon`, { waitUntil: 'load', timeout: 180000 });
   await page.waitForTimeout(4000);
-  await page.goto(`http://localhost:${port}/`, { waitUntil: 'load', timeout: 180000 });
+  await page.goto(`http://localhost:${port}/?level=dungeon`, { waitUntil: 'load', timeout: 180000 });
   await page.waitForFunction(() => window.__game, null, { timeout: 60000 });
   await page.waitForTimeout(800);
   // 床・壁・ライト

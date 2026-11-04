@@ -37,7 +37,8 @@ describe('spawn boxes', () => {
     expect(box.state).toBe('closed');
     expect(box.enemy).toBeNull();
     expect(w.enemies.length).toBe(0);
-    expect(box.collider.active).toBe(true);
+    expect(box.collider.active).toBe(false);   // 開くまでは何もない床
+    expect(box.group.visible).toBe(false);
     expect(spawnBoxAlive([box])).toBe(1);
     // 近づく
     w.player.pos.set(0, 0, SPAWN_BOX.wakeRadius - 1);
@@ -45,7 +46,7 @@ describe('spawn boxes', () => {
     expect(box.state).toBe('shaking');
     expect(warns.length).toBe(1);
     expect(box.enemy).toBeNull();
-    run(SPAWN_BOX.shake + 0.05);
+    run(SPAWN_BOX.rise + SPAWN_BOX.shake + 0.05);
     expect(box.state).toBe('open');
     expect(box.collider.active).toBe(false);
     const e = box.enemy!;
@@ -66,7 +67,7 @@ describe('spawn boxes', () => {
     run(1);
     expect(list.every((b) => b.state === 'closed')).toBe(true);
     openSpawnBoxes(w, list, 0.3);
-    run(SPAWN_BOX.shake + 0.05);
+    run(SPAWN_BOX.rise + SPAWN_BOX.shake + 0.05);
     expect(list[0].state).toBe('open');
     expect(list[1].state).toBe('shaking');
     run(0.4);
@@ -75,15 +76,12 @@ describe('spawn boxes', () => {
     expect(getSpawnBoxes(w).length).toBe(2);
   });
 
-  it('shooting a closed box opens it early (the bullet does no damage to the hidden enemy)', () => {
+  it('a closed box is hidden under the floor: shooting it does nothing', () => {
     const { w, run } = mk();
     const [box] = createSpawnBoxes(w, [{ kind: 'walker', x: 0, z: 0, wakeRadius: 0 }]);
     w.projectiles.push({ pos: new THREE.Vector3(0, 0.8, 8), vel: new THREE.Vector3(0, 0, -70), radius: 0.12, damage: 10, owner: 'player', life: 1, mesh: new THREE.Object3D() });
-    run(0.15);
-    expect(box.state).toBe('shaking');
+    run(0.5);
+    expect(box.state).toBe('closed');
     expect(box.enemy).toBeNull();
-    run(SPAWN_BOX.shakeShot + 0.05);
-    expect(box.state).toBe('open');
-    expect(box.enemy!.hp).toBe(box.enemy!.maxHp);
   });
 });

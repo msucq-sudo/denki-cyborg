@@ -236,7 +236,7 @@ describe('T字路', () => {
     expect(drive.pos.z).toBeGreaterThanOrEqual(ROAD.junctionZ - DRIVE.northWall - 0.01);
   });
 
-  it('左右の動きは道幅（余白あり）の範囲に収まる', () => {
+  it('T字路の手前（一本道）の左右の動きは道幅（余白あり）の範囲に収まる', () => {
     startDrive(world);
     drive.pendingKmh = 60;
     input.hold('KeyD');
@@ -265,6 +265,42 @@ describe('障害物', () => {
     for (let i = 1; i < obs.length; i++) expect(Math.abs(obs[i].x - obs[i - 1].x)).toBeGreaterThanOrEqual(100);
     // 判定地点より手前にだけ置く
     for (const o of obs) expect(o.x).toBeGreaterThan(CHECKPOINT.x);
+  });
+
+  it('300km/h 以上なら障害物を吹き飛ばして走り抜ける（止まらない・死なない）', () => {
+    startDrive(world);
+    const o = drive.obstacles[0];
+    placeWest(o.def.x + 20, o.def.z, 320);
+    run(40);
+    expect(drive.phase).toBe('driving');
+    expect(events('driveCrash').length).toBe(0);
+    expect(o.hit).toBe(true);
+    expect(o.root.position.y).toBeGreaterThan(0.5);   // 宙に飛んでいる
+    expect(kmhOf(drive)).toBeGreaterThan(300);
+    run(240);
+    expect(world.player.hp).toBeGreaterThan(0);
+  });
+
+  it('299km/h では止まる（300km/h が境目）', () => {
+    startDrive(world);
+    const o = drive.obstacles[0];
+    placeWest(o.def.x + 20, o.def.z, 290);
+    run(40);
+    expect(drive.phase).toBe('crashed');
+  });
+
+  it('道の外へ出るとスリップして建物に激突し、失敗（HP 0）', () => {
+    startDrive(world);
+    placeWest(ROAD.junctionZ === 0 ? -200 : -300, ROAD.junctionZ, 150);
+    drive.obstacles.forEach((q) => { q.hit = true; });   // 障害物は関係なし
+    input.hold('KeyD');
+    run(120);
+    expect(drive.mode === 'slip' || drive.phase === 'crashed').toBe(true);
+    run(120);
+    expect(drive.phase).toBe('crashed');
+    expect(events('driveCrash').length).toBe(1);
+    run(90);
+    expect(world.player.hp).toBe(0);
   });
 
   it('当たると crashed → driveCrash → しばらくして HP 0（死亡画面）', () => {

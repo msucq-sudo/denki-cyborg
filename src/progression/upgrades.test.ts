@@ -17,7 +17,7 @@ vi.mock('../enemies/api', () => api);
 import { initAbsorb, updateAbsorb } from '../abilities/absorb';
 import { initPlayer, updateGun, updatePlayer } from '../player/player';
 import {
-  ALL_TRACKS, ARM_TRACK, BODY_TRACK, GUN_TRACKS, SKILL_TRACKS, canUpgrade, getLevel, maxLevel, nextCost, preview, statAt, upgrade,
+  ALL_TRACKS, ARM_TRACK, BODY_TRACK, GUN_TRACKS, SKILL_TRACKS, canUpgrade, getLevel, grantCamp2Rewards, maxLevel, nextCost, preview, statAt, upgrade,
 } from './upgrades';
 import * as fx from './effects';
 
@@ -64,6 +64,21 @@ beforeEach(() => {
   api.drainEnemy.mockReset();
   api.overloadEnemy.mockReset();
   world = mkWorld();
+});
+
+describe('収容所2階クリアのごほうび', () => {
+  it('自由飛行とアサルトが歯車なしで解放される（2回呼んでも同じ）', () => {
+    expect(fx.freeFlightEnabled(world)).toBe(false);
+    expect(world.loadout.owned).not.toContain('assault');
+    grantCamp2Rewards(world);
+    grantCamp2Rewards(world);
+    expect(fx.freeFlightEnabled(world)).toBe(true);
+    expect(world.loadout.owned).toContain('assault');
+    expect(world.unlocks.rifleAvail).toBe(true);
+    expect(getLevel(world, 'skill.rifle')).toBe(2);
+    expect(getLevel(world, 'skill.jetpack')).toBeGreaterThanOrEqual(2);
+    expect(world.unlocks.jetBoost).toBe(true);
+  });
 });
 
 describe('データ', () => {
@@ -115,9 +130,9 @@ describe('データ', () => {
         expect(s.values[s.values.length - 1]).not.toBe(s.values[0]);
       }
     }
-    expect(GUN_TRACKS.map((t) => maxLevel(t))).toEqual([5]);
+    expect(GUN_TRACKS.map((t) => maxLevel(t))).toEqual([5, 5]);
     expect([BODY_TRACK, ARM_TRACK].map((t) => maxLevel(t))).toEqual([5, 5]);
-    expect(SKILL_TRACKS.map((t) => maxLevel(t))).toEqual([4, 2, 4, 4, 4, 5]);
+    expect(SKILL_TRACKS.map((t) => maxLevel(t))).toEqual([4, 2, 2, 4, 4, 4, 5]);
   });
 
   it('preview は今と次の値を返す', () => {
@@ -155,7 +170,7 @@ describe('upgrade', () => {
   });
 
   it('最大レベルでは上がらない・歯車も減らない', () => {
-    world.inventory.gears = 100;
+    world.inventory.gears = 300;
     for (const t of ALL_TRACKS) while (upgrade(world, t)) { /* 最大まで */ }
     for (const t of ALL_TRACKS) {
       expect(getLevel(world, t.id)).toBe(maxLevel(t));
@@ -167,7 +182,7 @@ describe('upgrade', () => {
     expect(world.inventory.gears).toBe(left);
     // 全部最大にする合計 = 各項目のコスト合計
     const total = ALL_TRACKS.reduce((a, t) => a + t.costs.reduce((x, y) => x + y, 0), 0);
-    expect(100 - left).toBe(total);
+    expect(300 - left).toBe(total);
   });
 
   it('歯車は1階の7個では全部を最大にできない（選ぶ必要がある）', () => {
@@ -371,7 +386,7 @@ describe('SKILL', () => {
   describe('ジェットパック：自由飛行', () => {
     const fly = (free: boolean, sec: number, energy = 100) => {
       world = mkWorld();
-      if (free) { setLv('skill.jetpack', 2); setLv('skill.jetpackFree', 2); }
+      if (free) { setLv('skill.jetpack', 2); setLv('skill.jetpackFree', 2); world.player.superFlying = true; }
       world.player.pos.set(0, 10, 0);
       world.player.onGround = false;
       world.player.energy = energy;
@@ -385,6 +400,74 @@ describe('SKILL', () => {
       const p = fly(false, 2);
       expect(p.flying).toBe(true);
       expect(p.pos.y).toBeLessThanOrEqual(10.01);
+    });
+
+    it('強化あり：Lスティックを前に倒すと上昇し、後ろに倒すと下降する（Space なし）', () => {
+      const glide = (key: string) => {
+        world = mkWorld();
+        setLv('skill.jetpack', 2); setLv('skill.jetpackFree', 2);
+        const p = world.player;
+        p.pos.set(0, 30, 0);
+        p.onGround = false; p.energy = 100; p.flying = true; p.superFlying = true;
+        input.keys.add(key);
+        stepPlayer(90);
+        input.keys.delete(key);
+        return p.pos.y;
+      };
+      expect(glide('KeyW')).toBeGreaterThan(30 + 3);
+      expect(glide('KeyS')).toBeLessThan(30 - 3);
+    });
+
+    it('強化あり：飛んでいる間は何も倒さなくても前へ進み続け、Lスティックの左右で向きが変わる', () => {
+      world = mkWorld();
+      setLv('skill.jetpack', 2); setLv('skill.jetpackFree', 2);
+      const p = world.player;
+      p.pos.set(0, 30, 0); p.yaw = 0;
+      p.onGround = false; p.energy = 100; p.flying = true; p.superFlying = true;
+      stepPlayer(60);
+      expect(p.pos.z).toBeLessThan(-3);          // yaw 0 の前 = -z
+      expect(Math.abs(p.pos.x)).toBeLessThan(0.1);
+      const yaw0 = p.yaw;
+      input.keys.add('KeyA');
+      stepPlayer(30);
+      input.keys.delete('KeyA');
+      expect(p.yaw).not.toBeCloseTo(yaw0, 1);
+    });
+
+    it('ジャンプを2回押すとスーパーヒーロー飛行に入り、着地で終わる／1回だけ・強化なしでは入らない', () => {
+      const press = () => { input.pressedK.add('Space'); input.keys.add('Space'); stepPlayer(1); input.pressedK.delete('Space'); input.keys.delete('Space'); stepPlayer(8); };
+      world = mkWorld();
+      setLv('skill.jetpack', 2); setLv('skill.jetpackFree', 2);
+      const p = world.player;
+      p.pos.set(0, 0, 0); p.onGround = true; p.energy = 100;
+      press();                                   // 地上ジャンプ
+      expect(p.superFlying).toBeFalsy();
+      press();                                   // 空中でもう1回
+      expect(p.superFlying).toBe(true);
+      expect(p.flying).toBe(true);
+      p.pos.y = 0; p.vel.y = -5; p.flying = false;
+      stepPlayer(30);
+      expect(p.onGround).toBe(true);
+      expect(p.superFlying).toBe(false);
+      // 強化なし
+      world = mkWorld();
+      const q = world.player;
+      q.pos.set(0, 0, 0); q.onGround = true; q.energy = 100;
+      press(); press();
+      expect(q.superFlying).toBeFalsy();
+    });
+
+    it('スーパーヒーロー飛行は A ボタンでも終えられる', () => {
+      world = mkWorld();
+      setLv('skill.jetpack', 2); setLv('skill.jetpackFree', 2);
+      const p = world.player;
+      p.pos.set(0, 30, 0); p.onGround = false; p.energy = 100; p.flying = true; p.superFlying = true;
+      stepPlayer(10);
+      expect(p.superFlying).toBe(true);
+      input.pressedK.add('PadA'); input.pressedK.add('Space'); stepPlayer(1); input.pressedK.delete('PadA'); input.pressedK.delete('Space');
+      expect(p.superFlying).toBe(false);
+      input.pressedK.add('Space'); stepPlayer(1); input.pressedK.delete('Space');   // もう1回で再び入る
+      expect(p.superFlying).toBe(true);
     });
 
     it('強化ありでは元の高さを超えて上り続ける（上限なし）', () => {

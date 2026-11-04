@@ -439,16 +439,14 @@ describe('camp2 (サージ収容所 2階)', () => {
     expect(getCamp2(w)!.cut).toBeNull();
   });
 
-  it('continues after freeing the residents without respawning the boss or front enemies', () => {
+  it('starting from "住民解放後" (start=freed) opens with the ending movie, without the boss or front enemies', () => {
     const { w, run } = mk('freed');
+    run(0.3);
     const c = getCamp2(w)!;
-    expect(c.state.phase).toBe('freed');
+    expect(c.state.phase).toBe('ending');
+    expect(c.cut).not.toBeNull();
     expect(c.boss).toBeNull();
     expect(c.front.length).toBe(0);
-    expect(c.doorCollider.active).toBe(false);
-    expect(w.level.data.retryAt).toBe('freed');
-    run(1);
-    expect(c.residents.stats().cheer).toBe(CAMP2.residents);
-    expect(c.state.phase).toBe('freed');
+    expect(w.level.data.retryAt).toBe('ending');
   });
 });

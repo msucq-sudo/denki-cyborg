@@ -38,8 +38,8 @@ test('dormant enemy is untargetable and takes no damage / drain / overload', () 
   expect(e.hp).toBe(hp);
   expect(e.status).toBe('active');
   expect(raycastEnemies(w.enemies, V(0, 0.7, 5), V(0, 0.7, -5))).toBeNull();
-  // 弾はポッドの箱に当たる
-  expect(raycastLevel(w.colliders, V(0, 0.7, 5), V(0, 0.7, -5))).not.toBeNull();
+  // 目覚めるまでは何もない床（ポッドは見えず、弾も当たらない）
+  expect(raycastLevel(w.colliders, V(0, 0.7, 5), V(0, 0.7, -5))).toBeNull();
 });
 
 test('pod stays shut while the player is far, wakes within the radius and bursts out alerted', () => {
@@ -56,9 +56,9 @@ test('pod stays shut while the player is far, wakes within the radius and bursts
   expect(warn.length).toBe(1);
   expect(warn[0].mode).toBe('pod');
   expect(isTargetable(e)).toBe(false);
-  run(w, 0.3);                    // まだ予兆中（0.4s）
+  run(w, 0.3);                    // まだ予兆中（床からせり上がる 0.8s）
   expect(emerge.length).toBe(0);
-  run(w, 0.3);                    // 開いて出てくる途中。まだ無敵
+  run(w, 0.7);                    // 開いて出てくる途中。まだ無敵
   expect(emerge.length).toBe(1);
   expect(emerge[0].kind).toBe('walker');
   expect(isTargetable(e)).toBe(false);
@@ -85,7 +85,7 @@ test('waking propagates to sleeping neighbours within shareRadius, staggered', (
   expect(b.ai.dormant.t).toBeGreaterThanOrEqual(0.1);
   expect(b.ai.dormant.t).toBeLessThanOrEqual(0.4);
   expect(far.ai.dormant.phase).toBe('sleep');
-  run(w, 1.5);
+  run(w, 2.2);
   expect(a.ai.dormant).toBeUndefined();
   expect(b.ai.dormant).toBeUndefined();
   expect(far.ai.dormant.phase).toBe('sleep');

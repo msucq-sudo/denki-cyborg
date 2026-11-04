@@ -22,7 +22,7 @@ const results = [];
 const check = (name, ok, info) => { results.push(ok); console.log(ok ? 'PASS' : 'FAIL', name, JSON.stringify(info ?? '')); };
 
 try {
-  await page.goto(`http://localhost:${port}/?manual`, { waitUntil: 'load' });
+  await page.goto(`http://localhost:${port}/?level=dungeon&manual`, { waitUntil: 'load' });
   await page.waitForFunction(() => !!window.__game, null, { timeout: 120000 });
   // ---- 闘技場（本編のマップから離れた場所）
   await page.evaluate(async () => {

@@ -19,7 +19,7 @@ const errors = [];
 page.on('console', (m) => { if (m.type() === 'error') errors.push(m.text()); });
 page.on('pageerror', (e) => errors.push(String(e)));
 try {
-  await page.goto(`http://localhost:${port}/`, { waitUntil: 'load' });
+  await page.goto(`http://localhost:${port}/?level=dungeon`, { waitUntil: 'load' });
   await page.waitForTimeout(1500);
   await page.screenshot({ path: out.replace(/\.png$/, '_title.png') });
   await page.evaluate(() => window.__game.start());

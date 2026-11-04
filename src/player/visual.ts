@@ -65,6 +65,8 @@ export interface PlayerVisual {
   jets: THREE.Group;
   jetMats: THREE.MeshBasicMaterial[];
   jetLight: THREE.PointLight;
+  /** 体の発光（周りを照らす） */
+  bodyLight: THREE.PointLight;
   chargeGroup: THREE.Group;
   chargeCore: THREE.Mesh;
   chargeGlow: THREE.Mesh;
@@ -495,12 +497,17 @@ export function buildPlayerVisual(root: THREE.Group): PlayerVisual {
   jets.add(jetLight);
   chest.g.add(jets);
 
+  // 体の発光（十字キー上 / L でON・OFF）：胸から周りを照らす
+  const bodyLight = new THREE.PointLight(0xcff4ff, 0, 40, 1.2);   // 体の発光：遠くまで届く
+  bodyLight.position.set(0, 0.15, 0.35);
+  chest.g.add(bodyLight);
+
   root.updateMatrixWorld(true);
   return {
     body, pivot, rig: rig.g, hips: hips.g, spine: spine.g, chest: chest.g, clavL: clavL.g, head: head.g,
     legL, legR, armL, armR, handL, handR, gunFrame: gun.g, muzzle,
     springStretch, springMat, flashMats, batteryMat, gunGlowMat, scouterMat, scouterGlowMat, scouterGlow,
     get weapon() { return state.weapon; }, setWeapon,
-    jets, jetMats, jetLight, chargeGroup, chargeCore, chargeGlow, sparks, chargeLight,
+    jets, jetMats, jetLight, bodyLight, chargeGroup, chargeCore, chargeGlow, sparks, chargeLight,
   };
 }

@@ -141,14 +141,19 @@ describe('走行（右折して東へ）', () => {
     expect(s.mode).toBe('eastRun');
   });
 
-  it('本線では右に切ると z が増える（東向きの右手は南）。道幅の範囲に収まる', () => {
+  it('本線では右に切ると z が増える（東向きの右手は南）。切り続けて道の外へ出るとスリップして建物に激突する', () => {
     const s = createSim(100, JZ, -Math.PI / 2, 'drain');
     s.mode = 'eastRun'; s.junctionDone = true; s.speed = 30;
     const z0 = s.pos.z;
-    for (let i = 0; i < 30; i++) stepSim(s, { steer: 1, press: false }, 1 / 60);
+    for (let i = 0; i < 20; i++) stepSim(s, { steer: 1, press: false }, 1 / 60);
     expect(s.pos.z).toBeGreaterThan(z0);
-    for (let i = 0; i < 300; i++) stepSim(s, { steer: 1, press: false }, 1 / 60);
-    expect(s.pos.z).toBeLessThanOrEqual(JZ + DRIVE.latMax + 1e-6);
+    expect(s.mode).toBe('eastRun');   // まだ道の中
+    const evs: string[] = [];
+    for (let i = 0; i < 300 && !evs.includes('offRoadCrash'); i++) for (const e of stepSim(s, { steer: 1, press: false }, 1 / 60)) evs.push(e.type);
+    expect(evs).toContain('offRoad');
+    expect(evs).toContain('offRoadCrash');
+    expect(s.mode).toBe('slip');
+    expect(s.pos.z).toBeGreaterThan(JZ + ROAD.width / 2);   // 道の南の外まで流された
   });
 
   it('曲がり終えるまでは 90km/h で頭打ち、本線に入ったら上限が外れる', () => {

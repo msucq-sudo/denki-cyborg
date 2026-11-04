@@ -528,26 +528,26 @@ export function buildSparkLab(): SparkLab {
   // マットレス（セクション分け）
   const padY = 0.94;
   box(M.bedPad, 0.5, 0.1, 0.84, -0.95, padY - 0.02, 0, 0, 0.04, 0, 0); box(M.bedPad, 0.9, 0.1, 0.84, -0.2, padY - 0.02, 0, 0, 0.04); box(M.bedPad, 0.9, 0.1, 0.84, 0.7, padY - 0.02, 0, 0, 0.04);
-  box(M.white, 0.34, 0.09, 0.5, -1.05, padY + 0.07, 0, 0, 0.04); // 枕
+  box(M.white, 0.34, 0.09, 0.5, 1.05, padY + 0.07, 0, 0, 0.04); // 枕（東側）
   for (const sz of [-0.5, 0.5]) { box(M.grey, 2.2, 0.05, 0.05, 0, padY + 0.02, sz, 0, 0.02); box(M.cyan, 2.1, 0.012, 0.012, 0, padY + 0.05, sz, 0, 0); }
   // 拘束ベルト（開いた状態）
   for (const bx of [-0.45, 0.2, 0.9]) for (const sz of [-1, 1]) { box(M.navy, 0.09, 0.025, 0.2, bx, padY + 0.04, sz * 0.5, 0, 0.01); box(M.yellow, 0.03, 0.03, 0.04, bx, padY + 0.05, sz * 0.43, 0, 0.005); }
   // 側面パネル＋スイッチ
   for (const sz of [-1, 1]) { box(M.offwhite, 0.9, 0.18, 0.04, 0.0, 0.38, sz * 0.5, 0, 0.015); box(M.cyan, 0.1, 0.02, 0.005, 0.3, 0.38, sz * 0.526, 0, 0); box(M.red, 0.04, 0.04, 0.01, -0.1, 0.38, sz * 0.526, 0, 0.01); }
   // 頭側ヘッドギア（接続端子）
-  box(M.dgrey, 0.3, 0.12, 0.45, -1.42, 1.12, 0, 0, 0.04); for (let i = 0; i < 4; i++) box(M.cyan, 0.02, 0.02, 0.02, -1.5, 1.12, -0.12 + i * 0.08, 0, 0);
-  cyl(M.grey, 0.05, 0.9, -1.42, 0.7, 0);
+  box(M.dgrey, 0.3, 0.12, 0.45, 1.42, 1.12, 0, 0, 0.04); for (let i = 0; i < 4; i++) box(M.cyan, 0.02, 0.02, 0.02, 1.5, 1.12, -0.12 + i * 0.08, 0, 0);
+  cyl(M.grey, 0.05, 0.9, 1.42, 0.7, 0);
   // 足側のケーブルポート
-  box(M.dgrey, 0.2, 0.3, 0.7, 1.45, 0.4, 0, 0, 0.04); for (let i = 0; i < 5; i++) box(i % 2 ? M.yellow : M.cyan, 0.02, 0.02, 0.02, 1.56, 0.45, -0.24 + i * 0.12, 0, 0);
+  box(M.dgrey, 0.2, 0.3, 0.7, -1.45, 0.4, 0, 0, 0.04); for (let i = 0; i < 5; i++) box(i % 2 ? M.yellow : M.cyan, 0.02, 0.02, 0.02, -1.56, 0.45, -0.24 + i * 0.12, 0, 0);
   // ケーブル（ベッド→床→ラック／壁へ）
   const cabMats = [M.black, M.yellow, M.red, M.cyanSoft, M.orange];
   const cabs: [[number, number, number][], number, THREE.Material][] = [
-    [[[ -1.55, 1.05, -0.1], [-1.9, 0.8, -0.5], [-2.2, 0.1, -1.0], [-1.0, 0.03, -2.0], [1.5, 0.03, -3.0], [3.0, 0.03, -3.9], [5.0, 0.03, -4.0]], 0.022, M.black],
-    [[[ -1.55, 1.1, 0.1], [-2.0, 0.7, 0.4], [-2.6, 0.03, 0.2], [-3.5, 0.03, -1.5], [-3.5, 0.03, -3.5], [-3.5, 0.03, -4.6]], 0.025, M.yellow],
-    [[[ 1.6, 0.4, -0.2], [2.0, 0.03, -0.5], [3.0, 0.03, -1.0], [4.5, 0.03, -1.6], [5.6, 0.03, -2.2], [6.3, 0.03, -2.9]], 0.025, M.black],
-    [[[ 1.6, 0.4, 0.2], [2.2, 0.03, 0.6], [3.5, 0.03, 1.5], [5.0, 0.03, 2.0], [6.2, 0.03, 3.0]], 0.018, M.red],
-    [[[ -1.5, 1.05, 0.15], [-1.7, 1.8, 0.3], [-1.5, 2.8, 0.1], [-1.2, 3.4, 0.0]], 0.02, M.cyanSoft],
-    [[[ 1.5, 0.5, 0.1], [2.0, 0.3, 0.4], [2.7, 0.03, 0.2]], 0.02, M.orange],
+    [[[ 1.55, 1.05, -0.1], [1.9, 0.8, -0.5], [2.2, 0.1, -1.0], [-1.0, 0.03, -2.0], [1.5, 0.03, -3.0], [3.0, 0.03, -3.9], [5.0, 0.03, -4.0]], 0.022, M.black],
+    [[[ 1.55, 1.1, 0.1], [2.0, 0.7, 0.4], [2.6, 0.03, 0.2], [-3.5, 0.03, -1.5], [-3.5, 0.03, -3.5], [-3.5, 0.03, -4.6]], 0.025, M.yellow],
+    [[[ -1.6, 0.4, -0.2], [-2.0, 0.03, -0.5], [-3.0, 0.03, -1.0], [4.5, 0.03, -1.6], [5.6, 0.03, -2.2], [6.3, 0.03, -2.9]], 0.025, M.black],
+    [[[ -1.6, 0.4, 0.2], [-2.2, 0.03, 0.6], [-3.5, 0.03, 1.5], [5.0, 0.03, 2.0], [6.2, 0.03, 3.0]], 0.018, M.red],
+    [[[ 1.5, 1.05, 0.15], [1.7, 1.8, 0.3], [1.5, 2.8, 0.1], [1.2, 3.4, 0.0]], 0.02, M.cyanSoft],
+    [[[ -1.5, 0.5, 0.1], [-2.0, 0.3, 0.4], [-2.7, 0.03, 0.2]], 0.02, M.orange],
   ];
   for (const [pts, r, m] of cabs) tube(m, pts, r, 40);
   // 天井レール＋吊りライト
@@ -901,8 +901,8 @@ export function buildSparkLab(): SparkLab {
   const sparkStand = A('sparkStand', -0.8, 0, 1.5), heroStand = A('heroStand', 0.8, 0, 1.5);
   sparkStand.lookAt(0.8, 0, 1.5); heroStand.lookAt(-0.8, 0, 1.5);
   const heroBed = A('heroBed', 0.95, padY + 0.15, 0);
-  // 立ちモデルを親にすると仰向け（頭=-x、胸=+y）になる向き
-  heroBed.quaternion.setFromRotationMatrix(new THREE.Matrix4().makeBasis(new THREE.Vector3(0, 0, -1), new THREE.Vector3(-1, 0, 0), new THREE.Vector3(0, 1, 0)));
+  // 立ちモデルを親にすると仰向け（頭=+x＝東、胸=+y）になる向き
+  heroBed.quaternion.setFromRotationMatrix(new THREE.Matrix4().makeBasis(new THREE.Vector3(0, 0, 1), new THREE.Vector3(1, 0, 0), new THREE.Vector3(0, 1, 0)));
   const cam = (name: string, pos: [number, number, number], target: [number, number, number], fov: number) => {
     const o = A(name, ...pos); const c = new THREE.PerspectiveCamera(fov); c.position.set(...pos); c.lookAt(...target); o.quaternion.copy(c.quaternion);
     o.userData.fov = fov; o.userData.target = new THREE.Vector3(...target);

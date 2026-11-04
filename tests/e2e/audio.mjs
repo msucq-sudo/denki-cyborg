@@ -80,7 +80,7 @@ const EVENTS = [
 const SE_NAMES = [...new Set(EVENTS.map(([n]) => n))];
 
 try {
-  await page.goto(`http://localhost:${port}/`, { waitUntil: 'load' });
+  await page.goto(`http://localhost:${port}/?level=dungeon`, { waitUntil: 'load' });
   await page.waitForTimeout(1200);
 
   // 1) 全イベントを発火し、SE が発音許可されたか

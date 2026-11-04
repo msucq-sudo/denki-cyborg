@@ -30,8 +30,13 @@ import { buildCity, FOG_COLOR, SUN_DIR, WALK } from './surge/city';
 import { buildCompound } from './surge/compound';
 import { buildDrainPlant } from './surge/plant';
 import { buildLab } from './surge/lab';
-import { chooseSurgeRoute, COMPOUND, ENTRANCE, GARAGE, ROAD, STAIRS, type SurgeRoute, type SurgeStart } from './surge/layout';
+import { chooseSurgeRoute, COMPOUND, DRAIN_DOOR, ENTRANCE, GARAGE, RAMP, ROAD, STAIRS, type SurgeRoute, type SurgeStart } from './surge/layout';
 import { setPlayerFacing } from '../player/player';
+import { SPECIAL } from '../config/balance';
+import type { Enemy } from '../core/types';
+import { spawnBurst, spawnShockwave } from '../core/effects';
+import { OFF_ROAD_LIMIT, onRoad } from './surge/walkZone';
+import { disposeSnake, spawnSnake, stepSnake, type CrushSnake } from './surge/snake';
 
 export const SURGE_EXPOSURE = 1.05;
 /** シャッターが巻き上がる時間（秒） */
@@ -72,6 +77,16 @@ interface Runtime {
   /** 建物の左側の入口の目印（降りるまで隠す） */
   entrance: THREE.Group;
   entranceLight: THREE.PointLight;
+  /** 歩いて道路の外にいる秒数（OFF_ROAD_LIMIT を超えると蛇が降ってくる）と、警告を出したか・蛇を呼んだか */
+  offRoadT: number;
+  offWarned: boolean;
+  crushing: boolean;
+  snakes: CrushSnake[];
+  /** 歩いて来て必殺技で壊す壁（収容所の柵／ドレイン装置の扉）：壊した・撃つ先の目印・壊した破片・扉を開けるまでの待ち */
+  wallBroken: boolean;
+  wallTarget: Enemy | null;
+  debris: { obj: THREE.Object3D; vel: THREE.Vector3; ang: THREE.Vector3; t: number }[];
+  doorTimer: number;
 }
 const runtimes = new WeakMap<World, Runtime>();
 
@@ -120,11 +135,20 @@ export function buildSurge(world: World): void {
   scene.add(lab.root, city.root, comp.root);
   for (const l of lab.lights) scene.add(l);
   for (const c of [...lab.colliders, ...city.colliders, ...comp.colliders]) world.colliders.push(c);
+  // 道の外にも歩いて出られる（見えない壁は無し）。ただし道路以外を歩き続けると蛇に潰される（updateOnFoot）
+  for (const c of world.colliders) if (c.tag === 'roadWall') c.active = false;
+  // 道の外の地面（見た目の地面に合わせて落ちないように。建物の当たり判定は無いので、外に長くはいられない＝蛇に潰される）
+  world.colliders.push({ min: new THREE.Vector3(-2300, -6, -700), max: new THREE.Vector3(2300, 0, 400), active: true, tag: 'floor' });
   // ルート2：発電所・坂・ドレイン装置（見た目担当が plant.ts を埋める）
   const plant = route === 'drain' ? buildDrainPlant() : null;
   if (plant) {
     scene.add(plant.root);
     for (const c of plant.colliders) world.colliders.push(c);
+    // 歩いて登れる坂（1m ごとの段。1段 0.23m）と、扉の前の踊り場
+    for (let x = RAMP.footX; x < RAMP.topX; x++) {
+      world.colliders.push({ min: new THREE.Vector3(x, -4, RAMP.centerZ - RAMP.width / 2), max: new THREE.Vector3(x + 1, RAMP.yAt(x + 1), RAMP.centerZ + RAMP.width / 2), active: true, tag: 'rampStep' });
+    }
+    world.colliders.push({ min: new THREE.Vector3(RAMP.topX, -4, RAMP.centerZ - RAMP.width / 2), max: new THREE.Vector3(RAMP.landingEndX, RAMP.topY, RAMP.centerZ + RAMP.width / 2), active: true, tag: 'rampLanding' });
   }
 
   // ---- ミニマップ用の区画（長い直線は含めない）
@@ -155,6 +179,7 @@ export function buildSurge(world: World): void {
   const rt: Runtime = {
     state, lab, city, comp, route, plant, sun, clock: 0, promptOn: false, doorEmitted: false, autoBoard: false, startAt,
     walkOut: false, entrance: entrance.group, entranceLight: entrance.light,
+    offRoadT: 0, offWarned: false, crushing: false, snakes: [], wallBroken: false, wallTarget: null, debris: [], doorTimer: -1,
   };
   runtimes.set(world, rt);
   world.level.data.surgeState = state;
@@ -272,6 +297,9 @@ export function updateSurge(world: World, dt: number): void {
   lab.pulse.color.setScalar(1.0 + 0.5 * Math.sin(t * 4));
   if (!state.powered) lab.socket.ringMat.color.set(0x52e8ff).multiplyScalar(1.3 + 0.6 * Math.sin(t * 5));
 
+  // ---- 歩いているとき：道路の外に出ると蛇／柵・扉は必殺技で壊せる
+  const wallHint = updateOnFoot(world, rt, dt);
+
   // ---- 車に乗る／ヒント
   const drive = driveOf(world);
   const driving = !!drive && drive.phase !== 'parked';
@@ -291,6 +319,7 @@ export function updateSurge(world: World, dt: number): void {
       else if (dCar < BOARD_REACH + 1) hint = 'シャッターの電源に電力を送ろう';
     }
   }
+  if (!hint && wallHint) hint = wallHint;
   world.level.data.interactNear = state.nearCar;
   if (hint) {
     showPrompt(hint);
@@ -378,30 +407,33 @@ function buildEntranceMarker(): { group: THREE.Group; light: THREE.PointLight } 
   return { group: g, light };
 }
 
-function beginWalkOut(world: World, rt: Runtime, d: DriveState): void {
+/** 激突のあと車を降りて歩く（d あり）／歩いて来て柵を必殺技で壊した（d なし。その場から） */
+function beginWalkOut(world: World, rt: Runtime, d: DriveState | null): void {
   rt.walkOut = true;
-  // 成功演出が終わって徒歩へ戻る時点で通常 HUD を復帰させる
-  getDriveHud().reset();
-  // 車担当の仮の文言は消す（このステージで続きが遊べる）
-  world.toasts = world.toasts.filter((t) => !t.text.includes('続きは今後'));
   const p = world.player;
-  // 激突した車の南側（入口の側）に降りる
-  p.pos.set(d.pos.x + 1.2, 0, d.pos.z + 3.4);
-  p.vel.set(0, 0, 0);
-  p.pitch = 0;
-  const dx = ENTRANCE.x + 4 - p.pos.x, dz = ENTRANCE.z - p.pos.z;
-  p.yaw = Math.atan2(-dx, -dz);
-  setPlayerFacing(world, p.yaw);
-  p.root.visible = true;
-  p.invuln = Math.max(p.invuln, 1);
-  world.input.locked = false;
-  d.car.driver.visible = false;
-  // 車の当たり判定（降りた後はぶつかる）
-  d.car.root.updateMatrixWorld(true);
-  const bb = new THREE.Box3().setFromObject(d.car.root);
-  if (!bb.isEmpty()) {
-    bb.expandByScalar(-0.15);
-    world.colliders.push({ min: bb.min.clone().setY(0), max: bb.max.clone(), active: true, tag: 'crashedCar' });
+  if (d) {
+    // 成功演出が終わって徒歩へ戻る時点で通常 HUD を復帰させる
+    getDriveHud().reset();
+    // 車担当の仮の文言は消す（このステージで続きが遊べる）
+    world.toasts = world.toasts.filter((t) => !t.text.includes('続きは今後'));
+    // 激突した車の南側（入口の側）に降りる
+    p.pos.set(d.pos.x + 1.2, 0, d.pos.z + 3.4);
+    p.vel.set(0, 0, 0);
+    p.pitch = 0;
+    const dx = ENTRANCE.x + 4 - p.pos.x, dz = ENTRANCE.z - p.pos.z;
+    p.yaw = Math.atan2(-dx, -dz);
+    setPlayerFacing(world, p.yaw);
+    p.root.visible = true;
+    p.invuln = Math.max(p.invuln, 1);
+    world.input.locked = false;
+    d.car.driver.visible = false;
+    // 車の当たり判定（降りた後はぶつかる）
+    d.car.root.updateMatrixWorld(true);
+    const bb = new THREE.Box3().setFromObject(d.car.root);
+    if (!bb.isEmpty()) {
+      bb.expandByScalar(-0.15);
+      world.colliders.push({ min: bb.min.clone().setY(0), max: bb.max.clone(), active: true, tag: 'crashedCar' });
+    }
   }
   // 柵は突き破られた
   rt.comp.fenceCollider.active = false;
@@ -415,7 +447,7 @@ function beginWalkOut(world: World, rt: Runtime, d: DriveState): void {
   col(COMPOUND.wallX - 6, COMPOUND.fenceX + 0.5, ENTRANCE.yardZ1, ENTRANCE.yardZ1 + 1);  // 庭の南
   rt.entrance.visible = true;
   world.level.data.objective = '建物の左側（南）の入口から中へ入れ';
-  toast(world, '車を降りた。建物の左側の入口から中へ入ろう', 5);
+  toast(world, d ? '車を降りた。建物の左側の入口から中へ入ろう' : '柵が壊れた！ 建物の左側の入口から中へ入ろう', 5);
   world.events.emit('doorOpen', { pos: new THREE.Vector3(ENTRANCE.x + 1, 2, ENTRANCE.z) });
 }
 
@@ -428,6 +460,127 @@ function updateWalkOut(world: World, rt: Runtime, d: DriveState | undefined, t: 
     toast(world, 'サージ収容所の中へ', 2.5);
     world.level.data.nextLevel = { level: 'camp1' };
   }
+}
+
+// ---------------------------------------------------------------- 歩いているとき：道路の外・壊せる壁
+
+const _wallPos = new THREE.Vector3();
+function makeWallTarget(x: number, y: number, z: number): Enemy {
+  // 必殺技の狙い先にするだけの目印（敵ではない。status='dead' なのでダメージ・感電の対象にならない）
+  return {
+    id: -1, kind: 'boss', root: new THREE.Group(), pos: new THREE.Vector3(x, y, z), vel: new THREE.Vector3(), radius: 2,
+    hp: 1, maxHp: 1, status: 'dead', weakPoints: [], tethered: false, overload: 0, ai: {}, deadTimer: 0,
+  } as unknown as Enemy;
+}
+
+/** 車に乗っていない間の毎フレーム。戻り値は画面に出すヒント（壁の前に来たとき） */
+function updateOnFoot(world: World, rt: Runtime, dt: number): string | null {
+  const p = world.player;
+  // 破片（柵のパネル）の飛び散り
+  for (const d of rt.debris) {
+    d.t += dt;
+    d.vel.y -= 24 * dt;
+    d.obj.position.addScaledVector(d.vel, dt);
+    d.obj.rotation.x += d.ang.x * dt; d.obj.rotation.y += d.ang.y * dt; d.obj.rotation.z += d.ang.z * dt;
+    if (d.t > 3.5) d.obj.visible = false;
+  }
+  // 蛇：頭から落ちてきて、足元に叩きつける
+  for (const s of rt.snakes) {
+    if (stepSnake(s, dt, p.hp > 0 ? { x: p.pos.x, z: p.pos.z } : undefined)) crushPlayer(world);
+  }
+  // 扉を壊したあと、少し待ってドレイン装置の中へ
+  if (rt.doorTimer >= 0) {
+    rt.doorTimer -= dt;
+    if (rt.doorTimer < 0 && !world.level.data.nextLevel) {
+      toast(world, 'ドレイン装置の中へ', 2.5);
+      world.level.data.nextLevel = { level: 'drain' };
+    }
+  }
+
+  const onFoot = !rt.state.boarded || rt.walkOut;
+  if (!onFoot || p.hp <= 0 || world.level.data.nextLevel) { rt.offRoadT = 0; delete world.level.data.specialWall; return null; }
+
+  // ---- 道路以外を歩き続けると、蛇が降ってきて潰される
+  if (p.pos.y < -25) p.hp = 0;
+  if (onRoad(p.pos.x, p.pos.z, rt.route, rt.walkOut)) {
+    rt.offRoadT = Math.max(0, rt.offRoadT - dt * 2);
+    if (rt.offRoadT === 0) rt.offWarned = false;
+  } else if (!rt.crushing) {
+    rt.offRoadT += dt;
+    if (!rt.offWarned) { rt.offWarned = true; toast(world, '道路の外だ！ 戻れ！ 蛇に潰される！', OFF_ROAD_LIMIT + 0.5); world.events.emit('noEnergy', {}); }
+    if (rt.offRoadT >= OFF_ROAD_LIMIT) {
+      rt.crushing = true;
+      rt.snakes.push(spawnSnake(world.scene, p.pos.x, p.pos.z, p.pos.y));
+      toast(world, '上から大蛇が降ってきた！', 2);
+    }
+  }
+
+  // ---- 壁・柵は必殺技で壊せる（敵がいなくても壁の前なら撃てる）。ゲージは壁の前で満タンにしてくれる
+  if (rt.wallBroken) { delete world.level.data.specialWall; return null; }
+  const jz = ROAD.junctionZ;
+  let inRange = false, label = '';
+  if (rt.route === 'camp') {
+    inRange = p.pos.x < COMPOUND.fenceX + 45 && p.pos.x > COMPOUND.fenceX - 6 && Math.abs(p.pos.z - jz) < 30;
+    if (inRange) { _wallPos.set(COMPOUND.fenceX, 2.5, jz); label = '柵'; }
+  } else {
+    inRange = p.pos.x > DRAIN_DOOR.x - 45 && p.pos.x < DRAIN_DOOR.x + 2 && p.pos.y > RAMP.topY - 8 && Math.abs(p.pos.z - jz) < 20;
+    if (inRange) { _wallPos.set(DRAIN_DOOR.x, DRAIN_DOOR.y + DRAIN_DOOR.h / 2, DRAIN_DOOR.z); label = '扉'; }
+  }
+  if (!inRange) { delete world.level.data.specialWall; return null; }
+  if (!rt.wallTarget) rt.wallTarget = makeWallTarget(_wallPos.x, _wallPos.y, _wallPos.z);
+  rt.wallTarget.pos.copy(_wallPos);
+  if (world.special.phase === 'idle' && world.special.gauge < SPECIAL.max) world.special.gauge = SPECIAL.max;
+  world.level.data.specialWall = { target: rt.wallTarget, onEnd: () => breakWall(world, rt) };
+  return `必殺技（Vキー / Lスティック+Rスティック押し込み）で${label}を壊せ`;
+}
+
+function crushPlayer(world: World): void {
+  const p = world.player;
+  _wallPos.set(p.pos.x, p.pos.y + 0.5, p.pos.z);
+  spawnShockwave(world, _wallPos, 0xd8c8b0, 7, 0.6);
+  spawnBurst(world, _wallPos, 0x2f5d3a, 30, 12, 0.9);
+  spawnBurst(world, _wallPos, 0xffd070, 20, 9, 0.7);
+  world.events.emit('driveCrash', { pos: _wallPos.clone() });
+  toast(world, '大蛇に潰された！', 3);
+  p.invuln = 0;
+  p.hp = 0;
+}
+
+/** 柵（収容所）／扉（ドレイン装置）を壊す。柵なら続けて建物の入口へ、扉なら少し待って装置の中へ */
+function breakWall(world: World, rt: Runtime): void {
+  if (rt.wallBroken) return;
+  rt.wallBroken = true;
+  delete world.level.data.specialWall;
+  if (rt.route === 'camp') {
+    rt.comp.fenceCollider.active = false;
+    for (const panel of rt.comp.fencePanels) {
+      rt.debris.push({
+        obj: panel,
+        vel: new THREE.Vector3(-14 - Math.random() * 16, 8 + Math.random() * 12, (Math.random() - 0.5) * 24),
+        ang: new THREE.Vector3((Math.random() - 0.5) * 9, (Math.random() - 0.5) * 9, (Math.random() - 0.5) * 9), t: 0,
+      });
+    }
+    const at = new THREE.Vector3(COMPOUND.fenceX, 3, ROAD.junctionZ);
+    spawnShockwave(world, at, 0xffd070, 14, 0.7);
+    spawnBurst(world, at, 0xffd070, 40, 16, 1);
+    beginWalkOut(world, rt, null);
+  } else {
+    const parts = rt.plant?.parts;
+    const door = parts?.door as THREE.Object3D | undefined, broken = parts?.doorBroken as THREE.Object3D | undefined;
+    if (door) door.visible = false;
+    if (broken) broken.visible = true;
+    const at = new THREE.Vector3(DRAIN_DOOR.x, DRAIN_DOOR.y + DRAIN_DOOR.h / 2, DRAIN_DOOR.z);
+    spawnShockwave(world, at, 0xffd070, 12, 0.7);
+    spawnBurst(world, at, 0xffd070, 40, 16, 1);
+    toast(world, '扉が吹き飛んだ！', 3);
+    rt.doorTimer = 1.8;
+  }
+}
+
+/** テスト用：蛇が降ってきているか／柵・扉を壊したか */
+export function surgeFootState(world: World): { crushing: boolean; wallBroken: boolean; offRoadT: number } | null {
+  const rt = runtimes.get(world);
+  return rt ? { crushing: rt.crushing, wallBroken: rt.wallBroken, offRoadT: rt.offRoadT } : null;
 }
 
 /** テスト用：激突のあとに歩いているか */

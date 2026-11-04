@@ -24,7 +24,7 @@ const check = (name, ok, info) => { results.push(ok); console.log(ok ? 'PASS' : 
 
 try {
   console.log('goto');
-  await page.goto(`http://localhost:${port}/?manual`, { waitUntil: 'load', timeout: 240000 });
+  await page.goto(`http://localhost:${port}/?level=dungeon&manual`, { waitUntil: 'load', timeout: 240000 });
   console.log('loaded');
   await page.waitForFunction(() => !!window.__game, null, { timeout: 240000 });
   console.log('game ready');

@@ -36,7 +36,7 @@ const results = [];
 const check = (name, ok, info) => { results.push(ok); console.log(ok ? 'PASS' : 'FAIL', name, JSON.stringify(info)); };
 
 try {
-  await page.goto(`http://localhost:${port}/`, { waitUntil: 'load' });
+  await page.goto(`http://localhost:${port}/?level=dungeon`, { waitUntil: 'load' });
   await page.waitForTimeout(800);
   await page.evaluate(() => {
     window.__orig = window.requestAnimationFrame.bind(window); window.__pause = false;

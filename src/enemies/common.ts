@@ -32,6 +32,11 @@ export function makeCtx(world: World, e: Enemy, dt: number): Ctx {
   const dist2d = Math.hypot(dx, dz);
   const dist = Math.hypot(dist2d, dy);
   const dirXZ = new THREE.Vector3(dist2d > 1e-6 ? dx / dist2d : 0, 0, dist2d > 1e-6 ? dz / dist2d : 1);
+  // 待たされている敵（drain の吹き抜けなど）：区画に入られるまで気づかず、攻撃もしない
+  if (e.ai.passive) {
+    e.ai.alert = 0;
+    return { world, e, dt, spec, pc, dirXZ, dist, dist2d, los: false };
+  }
   const los = dist < spec.sightRange && hasLineOfSight(world.colliders, e.pos, pc);
   // 気づき：未警戒なら ENEMY_NOTICE.range まで近づかれないと反応しない。
   // 警戒中は sightRange まで追い続ける。被弾でも警戒（damageEnemy 側）

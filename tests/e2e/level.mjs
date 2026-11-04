@@ -18,7 +18,7 @@ const log = (...a) => console.log(...a);
 const frames = (n = 2) => page.evaluate((n) => new Promise((r) => { let k = 0; const f = () => (++k >= n ? r() : requestAnimationFrame(f)); requestAnimationFrame(f); }), n);
 const only = process.argv[2] ?? 'all';
 try {
-  await page.goto(`http://localhost:${port}/`, { waitUntil: 'load' });
+  await page.goto(`http://localhost:${port}/?level=dungeon`, { waitUntil: 'load' });
   await page.waitForTimeout(1500);
   await frames();
   await page.screenshot({ path: 'tests/e2e/out/level_title.png' });

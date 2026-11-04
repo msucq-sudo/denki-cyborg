@@ -7,6 +7,8 @@
 import * as THREE from 'three';
 import type { World } from '../core/types';
 import { toast } from '../core/combat';
+import { addEnergy } from '../core/energy';
+import { FLOOR2 } from '../config/balance';
 import { setPlayerFacing } from '../player/player';
 import { showPrompt } from './floor1';
 import { createSpark, type Spark } from '../characters/spark';
@@ -299,6 +301,9 @@ export function updateFloor2(world: World, dt: number): void {
   rt.clock += dt;
   const t = rt.clock;
   const E = plan.elevator;
+
+  // ---- 電力は0になってもすぐ回復する（この階は飛行などを試す場所）
+  if (p.hp > 0 && p.energy < p.maxEnergy) addEnergy(world, FLOOR2.energyRegenPerSec * dt);
 
   // ---- スパーク：普段はタブレットを見ている。近づくと、こちらを向いて話しかける姿勢になる
   {

@@ -50,6 +50,18 @@ export const GUN = {
   weakMultiplier: 2,
 };
 
+/** アサルトライフル（長押しで連射。溜め撃ちなし）。ジェネレーターを倒したあと、強化画面で解放できる */
+export const RIFLE = {
+  damage: 4,
+  cost: 2,
+  /** 発射間隔（秒） */
+  interval: 0.11,
+  /** 弾のばらつき（ラジアン） */
+  spread: 0.018,
+  /** 解放に必要な歯車（skill.rifle） */
+  unlockCost: 4,
+};
+
 export const DODGE = {
   cost: 4,
   speed: 15,
@@ -61,7 +73,7 @@ export const DODGE = {
 /** ダッシュ（Shift長押し）。移動している間だけ電力を消費。回避よりずっと低コスト */
 export const DASH = {
   speedMul: 1.55,
-  drainPerSec: 1.2,
+  drainPerSec: 0.6,
 };
 
 export const ABSORB = {
@@ -166,9 +178,12 @@ export const FUNCTIONS = {
   flight: { flyingDrainPerSec: 6, engageVy: 0.5, hoverDamp: 10 },
   /**
    * ジェットパック：自由飛行（強化 skill.jetpackFree）。ジャンプ長押しで上昇（高度の上限なし）、離すとゆっくり下降、
+   * 飛んでいる間は常に前（向いている方）へ進み続ける。Lスティックの左右で向きを変え（turnRate rad/s）、前に倒すと頭が上を向いて上昇、後ろに倒すと下を向いて下降する（pitchSpeed=昇降の速さ、tiltMax=頭の傾き rad）、
    * しゃがみ（左Ctrl）で速く下降。水平はカメラ向きに speedMul 倍の速さ。電力は滞空より多めに減る
    */
-  freeFlight: { riseSpeed: 7, sinkSpeed: 1.2, diveSpeed: 7, vyAccel: 8, speedMul: 1.3, airAccel: 6, drainMul: 1.5 },
+  freeFlight: { riseSpeed: 7, sinkSpeed: 1.2, diveSpeed: 7, vyAccel: 8, speedMul: 1.3, airAccel: 6, drainMul: 1.5, pitchSpeed: 6, tiltMax: 0.8, turnRate: 1.8 },
+  /** ジェットブースト（ジェネレーターを倒したあとの強化）：飛行中にダッシュを押している間、前（カメラの向き）へ自動で進み、Lスティックで向きを変える */
+  jetBoost: { speedMul: 2.6, airAccel: 5, drainPerSec: 4 },
 };
 
 export type EnemyKind = 'drone' | 'crawler' | 'gunner' | 'heavy' | 'walker' | 'redWalker' | 'heavyWalker' | 'missile' | 'beamer' | 'leech' | 'jumper' | 'missileDrone' | 'bomber' | 'redDrone' | 'domer' | 'redCrawler' | 'ringer' | 'medic' | 'redMedic' | 'drainGuard' | 'boss';
@@ -198,15 +213,15 @@ export const ENEMIES: Record<EnemyKind, {
   /** リーチ（吸収マン）：とても小さい。吸収アームでプレイヤーの電力を吸う。つながれると逃げる */
   leech:   { hp: 30,  speed: 5,   radius: 0.32, damage: 0,  attackInterval: 3.0, projectileSpeed: 0,  weakMultiplier: 2, overloadCap: 10, sightRange: 26 },
   /** ジャンパー：大きな頭の二足歩行。ジャンプでゆっくり移動し、着地の瞬間に突き。頭（核）が開いている間しか攻撃も吸収も効かない。speed=1回の跳躍の水平速度の上限、attackInterval=着地から次の跳躍までの周期。T3-D で調整 */
-  jumper:  { hp: 120, speed: 3.2, radius: 0.95, damage: 8, attackInterval: 2.5, projectileSpeed: 0,  weakMultiplier: 2.5, overloadCap: 30, sightRange: 30 },
+  jumper:  { hp: 300, speed: 4.4, radius: 0.95, damage: 11, attackInterval: 2.0, projectileSpeed: 0,  weakMultiplier: 2.5, overloadCap: 52, sightRange: 32 },
   /** ミサイルドローン：4発のミサイルを放つドローン。ミサイルは撃つかアームを当てると消せる。damage=ミサイル1発。T3-E で調整 */
-  missileDrone: { hp: 45, speed: 3.5, radius: 0.7, damage: 4.5, attackInterval: 4.5, projectileSpeed: 9, weakMultiplier: 2, overloadCap: 14, sightRange: 32 },
+  missileDrone: { hp: 150, speed: 4, radius: 0.7, damage: 6, attackInterval: 4.0, projectileSpeed: 10, weakMultiplier: 2, overloadCap: 37, sightRange: 34 },
   /** ボンバー：小さく丸い。電気の球を投げ、着弾で爆発（中心ほど大ダメージ）。damage=爆心ダメージ。T3-F で調整 */
-  bomber:  { hp: 35,  speed: 3.2, radius: 0.45, damage: 11, attackInterval: 2.4, projectileSpeed: 12, weakMultiplier: 2, overloadCap: 12, sightRange: 26 },
+  bomber:  { hp: 350, speed: 5.2, radius: 0.45, damage: 14, attackInterval: 1.5, projectileSpeed: 15, weakMultiplier: 2, overloadCap: 56, sightRange: 30 },
   /** 赤ドローン：ドローンの赤い版。ハッキングできる。つなぐと吸収が遅くなる(HACK.drainMul)ので、コード入力の時間が取れるよう体力は多め */
   redDrone: { hp: 60, speed: 4,   radius: 0.55, damage: 3,  attackInterval: 1.8, projectileSpeed: 18, weakMultiplier: 2, overloadCap: 14, sightRange: 28 },
   /** ドーマー：ドームシールドを展開して中から撃ってくる。ドームは外からの弾・アームを止める（敵の弾は中から外へ通す）。ドームを壊すか中に入るかして倒す */
-  domer:   { hp: 80,  speed: 1.8, radius: 0.75, damage: 3,  attackInterval: 2.2, projectileSpeed: 17, weakMultiplier: 2, overloadCap: 22, sightRange: 32 },
+  domer:   { hp: 400, speed: 2.2, radius: 0.75, damage: 5,  attackInterval: 1.8, projectileSpeed: 20, weakMultiplier: 2, overloadCap: 60, sightRange: 34 },
   /** 赤クローラー：クローラーの赤い版。ハッキングできる（つなぐと動きがにぶる）。味方になると近くの敵に飛びかかる */
   redCrawler: { hp: 55, speed: 6.5, radius: 0.6, damage: 5, attackInterval: 1.0, projectileSpeed: 0, weakMultiplier: 2, overloadCap: 16, sightRange: 24 },
   /** リンガー：自分を中心に輪っかのビームを広げる。輪は低い所を走るので、ジャンプ・ジェット・グラップルで越える。damage=輪1回、projectileSpeed=輪の広がる速さ */
@@ -235,7 +250,7 @@ export const ENEMY_NOTICE = {
  * drop=1体あたりの量。見た目のかけらは最大 maxPieces 個に分けて散らばる
  */
 export const METAL = {
-  drop: { drone: 1, crawler: 1, redCrawler: 2, domer: 4, ringer: 4, medic: 2, redMedic: 3, gunner: 2, walker: 2, heavy: 6, heavyWalker: 8, missile: 10, drainGuard: 40, boss: 30 } as Record<EnemyKind, number>,
+  drop: { drone: 1, crawler: 1, redCrawler: 2, domer: 8, jumper: 6, bomber: 6, missileDrone: 4, ringer: 4, medic: 2, redMedic: 3, gunner: 2, walker: 2, heavy: 6, heavyWalker: 8, missile: 10, drainGuard: 40, boss: 30 } as Record<EnemyKind, number>,
   maxPieces: 6,
   /** 逆流（送電）で爆発させて倒したときの倍率（2＝通常の2倍） */
   overloadMul: 2,
@@ -329,6 +344,11 @@ export const CAMP2 = {
 /** 閉じ込め戦の演出。enabled=false で赤い警報照明とサイレンを両方止める（ドアの開閉はそのまま） */
 /** 閉じ込め戦の演出。enabled=false で赤い照明とサイレンを消す（扉の開閉はそのまま）。sirenCycles=サイレンを鳴らす回数 */
 export const LOCKDOWN = { enabled: true, light: 0xff2a20, sirenVolume: 0.5, sirenCycles: 3 };
+
+/** 研究所2階（サイボーグ改造室）：飛行などを試せるよう、電力が0になってもすぐ回復する（1秒あたりの回復量） */
+export const FLOOR2 = {
+  energyRegenPerSec: 40,
+};
 
 export const LEVEL = {
   chargePadRate: 20,     // 電力/秒
@@ -548,7 +568,7 @@ export const CAMP1 = {
   /** 中ボス戦：2つ目の波を出す、1つ目の波の残り数 */
   bossWave2At: 2,
   /** 実ライトを割り当てる天井灯の数 */
-  lampSlots: 8,
+  lampSlots: 5,
 };
 
 /** 必殺技（電気のかめはめ波）。special/*.ts と ui/hud.ts が読む。強化（skill.special）で変わる数値は progression/upgrades.ts */

@@ -1,4 +1,5 @@
 import * as THREE from 'three';
+import { vi, beforeEach, afterEach } from 'vitest';
 import { createWorld } from '../../core/world';
 import { EventBus } from '../../core/events';
 import type { World, Enemy } from '../../core/types';
@@ -17,6 +18,10 @@ function mkWorld(): World {
   w.colliders.push(makeAABB(V(-80, -1, -80), V(80, 0, 80), 'floor'));
   return w;
 }
+// 3連続ジャンプはランダムなので、ふだんのテストでは外す（0.99 > tripleChance）
+beforeEach(() => { vi.spyOn(Math, 'random').mockReturnValue(0.99); });
+afterEach(() => { vi.restoreAllMocks(); });
+
 function tick(w: World, dt = 1 / 30): void { w.time += dt; updateEnemies(w, dt); }
 function step(w: World, sec: number, dt = 1 / 30): void { for (let t = 0; t < sec; t += dt) tick(w, dt); }
 /** 条件が成り立つまで進める（最大 maxSec）。成り立てば true */
@@ -147,4 +152,18 @@ test('ray at the head: closed = body hit only; open = the core is hit as a weak 
   const hit = raycastEnemies(w.enemies, V(e.pos.x, w1.y, e.pos.z + 8), V(e.pos.x, w1.y, e.pos.z - 8));
   expect(hit?.enemy).toBe(e);
   expect(hit?.weak).toBe(true);
+});
+
+test('triple chain: with a low roll the jumper lands three times in a row before the long open', () => {
+  vi.spyOn(Math, 'random').mockReturnValue(0);
+  const { w, e } = mk(8);
+  e.ai.alert = 100;
+  let lands = 0, last = '';
+  for (let t = 0; t < 12 && lands < 3; t += 1 / 30) {
+    tick(w);
+    if (e.ai.state === 'open' && last !== 'open') lands++;
+    last = e.ai.state;
+  }
+  expect(lands).toBe(3);
+  expect(e.ai.chain).toBe(0);
 });

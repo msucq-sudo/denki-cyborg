@@ -122,7 +122,9 @@ export interface Heavy {
   def: HeavyDef;
   actor: HeavyActor;
   /** 'idle'＝道に立っている、'caught'＝車を受け止めた */
-  state: 'idle' | 'caught';
+  state: 'idle' | 'caught' | 'flung';
+  /** 300km/h 以上で吹き飛ばされている最中 */
+  smash?: Smash | null;
   /** 立っていた位置（受け止めて押されたときの基準） */
   baseX: number;
 }
@@ -185,6 +187,36 @@ export interface Obstacle {
   /** 遠くからも見える光の柱 */
   beam: THREE.Mesh;
   hit: boolean;
+  /** 300km/h 以上で吹き飛ばされている最中 */
+  smash: Smash | null;
+}
+
+/** 吹き飛ばされている物（障害物・ヘビー）の動き */
+export interface Smash { vel: THREE.Vector3; ang: THREE.Vector3; t: number }
+
+/** 車の進行方向（carVx, carVz）と横（sideSign）へ、高く大きく吹き飛ばす */
+export function startSmash(carVx: number, carVz: number, sideSign: number, rand: () => number = Math.random): Smash {
+  const sp = Math.hypot(carVx, carVz);
+  const fx = sp > 0.01 ? carVx / sp : 0, fz = sp > 0.01 ? carVz / sp : -1;
+  const rx = -fz * sideSign, rz = fx * sideSign;
+  const up = 20 + rand() * 10, side = 12 + rand() * 12, fwd = sp * (0.5 + rand() * 0.2);
+  return {
+    vel: new THREE.Vector3(fx * fwd + rx * side, up, fz * fwd + rz * side),
+    ang: new THREE.Vector3((rand() - 0.5) * 10, (rand() - 0.5) * 12, (rand() - 0.5) * 10),
+    t: 0,
+  };
+}
+
+/** 吹き飛ばしを1ステップ進める。終わった（十分に飛んだ）ら true */
+export function stepSmash(s: Smash, root: THREE.Object3D, dt: number): boolean {
+  s.t += dt;
+  s.vel.y -= 30 * dt;
+  root.position.addScaledVector(s.vel, dt);
+  root.rotation.x += s.ang.x * dt;
+  root.rotation.y += s.ang.y * dt;
+  root.rotation.z += s.ang.z * dt;
+  if (root.position.y < -6 || s.t > 3.5) { root.visible = false; return true; }
+  return false;
 }
 
 export function buildObstacle(def: ObstacleDef): Obstacle {
@@ -262,7 +294,7 @@ export function buildObstacle(def: ObstacleDef): Obstacle {
   halo.scale.setScalar(9);
   halo.position.y = 6;
   root.add(halo);
-  return { def, root, lamps, beam, hit: false };
+  return { def, root, lamps, beam, hit: false, smash: null };
 }
 
 /** 警告灯の点滅（時間 t）。near=近いほど柱を薄く */

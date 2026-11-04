@@ -4,7 +4,8 @@
 // - 通貨は歯車（world.inventory.gears）
 // 状態は world.upgrades に持つ（リトライで World を作り直すため。階の移動では main.ts が引き継ぐ）
 import type { World } from '../core/types';
-import { ABSORB, DASH, DODGE, FUNCTIONS, GUN, HACK, OVERLOAD, PLAYER, SPECIAL_UPGRADE } from '../config/balance';
+import { ABSORB, DASH, DODGE, FUNCTIONS, GUN, HACK, OVERLOAD, PLAYER, RIFLE, SPECIAL_UPGRADE } from '../config/balance';
+import { giveWeapon } from '../player/weaponSwitch';
 
 export type Category = 'gun' | 'body' | 'arm' | 'skill';
 
@@ -64,6 +65,16 @@ export const GUN_TRACKS: Track[] = [
       { key: 'cost', label: '単発の消費電力', values: add(GUN.tapCost, [0, 0, -1, -1, -2]), lowerIsBetter: true },
     ],
   },
+  {
+    // 解放するまで画面に出ない（skill.rifle を取ると武器として持つ）。長押しで連射
+    id: 'gun.assault', category: 'gun', name: 'アサルト', desc: '電気ライフル。長押しで連射。1発は軽い',
+    costs: [2, 3, 4, 5],
+    stats: [
+      { key: 'damage', label: '1発のダメージ', values: mul(RIFLE.damage, MAIN_FACTORS, 1), digits: 1 },
+      { key: 'cost', label: '1発の消費電力', values: add(RIFLE.cost, [0, 0, 0, -0.5, -1], 1), digits: 1, lowerIsBetter: true },
+      { key: 'interval', label: '発射間隔', unit: '秒', digits: 2, lowerIsBetter: true, values: mul(RIFLE.interval, [1, 0.95, 0.9, 0.85, 0.8], 3) },
+    ],
+  },
 ];
 
 export const BODY_TRACK: Track = {
@@ -95,9 +106,15 @@ export const SKILL_TRACKS: Track[] = [
   },
   {
     // 自由飛行：Lv2 で解放（フラグ）。ジェットパックを Lv2 以上にしてから
-    id: 'skill.jetpackFree', category: 'skill', name: 'ジェットパック：自由飛行', desc: 'ジャンプ長押しで高度の上限なく飛べる。離すとゆっくり降りる',
+    id: 'skill.jetpackFree', category: 'skill', name: 'ジェットパック：自由飛行', desc: '空中でジャンプをもう1回押すと、体を横にして前へ飛び続ける（Lスティックで曲がる・昇降）。着地・電力切れ・Aボタンで終わる',
     costs: [5], requires: { id: 'skill.jetpack', level: 2 },
     stats: [{ key: 'enabled', label: '自由飛行', values: [0, 1] }],
+  },
+  {
+    // ジェネレーターを倒したあとに出る。取ると武器「アサルト」を持つ（upgrade() が渡す）
+    id: 'skill.rifle', category: 'skill', name: 'ライフルの解放', desc: '電気ライフル（アサルト）が使える。十字キー左右で持ち替え',
+    costs: [RIFLE.unlockCost],
+    stats: [{ key: 'enabled', label: 'アサルト', values: [0, 1] }],
   },
   {
     id: 'skill.speed', category: 'skill', name: '素早さ', desc: '移動とダッシュが速くなる',
@@ -181,6 +198,7 @@ export function upgrade(world: World, t: Track): boolean {
     if (maxHp > p.maxHp && p.hp > 0) p.hp += maxHp - p.maxHp;
     p.maxHp = maxHp;
   }
+  if (t.id === 'skill.rifle') giveWeapon(world, 'assault');
   world.events.emit('upgrade', { id: t.id, level: lv });
   return true;
 }
@@ -205,7 +223,27 @@ export function preview(world: World, t: Track): { line: StatLine; cur: number; 
   }));
 }
 
-/** 持っている武器の GUN 項目（今はピストルだけ） */
-export function ownedGunTracks(_world: World): Track[] {
-  return GUN_TRACKS.filter((t) => t.id === 'gun.pistol');
+/**
+ * サージ収容所 2階の戦いが終わったときのごほうび：強化画面を通さずに、アサルトライフルと、ジェットパックの強化（Lv2以上・自由飛行・ジェットブースト）を解放する（レベル2＝解放済み）。
+ * すでに持っているものは下げない。読み込み時（クリア済みのセーブ）にも呼ぶので、何回呼んでも同じ
+ */
+export function grantCamp2Rewards(world: World): void {
+  world.unlocks.jetBoost = true;
+  for (const id of ['skill.jetpack', 'skill.jetpackFree', 'skill.rifle']) {
+    const t = findTrack(id);
+    if (t && getLevel(world, id) < 2) world.upgrades[id] = 2;
+  }
+  world.unlocks.rifleAvail = true;
+  giveWeapon(world, 'assault');
+  world.level.data.saveDirty = true;
+}
+
+/** 持っている武器の GUN 項目（ピストルと、解放したアサルト） */
+export function ownedGunTracks(world: World): Track[] {
+  return GUN_TRACKS.filter((t) => t.id === 'gun.pistol' || (t.id === 'gun.assault' && world.loadout.owned.includes('assault')));
+}
+
+/** 強化画面の SKILL に並べる項目。ライフルの解放は、ジェネレーターを倒して研究所に戻るまで（world.unlocks.rifleAvail）出さない */
+export function visibleSkillTracks(world: World): Track[] {
+  return SKILL_TRACKS.filter((t) => t.id !== 'skill.rifle' || world.unlocks.rifleAvail || getLevel(world, t.id) > 1);
 }

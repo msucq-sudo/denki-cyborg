@@ -42,7 +42,7 @@ const missiles = () => ev(() => window.__game.world.projectiles.filter((p) => p.
 
 try {
   console.log('goto');
-  await page.goto(`http://localhost:${port}/?manual`, { waitUntil: 'load' });
+  await page.goto(`http://localhost:${port}/?level=dungeon&manual`, { waitUntil: 'load' });
   await page.waitForFunction(() => !!window.__game, null, { timeout: 120000 });
   console.log('loaded');
   await ev(async () => {

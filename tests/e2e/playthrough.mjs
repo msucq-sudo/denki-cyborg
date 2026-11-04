@@ -29,7 +29,7 @@ async function shot(name) {
 }
 
 try {
-  await page.goto(`http://localhost:${port}/?manual`, { waitUntil: 'load' });
+  await page.goto(`http://localhost:${port}/?level=dungeon&manual`, { waitUntil: 'load' });
   await page.waitForFunction(() => !!window.__game);
   await page.evaluate(() => window.__game.step(1 / 60, 2));
   await shot('00_title');

@@ -26,7 +26,7 @@ const info = () => page.evaluate(() => {
 const run = async (n) => { await page.evaluate((n) => window.__game.step(1 / 60, n), n); };
 const result = {};
 try {
-  await page.goto(`http://localhost:${port}/`, { waitUntil: 'load' });
+  await page.goto(`http://localhost:${port}/?level=dungeon`, { waitUntil: 'load' });
   await page.waitForTimeout(1200);
   await page.evaluate(async () => {
     window.__api = await import('/src/enemies/api.ts');

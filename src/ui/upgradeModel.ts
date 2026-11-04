@@ -5,7 +5,7 @@
 // ゲームの数値とレベルのルールは progression/upgrades.ts にあり、ここはそれを画面向けに並べ替えるだけ。
 import type { World } from '../core/types';
 import {
-  ARM_TRACK, BODY_TRACK, SKILL_TRACKS, canUpgrade, nextCost, ownedGunTracks, upgrade,
+  ARM_TRACK, BODY_TRACK, canUpgrade, nextCost, ownedGunTracks, upgrade, visibleSkillTracks,
   type Category, type StatLine, type Track,
 } from '../progression/upgrades';
 
@@ -33,7 +33,7 @@ export function categoryTracks(world: World, cat: Category): Track[] {
     case 'gun': return ownedGunTracks(world);
     case 'body': return [BODY_TRACK];
     case 'arm': return [ARM_TRACK];
-    case 'skill': return SKILL_TRACKS;
+    case 'skill': return visibleSkillTracks(world);
   }
 }
 

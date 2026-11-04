@@ -29,6 +29,8 @@ export interface ZoneDef {
   spawns: SpawnDef[];
   /** trap の起動範囲（y 付き） */
   trigger?: { x0: number; x1: number; z0: number; z1: number; y0: number; y1: number };
+  /** この範囲（y 付き）にプレイヤーが入るまで、敵は気づかず攻撃もしない（最初から飛んでいる敵用） */
+  holdUntil?: { x0: number; x1: number; z0: number; z1: number; y0: number; y1: number };
   /** trap：戦闘中に閉まる扉 */
   closes?: string[];
   /** trap：戦闘が終わると開く扉（closes と同じとは限らない） */
@@ -275,9 +277,14 @@ export function generateDrain(): Plan {
   wall('z', 8, 30, 50, G_H);
   wall('z', 40, 30, 50, G_H);
   box(30, 50, G_H, G_H + 1, 8, 41, 'ceil', K.ceil, true, 'ceiling');
-  wall('z', A.z1, A.x0 - T, A.x1 + T, H_A);                          // 南の外壁
+  // 南の外壁。中央に入口通路（下の 'entry'）への口
+  wall('z', A.z1, A.x0 - T, A.x1 + T, H_A, [{ c: 17, w: 6, h: 5 }]);
   wall('z', 9 - T + 0, A.x0 - T, A.x1 + T, H_A);                     // 北の外壁（B の北の壁と共通）
   floor(A.x0 - T, A.x1 + T, A.z0, A.z1 + T, 0, [aHole]);
+  // 入口通路：プレイヤーはここから北へ歩いて A に入る（始めから敵の前に立たないように）
+  corridor('entry', 'z', A.z1, 112, 14, 20, 4, 0xbfd6ff, 0.6);
+  wall('z', 112, 13, 21, 4);
+  rooms.push({ id: 'entry', name: '入口通路', x0: 14, x1: 20, z0: A.z1, z1: 112, y0: 0, y1: 4, h: 4 });
   box(A.x0 - T, A.x1 + T, H_A, H_A + 1, 8, A.z1 + T, 'ceil', K.ceil, true, 'ceiling');
   // A の天井灯（高い）
   for (const [lx, lz] of [[10, 72], [24, 72], [10, 84], [24, 84]] as const) {
@@ -549,8 +556,8 @@ export function generateDrain(): Plan {
   const zones: ZoneDef[] = [
     {
       id: 'A', name: 'A 入口ホール', mode: 'zone', face: { x: 17, z: 78 }, spawns: [
-        { kind: 'crawler', x: 12, z: 72 }, { kind: 'crawler', x: 24, z: 74 }, { kind: 'gunner', x: 10, z: 86 }, { kind: 'gunner', x: 26, z: 86 },
-        { kind: 'walker', x: 18, z: 80 }, { kind: 'drone', x: 14, z: 76, mode: 'awake' }, { kind: 'drone', x: 22, z: 78, mode: 'awake' },
+        { kind: 'crawler', x: 12, z: 72 }, { kind: 'gunner', x: 10, z: 86 },
+        { kind: 'walker', x: 18, z: 80 }, { kind: 'drone', x: 14, z: 76, mode: 'awake' },
       ],
     },
     {
@@ -560,19 +567,12 @@ export function generateDrain(): Plan {
       ],
     },
     {
-      id: 'I', name: 'I 隠し部屋', mode: 'zone', face: { x: 59, z: 62 }, spawns: [
-        { kind: 'crawler', x: 55, z: 62 }, { kind: 'crawler', x: 63, z: 60 }, { kind: 'domer', x: 59, z: 58 },
-      ],
-    },
-    {
       id: 'D', name: 'D 動力室', mode: 'trap', face: { x: 100, z: 76 },
       trigger: { x0: 80, x1: 122, z0: 64, z1: 88, y0: -1, y1: 6 }, closes: ['dWest', 'dNorth'], opens: ['dWest', 'dNorth'],
       spawns: [
-        { kind: 'heavyWalker', x: 108, z: 76, mode: 'pod' }, { kind: 'walker', x: 96, z: 66, mode: 'pod' }, { kind: 'walker', x: 96, z: 87, mode: 'pod' },
-        { kind: 'gunner', x: 88, z: 74, mode: 'pod' }, { kind: 'gunner', x: 88, z: 80, mode: 'pod' }, { kind: 'missile', x: 114, z: 66, mode: 'pod' },
+        { kind: 'heavyWalker', x: 108, z: 76, mode: 'pod' }, { kind: 'missile', x: 114, z: 66, mode: 'pod' },
         { kind: 'beamer', x: 118, z: 86, mode: 'pod' }, { kind: 'jumper', x: 102, z: 70, mode: 'pod' }, { kind: 'jumper', x: 102, z: 84, mode: 'pod' },
-        { kind: 'bomber', x: 92, z: 76, mode: 'pod' }, { kind: 'drone', x: 100, z: 76, mode: 'drop' }, { kind: 'drone', x: 110, z: 78, mode: 'drop' },
-        { kind: 'drone', x: 90, z: 70, mode: 'drop' }, { kind: 'domer', x: 106, z: 86, mode: 'pod' },
+        { kind: 'bomber', x: 92, z: 76, mode: 'pod' }, { kind: 'domer', x: 106, z: 86, mode: 'pod' },
       ],
     },
     {
@@ -582,17 +582,17 @@ export function generateDrain(): Plan {
     },
     {
       id: 'Ew', name: 'E 西', mode: 'zone', face: { x: 66, z: 47 }, spawns: [
-        { kind: 'gunner', x: 62, z: 45 }, { kind: 'walker', x: 70, z: 49 }, { kind: 'leech', x: 74, z: 47, mode: 'awake' }, { kind: 'bomber', x: 50, z: 47 },
+        { kind: 'leech', x: 74, z: 47, mode: 'awake' }, { kind: 'bomber', x: 50, z: 47 },
       ],
     },
     {
       id: 'Ee', name: 'E 東', mode: 'zone', face: { x: 110, z: 47 }, spawns: [
-        { kind: 'heavy', x: 104, z: 47 }, { kind: 'jumper', x: 116, z: 44 }, { kind: 'crawler', x: 96, z: 50 }, { kind: 'crawler', x: 122, z: 50 }, { kind: 'domer', x: 126, z: 47 },
+        { kind: 'jumper', x: 116, z: 44 }, { kind: 'domer', x: 126, z: 47 },
       ],
     },
     {
       id: 'F', name: 'F 冷却ポンプ室', mode: 'zone', face: { x: 126, z: 22 }, spawns: [
-        { kind: 'gunner', x: 120, z: 18 }, { kind: 'gunner', x: 134, z: 24 }, { kind: 'missile', x: 136, z: 16 }, { kind: 'missile', x: 118, z: 26 },
+        { kind: 'jumper', x: 120, z: 18 }, { kind: 'jumper', x: 134, z: 24 }, { kind: 'missile', x: 136, z: 16 }, { kind: 'missile', x: 118, z: 26 },
         { kind: 'jumper', x: 124, z: 24 }, { kind: 'drone', x: 126, z: 20, mode: 'awake' }, { kind: 'drone', x: 132, z: 20, mode: 'awake' },
         { kind: 'redMedic', x: 138, z: 27, mode: 'awake', neutral: true },
       ],
@@ -601,21 +601,22 @@ export function generateDrain(): Plan {
       id: 'B', name: 'B 空中の制御室', mode: 'trap', face: { x: 14, z: 19 }, trigger: { x0: 7, x1: 21, z0: 12, z1: 27, y0: B_Y - 1, y1: B_Y + 6 },
       closes: ['bEntry', 'bExit'], opens: ['bEntry', 'bExit'],
       spawns: [
-        { kind: 'drone', x: 9, z: 14, floor: B_Y, mode: 'drop' }, { kind: 'drone', x: 19, z: 14, floor: B_Y, mode: 'drop' }, { kind: 'drone', x: 9, z: 24, floor: B_Y, mode: 'drop' },
-        { kind: 'drone', x: 19, z: 24, floor: B_Y, mode: 'drop' }, { kind: 'missileDrone', x: 14, z: 13, floor: B_Y, mode: 'drop' }, { kind: 'missileDrone', x: 14, z: 25, floor: B_Y, mode: 'drop' },
-        { kind: 'missile', x: 8, z: 19, floor: B_Y, mode: 'pod' }, { kind: 'gunner', x: 20, z: 19, floor: B_Y, mode: 'pod' }, { kind: 'redDrone', x: 14, z: 23, floor: B_Y, mode: 'awake', neutral: true },
+        { kind: 'missileDrone', x: 14, z: 13, floor: B_Y, mode: 'drop' }, { kind: 'missileDrone', x: 14, z: 25, floor: B_Y, mode: 'drop' },
+        { kind: 'missile', x: 8, z: 19, floor: B_Y, mode: 'pod' }, { kind: 'redDrone', x: 14, z: 23, floor: B_Y, mode: 'awake', neutral: true },
         { kind: 'redMedic', x: 6, z: 12, floor: B_Y, mode: 'awake', neutral: true },
       ],
     },
     {
-      id: 'shaft', name: 'A〜B 吹き抜け', mode: 'zone', face: { x: 17, z: 50 }, spawns: [
+      id: 'shaft', name: 'A〜B 吹き抜け', mode: 'zone', face: { x: 17, z: 50 },
+      holdUntil: { x0: HALL.x0, x1: HALL.x1, z0: 31, z1: A.z0, y0: 2, y1: B_Y + 2 },   // plan.shaft と同じ範囲。updateSpawner の inShaft と合わせる
+      spawns: [
         { kind: 'missileDrone', x: 12, z: 56, floor: 8, mode: 'awake' }, { kind: 'missileDrone', x: 17, z: 46, floor: 18, mode: 'awake' },
         { kind: 'drone', x: 18, z: 52, floor: 12, mode: 'awake' }, { kind: 'drone', x: 10, z: 44, floor: 20, mode: 'awake' },
       ],
     },
     {
       id: 'rope', name: '綱渡り', mode: 'zone', face: { x: 38, z: 20 }, spawns: [
-        { kind: 'missile', x: 36, z: 12, floor: B_Y, mode: 'awake' }, { kind: 'gunner', x: 40, z: 28, floor: B_Y, mode: 'awake' },
+        { kind: 'missile', x: 36, z: 12, floor: B_Y, mode: 'awake' },
         { kind: 'missileDrone', x: 32, z: 20, floor: B_Y + 3, mode: 'awake' }, { kind: 'missileDrone', x: 44, z: 20, floor: B_Y + 4, mode: 'awake' },
         { kind: 'drone', x: 38, z: 16, floor: B_Y + 2, mode: 'awake' }, { kind: 'drone', x: 38, z: 32, floor: B_Y + 5, mode: 'awake' },
       ],
@@ -635,7 +636,7 @@ export function generateDrain(): Plan {
     decoy: { x: 14, y: -3.3, z: 85 },
     drainDoor,
     checkpoints: {
-      entrance: { x: 17, y: 0, z: 86, yaw: Math.PI },
+      entrance: { x: 17, y: 0, z: 108, yaw: 0 },
       bTop: { x: 14, y: B_Y, z: 33, yaw: 0 },
       rope: { x: 21, y: B_Y, z: 20, yaw: -Math.PI / 2 },
       dFront: { x: 71, y: 0, z: 79, yaw: -Math.PI / 2 },
@@ -643,7 +644,7 @@ export function generateDrain(): Plan {
       goal: { x: 64, y: 0, z: 24, yaw: Math.PI },
     },
     checkpointZones: [
-      { id: 'entrance', x0: A.x0, x1: A.x1, z0: 68, z1: A.z1, y0: -1, y1: 5 },
+      { id: 'entrance', x0: 14, x1: 20, z0: A.z1, z1: 112, y0: -1, y1: 5 },
       { id: 'dFront', x0: 68, x1: 75, z0: 76, z1: 82, y0: -1, y1: 5 },
       { id: 'bTop', x0: 6, x1: 22, z0: 29, z1: 37, y0: B_Y - 1, y1: B_Y + 4 },
       { id: 'rope', x0: 6, x1: 24, z0: 11, z1: 27, y0: B_Y - 1, y1: B_Y + 4 },
@@ -652,7 +653,7 @@ export function generateDrain(): Plan {
     ],
     spawner: { x0: 6, x1: 28, z0: 36, z1: 62, y0: 6, y1: 36, kinds: ['drone', 'drone', 'missileDrone'], interval: 5.5, max: 6 },
     shaft: { x0: HALL.x0, x1: HALL.x1, z0: 31, z1: A.z0 },
-    start: { x: 17, z: 86, yaw: Math.PI },
+    start: { x: 17, z: 108, yaw: 0 },
     centers,
     duct,
   };

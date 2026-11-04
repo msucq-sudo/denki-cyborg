@@ -48,7 +48,7 @@ const key = (c, d) => page.evaluate(([c, d]) => window.__game.input.simulateKey(
 const mouse = (b, d) => page.evaluate(([b, d]) => window.__game.input.simulateMouse(b, d), [b, d]);
 const info = () => page.evaluate(() => { const p = window.__game.current.player; return { pos: p.pos.toArray().map((v) => +v.toFixed(1)), g: p.onGround, fly: p.flying, e: +p.energy.toFixed(0) }; });
 try {
-  await page.goto(`http://localhost:${port}/?manual`);
+  await page.goto(`http://localhost:${port}/?level=dungeon&manual`);
   await page.waitForFunction(() => !!window.__game);
   if (TUNE) await page.evaluate((t) => { for (const [k, v] of Object.entries(t)) { const ks = k.split('.'); let o = window.__game[k.split('.')[0] === 'camera' ? 'camera' : 'character']; for (const q of ks.slice(k.split('.')[0] === 'camera' ? 1 : 0, -1)) o = o[q]; o[ks.at(-1)] = v; } }, TUNE);
   await page.evaluate(() => { const g = window.__game; g.start(); document.getElementById('hud').style.display = 'none'; g.step(1 / 30, 30); g.current.player.energy = 100; });

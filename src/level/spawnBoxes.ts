@@ -30,6 +30,8 @@ export const SPAWN_BOX = {
   /** 揺れている時間（秒）。撃たれたときはもっと短い */
   shake: 0.5,
   shakeShot: 0.18,
+  /** 床からせり上がる時間（秒）。それまでは何もない床 */
+  rise: 0.6,
   /** 残骸が残る時間（秒） */
   debrisLife: 3.5,
   /** 飛び出すときの速さ（前へ・上へ。m/s） */
@@ -196,6 +198,7 @@ export function createSpawnBoxes(world: World, defs: SpawnBoxDef[]): SpawnBox[] 
     const fl = def.floor ?? 0;
     group.position.set(def.x, fl, def.z);
     group.rotation.y = def.yaw ?? 0;
+    group.visible = false;   // 開くまでは何もない床。開くきっかけで床からせり上がる（startShake）
     world.scene.add(group);
     // 当たり判定は向きによらず、回した箱を囲む（90°単位で置く想定）
     const yaw = def.yaw ?? 0;
@@ -203,6 +206,7 @@ export function createSpawnBoxes(world: World, defs: SpawnBoxDef[]): SpawnBox[] 
     const hx = (sz.w * c + sz.d * s) / 2, hz = (sz.w * s + sz.d * c) / 2;
     const collider: AABB = { min: new THREE.Vector3(def.x - hx, fl, def.z - hz), max: new THREE.Vector3(def.x + hx, fl + sz.h, def.z + hz), active: true, tag: 'spawnBox' };
     world.colliders.push(collider);
+    collider.active = false;
     out.push({ def, style: sz.style, size: { w: sz.w, d: sz.d, h: sz.h }, state: 'closed', delay: 0, t: 0, shakeTime: SPAWN_BOX.shake, enemy: null, group, collider });
   }
   st.boxes.push(...out);
@@ -225,6 +229,9 @@ export function openSpawnBoxes(world: World, list: SpawnBox[], gap = 0.15): void
 }
 
 function startShake(world: World, box: SpawnBox): void {
+  box.group.visible = true;
+  box.group.scale.set(1, 0.02, 1);
+  box.collider.active = true;
   world.events.emit('enemyWakeWarn', { pos: box.group.position.clone().setY(box.group.position.y + box.size.h / 2), mode: 'pod' });
 }
 
@@ -241,8 +248,7 @@ export function updateSpawnBoxes(world: World, dt: number): void {
       // 近づいた
       const wr = b.def.wakeRadius ?? SPAWN_BOX.wakeRadius;
       if (wr > 0 && Math.hypot(p.x - b.def.x, p.z - b.def.z) < wr && Math.abs(p.y - (b.def.floor ?? 0)) < 8 && world.player.hp > 0) openSpawnBox(world, b);
-      // 撃たれた：早めに開く
-      else if (hitByShot(world, b, dt)) openSpawnBox(world, b, 0, SPAWN_BOX.shakeShot);
+      // （閉じている箱は床の下にいて見えないので、撃っても開かない）
     } else if (b.state === 'shaking') {
       if (b.delay > 0) {
         b.delay -= dt;
@@ -250,13 +256,20 @@ export function updateSpawnBoxes(world: World, dt: number): void {
         continue;
       }
       b.t += dt;
+      // まず床からせり上がる（RISE 秒）。そのあとガタガタ
+      if (b.t < SPAWN_BOX.rise) {
+        const u = b.t / SPAWN_BOX.rise;
+        b.group.scale.set(1, Math.max(0.02, 1 - Math.pow(1 - u, 3)), 1);
+        continue;
+      }
+      b.group.scale.set(1, 1, 1);
       // ガタガタ：だんだん激しく
-      const k = Math.min(1, b.t / b.shakeTime);
+      const k = Math.min(1, (b.t - SPAWN_BOX.rise) / b.shakeTime);
       const a = 0.03 + 0.09 * k;
       const yaw = b.def.yaw ?? 0;
       b.group.position.set(b.def.x + (Math.random() - 0.5) * a * 2, (b.def.floor ?? 0) + Math.abs(Math.sin(b.t * 40)) * a, b.def.z + (Math.random() - 0.5) * a * 2);
       b.group.rotation.set((Math.random() - 0.5) * a, yaw + (Math.random() - 0.5) * a * 1.5, (Math.random() - 0.5) * a);
-      if (b.t >= b.shakeTime) burst(world, st, b);
+      if (b.t >= SPAWN_BOX.rise + b.shakeTime) burst(world, st, b);
     }
   }
   // 残骸
