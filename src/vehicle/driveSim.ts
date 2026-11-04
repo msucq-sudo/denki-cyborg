@@ -47,6 +47,15 @@ export const DRIVE = {
   bounceTime: 0.55,
   recoverTurnRate: 2.2,
   recoverSpeed: 7,
+  /** この速度（km/h）以上で障害物・ヘビーに当たると、止まらずに吹き飛ばして走り抜ける */
+  smashKmh: 300,
+  /** 道の外（縁石を越えたところ）：舵を切って道幅の半分＋この余白を越えるとスリップ。スリップの長さ（秒）のあと建物に激突して失敗 */
+  offRoadMargin: 0.4,
+  slipTime: 1.05,
+  /** スリップ中の横への流れの初速と加速 (m/s, m/s²)、車体の回転 (rad/s) */
+  slipLat0: 7,
+  slipLatAcc: 16,
+  slipSpin: 3.2,
   /** 車の大きさ（半分）：当たり判定用 */
   halfLen: 2.3,
   halfWid: 1.05,
@@ -57,7 +66,7 @@ export type Quality = 'perfect' | 'good' | 'miss';
  * 'west'＝ルート1の本線（西へ走る）、'east'＝ルート1で右へ曲がった行き止まり（東の柵）。
  * 'eastRun'＝ルート2の本線（東へ走る）、'westBlock'＝ルート2で左へ曲がった行き止まり（西の封鎖）。
  */
-export type DriveMode = 'north' | 'turn' | 'east' | 'bounce' | 'recover' | 'west' | 'eastRun' | 'westBlock';
+export type DriveMode = 'north' | 'turn' | 'east' | 'bounce' | 'recover' | 'west' | 'eastRun' | 'westBlock' | 'slip';
 
 export interface SimState {
   /** どちらの道か。'camp'＝左折して西へ（既定）、'drain'＝右折して東へ */
@@ -89,6 +98,12 @@ export interface SimState {
   misses: number;
   /** 判定地点を越えたか */
   checkpointDone: boolean;
+  /** スリップ（道の外へ出た）：どちらの軸へ流れるか・その向き(+1/-1)・経過秒・出たときの進行方向（単位ベクトル）。slipHit=建物に激突した */
+  slipAxis: 'x' | 'z';
+  slipDir: 1 | -1;
+  slipT: number;
+  slipFx: number; slipFz: number;
+  slipHit: boolean;
 }
 
 export type SimEvent =
@@ -96,7 +111,9 @@ export type SimEvent =
   | { type: 'turnStart'; dir: -1 | 1 }
   | { type: 'junctionDone' }
   | { type: 'bounce'; where: 'east' | 'west' | 'north'; kmh: number }
-  | { type: 'checkpoint'; kmh: number };
+  | { type: 'checkpoint'; kmh: number }
+  | { type: 'offRoad'; side: 'x' | 'z'; dir: 1 | -1 }
+  | { type: 'offRoadCrash'; kmh: number };
 
 export interface SimInput {
   /** -1=左, 1=右（アナログ可） */
@@ -111,6 +128,7 @@ export function createSim(x: number, z: number, yaw = 0, route: SurgeRoute = 'ca
     pos: { x, y: 0, z }, yaw, speed: 0, mode: 'north', steer: 0, latVel: 0, intent: 0,
     turnDir: 0, turnPhi: 0, turnCx: 0, turnCz: 0, pendingKmh: 0, cursorT: 0, cooldown: 0, bounceT: 0,
     junctionDone: false, presses: 0, perfects: 0, goods: 0, misses: 0, checkpointDone: false,
+    slipAxis: 'z', slipDir: 1, slipT: 0, slipFx: 0, slipFz: -1, slipHit: false,
   };
 }
 
@@ -132,6 +150,15 @@ export const kmhOf = (s: SimState): number => Math.max(0, s.speed) * 3.6;
 /** いまの速度上限 (km/h)。T字路を曲がり終えるまでは低い */
 export function speedCapKmh(s: SimState): number {
   return isRunMode(s) ? DRIVE.maxKmh : DRIVE.preTurnCapKmh;
+}
+
+/** 道の外へ出た：スリップを始める（進行方向はそのまま、横へ流れながら回る） */
+function startSlip(s: SimState, axis: 'x' | 'z', dir: 1 | -1, out: SimEvent[]): void {
+  s.mode = 'slip';
+  s.slipAxis = axis; s.slipDir = dir; s.slipT = 0; s.slipHit = false;
+  s.slipFx = -Math.sin(s.yaw); s.slipFz = -Math.cos(s.yaw);
+  s.latVel = 0; s.pendingKmh = 0;
+  out.push({ type: 'offRoad', side: axis, dir });
 }
 
 /** 本線（判定地点へ向かう長い直線）を走っているか。ルート1＝'west'、ルート2＝'eastRun' */
@@ -236,6 +263,7 @@ export function stepSim(s: SimState, inp: SimInput, dt: number): SimEvent[] {
 
   switch (s.mode) {
     case 'north': {
+      // T字路の手前（ガレージからの一本道）は、曲がる向きを舵で決めるので、道幅の中に収める（道の外へ出られるのは長い直線から）
       p.x += lat();
       if (p.x > DRIVE.latMax) { p.x = DRIVE.latMax; s.latVel = 0; } else if (p.x < -DRIVE.latMax) { p.x = -DRIVE.latMax; s.latVel = 0; }
       p.z += fz * s.speed * dt;
@@ -317,12 +345,24 @@ export function stepSim(s: SimState, inp: SimInput, dt: number): SimEvent[] {
       p.z += -Math.cos(s.yaw) * s.speed * dt;
       break;
     }
+    case 'slip': {
+      // 道の外：進行方向へ走りながら横へ流され、くるくる回る。建物（歩道の向こう）にぶつかったら止まる
+      if (s.slipHit) break;
+      s.slipT += dt;
+      const lateral = (DRIVE.slipLat0 + DRIVE.slipLatAcc * s.slipT) * dt * s.slipDir;
+      if (s.slipAxis === 'z') p.z += lateral; else p.x += lateral;
+      p.x += s.slipFx * s.speed * dt;
+      p.z += s.slipFz * s.speed * dt;
+      s.speed *= Math.exp(-0.25 * dt);
+      s.yaw += s.slipDir * DRIVE.slipSpin * (0.6 + s.slipT) * dt * (s.slipAxis === 'z' ? (s.slipFx < 0 ? -1 : 1) : 1);
+      if (s.slipT >= DRIVE.slipTime) { s.slipHit = true; out.push({ type: 'offRoadCrash', kmh: kmhOf(s) }); }
+      break;
+    }
     case 'eastRun': {
       // 東向き：右手は南（+Z）。右に切ると z が増える
       p.z += lat();
-      const lo = JZ - DRIVE.latMax, hi = JZ + DRIVE.latMax;
-      if (p.z > hi) { p.z = hi; s.latVel = 0; } else if (p.z < lo) { p.z = lo; s.latVel = 0; }
       p.x += s.speed * dt;
+      if (Math.abs(p.z - JZ) > ROAD.width / 2 + DRIVE.offRoadMargin) { startSlip(s, 'z', p.z > JZ ? 1 : -1, out); break; }
       if (!s.checkpointDone && p.x > CHECKPOINT_E.x) {
         s.checkpointDone = true;
         out.push({ type: 'checkpoint', kmh: kmhOf(s) });
@@ -332,9 +372,8 @@ export function stepSim(s: SimState, inp: SimInput, dt: number): SimEvent[] {
     case 'west': {
       // 西向き：右手は北（-Z）。右に切ると z が減る
       p.z -= lat();
-      const lo = JZ - DRIVE.latMax, hi = JZ + DRIVE.latMax;
-      if (p.z > hi) { p.z = hi; s.latVel = 0; } else if (p.z < lo) { p.z = lo; s.latVel = 0; }
       p.x -= s.speed * dt;
+      if (Math.abs(p.z - JZ) > ROAD.width / 2 + DRIVE.offRoadMargin) { startSlip(s, 'z', p.z > JZ ? 1 : -1, out); break; }
       if (!s.checkpointDone && p.x < CHECKPOINT.x) {
         s.checkpointDone = true;
         out.push({ type: 'checkpoint', kmh: kmhOf(s) });

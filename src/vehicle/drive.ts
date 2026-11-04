@@ -18,7 +18,7 @@ import {
   type SimEvent, type SimState,
 } from './driveSim';
 import {
-  buildHeavy, buildObstacle, buildZako, disposeObstacle, disposeZako, flingZako, HEAVY_R, idleZako, planHeavies, planObstacles, planZako, stepFlung, updateObstacle,
+  buildHeavy, buildObstacle, buildZako, disposeObstacle, disposeZako, flingZako, HEAVY_R, idleZako, planHeavies, planObstacles, planZako, startSmash, stepFlung, stepSmash, updateObstacle,
   type Heavy, type Obstacle, type Zako,
 } from './driveProps';
 import { createSpeedLines, type SpeedLines } from './driveFx';
@@ -243,6 +243,14 @@ function onSimEvent(world: World, d: DriveRuntime, e: SimEvent): void {
     case 'checkpoint':
       reachCheckpoint(world, d, e.kmh);
       break;
+    case 'offRoad':
+      d.shake = Math.max(d.shake, 0.6);
+      world.toasts.push({ text: '道路の外だ！ スリップする！', timer: 2 });
+      world.events.emit('driveBump', { pos: carFront(d, _v).clone(), kmh: kmhOf(d) });
+      break;
+    case 'offRoadCrash':
+      crashIntoBuilding(world, d);
+      break;
   }
 }
 
@@ -257,6 +265,8 @@ function collide(world: World, d: DriveRuntime, dt: number): boolean {
     if (o.hit) continue;
     if (Math.abs(o.def.x - px) < o.def.d / 2 + DRIVE.halfLen - 0.2 && Math.abs(o.def.z - pz) < o.def.w / 2 + DRIVE.halfWid - 0.1) {
       o.hit = true;
+      // 300km/h 以上：止まらずに吹き飛ばして走り抜ける
+      if (kmhOf(d) >= DRIVE.smashKmh) { smashProp(world, d, o.root.position, (s) => { o.smash = s; }, o.def.z - pz); continue; }
       crash(world, d, o);
       return true;
     }
@@ -266,6 +276,11 @@ function collide(world: World, d: DriveRuntime, dt: number): boolean {
     if (h.state !== 'idle') continue;
     const reach = DRIVE.halfLen + HEAVY_R + Math.abs(d.speed) * dt * 0.5;
     if (Math.abs(h.actor.pos.x - px) < reach && Math.abs(h.actor.pos.z - pz) < DRIVE.halfWid + HEAVY_R - 0.25) {
+      if (kmhOf(d) >= DRIVE.smashKmh) {
+        h.state = 'flung';
+        smashProp(world, d, h.actor.pos, (s) => { h.smash = s; }, h.actor.pos.z - pz);
+        continue;
+      }
       catchByHeavy(world, d, h);
       return true;
     }
@@ -294,6 +309,21 @@ function collide(world: World, d: DriveRuntime, dt: number): boolean {
   return false;
 }
 
+/** 300km/h 以上でぶつかった物を吹き飛ばす（減速なし）。at=その物の位置、side=車から見て左右どちら側へ飛ばすか */
+function smashProp(world: World, d: DriveRuntime, at: THREE.Vector3, set: (s: ReturnType<typeof startSmash>) => void, side: number): void {
+  const vx = -Math.sin(d.yaw) * d.speed, vz = -Math.cos(d.yaw) * d.speed;
+  set(startSmash(vx, vz, side >= 0 ? 1 : -1));
+  d.hits++;
+  d.shake = Math.max(d.shake, 0.4);
+  d.cam.kick = Math.max(d.cam.kick, 6);
+  _v.set(at.x, Math.max(1, at.y + 1), at.z);
+  spawnBurst(world, _v, 0xffd070, 22, 11, 0.8);
+  spawnBurst(world, _v, 0x7ff6ff, 12, 8, 0.6);
+  spawnShockwave(world, _v, 0xff9a40, 4, 0.4);
+  spawnFlash(world, _v, 0xfff0c0, 10, 10, 0.2);
+  world.events.emit('driveHitEnemy', { pos: _v.clone() });
+}
+
 /** 走る向き（x の符号）：ルート2は東（+1）、ルート1は西（-1） */
 const runDir = (d: DriveRuntime): 1 | -1 => (d.route === 'drain' ? 1 : -1);
 
@@ -320,6 +350,26 @@ function catchByHeavy(world: World, d: DriveRuntime, h: Heavy): void {
   spawnBurst(world, at, 0x7ff6ff, 12, 9, 0.7);
   spawnFlash(world, at, 0xfff0c0, 14, 12, 0.25);
   world.events.emit('driveCrash', { pos: at });
+  getDriveHud().hide();
+}
+
+/** 道の外でスリップして、周りの建物にぶつかった：障害物と同じ衝突の流れ（crashed → 死亡画面） */
+function crashIntoBuilding(world: World, d: DriveRuntime): void {
+  d.phase = 'crashed';
+  d.crashT = 0;
+  d.sparkT = 0;
+  d.speed = 0;
+  d.pendingKmh = 0;
+  d.shake = 1;
+  d.cam.kick = 0;
+  carFront(d, _v, DRIVE.halfLen, 0.9);
+  const at = _v.clone();
+  spawnShockwave(world, at, 0xff9a40, 5, 0.5);
+  spawnBurst(world, at, 0xd8c8b0, 26, 12, 0.9);
+  spawnBurst(world, at, 0xffd070, 22, 11, 0.9);
+  spawnFlash(world, at, 0xfff0c0, 14, 12, 0.25);
+  world.events.emit('driveCrash', { pos: at });
+  world.toasts.push({ text: '建物に激突した！', timer: 2.5 });
   getDriveHud().hide();
 }
 
@@ -440,11 +490,16 @@ function stepProps(world: World, d: DriveRuntime, dt: number, cull = true): void
   const t = world.time;
   const cx = d.pos.x;
   for (const o of d.obstacles) {
+    if (o.smash) { if (stepSmash(o.smash, o.root, dt)) o.smash = null; continue; }
     const dist = Math.abs(o.def.x - cx);
     if (dist < 700) updateObstacle(o, t, dist);
   }
   for (const h of d.heavies) {
     const a = h.actor;
+    if (h.state === 'flung') {
+      if (h.smash && stepSmash(h.smash, a.root, dt)) h.smash = null;
+      continue;
+    }
     const dx = Math.abs(a.pos.x - cx);
     if (cull) a.root.visible = dx < 340;
     if (dx < 250 || h.state === 'caught') {

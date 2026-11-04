@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { EventBus } from '../core/events';
 import { createWorld } from '../core/world';
 import { ARM_TRACK, BODY_TRACK, SKILL_TRACKS, getLevel, maxLevel, preview } from '../progression/upgrades';
+const SKILL_VIS = SKILL_TRACKS.filter((t) => t.id !== 'skill.rifle');
 import {
   CATEGORIES, categoryTracks, createNav, currentCategory, focusedTrack, formatStat, moveCategory, moveRow,
   setCategory, setRow, statText, statTone, tryUpgrade,
@@ -24,7 +25,7 @@ describe('強化画面の項目と行', () => {
     expect(categoryTracks(world, 'gun').map((t) => t.id)).toEqual(['gun.pistol']);
     expect(categoryTracks(world, 'body')).toEqual([BODY_TRACK]);
     expect(categoryTracks(world, 'arm')).toEqual([ARM_TRACK]);
-    expect(categoryTracks(world, 'skill')).toEqual(SKILL_TRACKS);
+    expect(categoryTracks(world, 'skill')).toEqual(SKILL_TRACKS.filter((t) => t.id !== 'skill.rifle'));
     expect(SKILL_TRACKS.length).toBeGreaterThan(1);
   });
 });
@@ -41,11 +42,11 @@ describe('カーソル', () => {
     expect(setCategory(nav, 3)).toBe(true);
     expect(setCategory(nav, 3)).toBe(false);
     expect(moveRow(nav, world, -1)).toBe(false);
-    expect(focusedTrack(nav, world)?.id).toBe(SKILL_TRACKS[0].id);
+    expect(focusedTrack(nav, world)?.id).toBe(SKILL_VIS[0].id);
     expect(moveRow(nav, world, 1)).toBe(true);
-    expect(focusedTrack(nav, world)?.id).toBe(SKILL_TRACKS[1].id);
+    expect(focusedTrack(nav, world)?.id).toBe(SKILL_VIS[1].id);
     for (let i = 0; i < 10; i++) moveRow(nav, world, 1);
-    expect(focusedTrack(nav, world)?.id).toBe(SKILL_TRACKS[SKILL_TRACKS.length - 1].id);
+    expect(focusedTrack(nav, world)?.id).toBe(SKILL_VIS[SKILL_VIS.length - 1].id);
     expect(moveRow(nav, world, 1)).toBe(false);
     expect(setRow(nav, world, 99)).toBe(false);
   });
@@ -59,7 +60,7 @@ describe('カーソル', () => {
     expect(moveRow(nav, world, 1)).toBe(false);
     expect(focusedTrack(nav, world)).toBe(ARM_TRACK);
     moveCategory(nav, 1);
-    expect(focusedTrack(nav, world)?.id).toBe(SKILL_TRACKS[2].id);
+    expect(focusedTrack(nav, world)?.id).toBe(SKILL_VIS[2].id);
   });
 });
 

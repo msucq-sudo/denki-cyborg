@@ -12,6 +12,11 @@ export const gunChargeMaxDamage = (w: World): number => statAt(w, 'gun.pistol', 
 /** ピストル：単発の消費電力 */
 export const gunTapCost = (w: World): number => statAt(w, 'gun.pistol', 'cost');
 
+// ---- GUN（アサルト）
+export const rifleDamage = (w: World): number => statAt(w, 'gun.assault', 'damage');
+export const rifleCost = (w: World): number => statAt(w, 'gun.assault', 'cost');
+export const rifleInterval = (w: World): number => statAt(w, 'gun.assault', 'interval');
+
 // ---- BODY
 /** 最大HP */
 export const playerMaxHp = (w: World): number => statAt(w, BODY_TRACK.id, 'maxHp');

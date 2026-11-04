@@ -10,7 +10,7 @@ import { raycastLevel } from '../core/collision';
 import { toast } from '../core/combat';
 import { spawnBurst } from '../core/effects';
 import { isTargetable } from '../core/enemyUtil';
-import { damageEnemy } from '../enemies/enemies';
+import { applyShockPose, damageEnemy } from '../enemies/enemies';
 import { getPlayerVisual, setPlayerFacing } from '../player/player';
 import { easeInOut } from '../player/specialPose';
 import { Cutscene, type CamPose, type Runtime, type Script, type Shot } from '../cinematic/sequencer';
@@ -27,6 +27,8 @@ interface Run {
   handle: Cutscene;
   /** 発射（ダメージ）を済ませたか */
   fired: boolean;
+  /** ビームを浴びている敵（感電中）と、ビームが消えたときに受けるダメージ */
+  victims: { e: Enemy; dmg: number }[];
   /** ビームを出しているか */
   beamOn: boolean;
   onEnd?: () => void;
@@ -72,7 +74,11 @@ export function startSpecial(world: World, opts: { target?: Enemy; force?: boole
   if (sp.phase !== 'idle' || run) return false;
   if (!opts.force && !isFull(world)) return false;
   const eye = specialEye(world);
-  const target = opts.target ?? pickTarget(world, eye);
+  let target = opts.target ?? pickTarget(world, eye);
+  let onEnd = opts.onEnd;
+  // 敵がいなくても、壊せる壁・柵の前なら、そこへ撃つ（ステージが world.level.data.specialWall に置く。サージ収容所への道など）
+  const wall = world.level.data.specialWall as { target: Enemy; onEnd: () => void } | undefined;
+  if (!target && wall) { target = wall.target; onEnd = wall.onEnd; }
   if (!target) { toast(world, '近くに敵がいない', 1.6); return false; }
 
   consumeGauge(world);
@@ -87,7 +93,7 @@ export function startSpecial(world: World, opts: { target?: Enemy; force?: boole
   sp.phase = 'pose'; sp.t = 0;
 
   const vfx = new SpecialVfx(world.scene);
-  const r: Run = { world, target, vfx, handle: null as unknown as Cutscene, fired: false, beamOn: false, onEnd: opts.onEnd, mid: new THREE.Vector3() };
+  const r: Run = { world, target, vfx, handle: null as unknown as Cutscene, fired: false, victims: [], beamOn: false, onEnd, mid: new THREE.Vector3() };
   r.handle = new Cutscene(world, (rt) => makeScript(rt, r), () => { sp.phase = 'beam'; sp.t = 0; }, { fadeIn: false, skippable: opts.skippable === true });
   run = r;
   return true;
@@ -138,6 +144,8 @@ export function updateSpecial(world: World, dt: number): void {
     r.vfx.setBeamFade(sp.phase === 'beam' ? Math.min(1, (SPECIAL.beam - sp.t) / 0.7) : 1);
   }
   r.vfx.update(dt);
+  // 時間が止まっている発射の間は、敵のアニメが回らないので、ここで感電のポーズを付ける
+  if (r.beamOn && specialFrozen(world)) for (const v of r.victims) applyShockPose(world, v.e, dt);
 
   if (sp.phase === 'beam' && sp.t >= SPECIAL.beam) {
     cleanup(r, false);
@@ -148,7 +156,8 @@ export function updateSpecial(world: World, dt: number): void {
 /** 終わり：光を消し、操作を戻す。stale=World が作り直された（音も止める） */
 function cleanup(r: Run, stale: boolean): void {
   r.vfx.dispose();
-  if (stale) stopSpecialSfx();
+  if (stale) { stopSpecialSfx(); for (const v of r.victims) v.e.ai.shocked = 0; r.victims.length = 0; }
+  else settleDamage(r);
   const w = r.world;
   w.special.phase = 'idle';
   w.special.t = 0;
@@ -169,21 +178,37 @@ function handSparks(world: World, dt: number): void {
   spawnBurst(world, _a, Math.random() < 0.5 ? 0x9ff4ff : 0xffffff, 2, 1.8, 0.28);
 }
 
-/** 発射：狙った敵は即死（ボスは割合ダメージ）、ビームに触れた他の敵は最大HPの割合ダメージ */
+/**
+ * 発射：ビームに触れた敵を「感電中」にする（AI が止まり、のけぞって震える）。
+ * ダメージはビームが消えるとき settleDamage が与える：狙った敵は即死（ボスは割合ダメージ）、触れた他の敵は最大HPの割合ダメージ
+ */
 function applyDamage(r: Run): void {
   const w = r.world;
   const eye = specialEye(w);
-  w.special.muteGain = true;
   const hits = pierceTargets(w, eye, r.target, beamRadius(w));
   for (const e of [r.target, ...hits]) {
     if (!isTargetable(e)) continue;
-    const dmg = e === r.target ? targetDamage(w, e) : pierceDamage(w, e);
+    r.victims.push({ e, dmg: e === r.target ? targetDamage(w, e) : pierceDamage(w, e) });
+    e.ai.shocked = SPECIAL.fireHold + SPECIAL.beam + 2;
+    spawnBurst(w, e.pos, 0xbffaff, 16, 6, 0.6);
+  }
+}
+
+/** ビームが消えたとき（演出をスキップしたときも）、感電していた敵にダメージを与える */
+function settleDamage(r: Run): void {
+  const w = r.world;
+  const dir = w.special.dir;
+  w.special.muteGain = true;
+  for (const { e, dmg } of r.victims) {
+    e.ai.shocked = 0;
+    if (!isTargetable(e)) continue;
     const shielded = e.shielded;
     e.shielded = false;   // 必殺技はガードを貫く
-    damageEnemy(w, e, dmg, { how: 'explosion', hitPos: e.pos.clone().addScaledVector(w.special.dir, -1.2) });
+    damageEnemy(w, e, dmg, { how: 'explosion', hitPos: e.pos.clone().addScaledVector(dir, -1.2) });
     if (shielded && e.hp > 0) e.shielded = true;
     spawnBurst(w, e.pos, 0xbffaff, 16, 6, 0.6);
   }
+  r.victims.length = 0;
   w.special.muteGain = false;
 }
 

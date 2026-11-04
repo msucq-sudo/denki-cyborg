@@ -25,7 +25,7 @@ const shot = async (name) => {
   console.log('shot', name);
 };
 try {
-  await page.goto(`http://localhost:${port}/?manual`, { waitUntil: 'load' });
+  await page.goto(`http://localhost:${port}/?level=dungeon&manual`, { waitUntil: 'load' });
   await page.waitForFunction(() => !!window.__game, null, { timeout: 120000 });
   // 遠く(x=+400)に闘技場を作る
   await ev(async () => {

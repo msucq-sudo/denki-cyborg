@@ -68,7 +68,7 @@ async function runAt(width, height) {
   const shot = (name) => page.screenshot({ path: `${outDir}/ui_${name}_${tag}.png`, timeout: 120000 });
 
   try {
-    await page.goto(`http://localhost:${port}/`, { waitUntil: 'load' });
+    await page.goto(`http://localhost:${port}/?level=dungeon`, { waitUntil: 'load' });
     await page.waitForTimeout(800);
     await shot('title');
     let s = await domState(page);

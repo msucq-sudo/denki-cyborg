@@ -73,8 +73,8 @@ export class Input {
   /**
    * ゲームパッド（Xbox 配置）をキーボード/マウス入力に変換する。毎フレーム1回呼ぶ。
    * 左スティック=WASD、右スティック=視点、RT=射撃、LT=照準、LB=吸収(E)、A=ジャンプ/飛行、RB=回避(C)、Lスティック押込=ダッシュ(Shift)、
-   * X=逆流(F)、B=インタラクト(PadB。ベッドなど)、Y=スキル発動(Skill)、十字キー上=オートエイム(2)、十字キー下=スキル選択（押している間は視点固定）、
-   * 十字キー左右=武器の切り替え（仮想キー WeaponPrev / WeaponNext）、Lスティック押込+Rスティック押込=必殺技（Special。キーボードは V）、Start=ポーズ(P)、A=決定(PadA)
+   * X=逆流(F)、B=インタラクト(PadB。ベッドなど)、Y=スキル発動(Skill)、十字キー上=体の発光（仮想キー BodyLight。キーボードは L）、十字キー下=スキル選択（押している間は視点固定）、
+   * 十字キー左右=武器の切り替え（仮想キー WeaponPrev / WeaponNext）、Lスティック押込+Rスティック押込=必殺技（Special。キーボードは V）、Start=ポーズ(P)、ビュー=スパークと通信(Comm)、A=決定(PadA)
    */
   pollGamepad(dt: number): void {
     const pad = navigator.getGamepads?.().find((g) => g && g.connected && g.mapping === 'standard');
@@ -105,7 +105,7 @@ export class Input {
       // Y(3)=スキル発動（仮想キー 'Skill'）。ジェットパックは A 長押し
       if (b(3) && !cap) keys.add('Skill');
       if (b(4)) keys.add('KeyE');
-      if (b(12) && !cap) keys.add('Digit2');
+      if (b(12) && !cap) keys.add('BodyLight');
       // 十字キー下を押している間はスキル選択（右スティックは選択に使うので視点を動かさない）
       this.skillMenuHeld = b(13) && !cap;
       // 十字キー左右=前／次の武器（ハッキング中はコード入力に使うので出さない）
@@ -114,6 +114,8 @@ export class Input {
       this.skillStickX = ax(2);
       this.skillStickY = ax(3);
       if (b(9)) keys.add('KeyP');
+      // ビュー（Back/Select）= スパークとの通信（仮想キー 'Comm'。キーボードは J。comm/holoComm.ts）
+      if (b(8) && !cap) keys.add('Comm');
       if (b(10) && !combo) keys.add('ShiftLeft');
       // 右スティック押し込み = ホログラムデコイ（abilities/decoy.ts。ハッキング中はコード入力を邪魔しない）
       if (b(11) && !cap && !combo) keys.add('KeyN');

@@ -78,7 +78,8 @@ describe('domer', () => {
   it('does not block enemy shots (the domer shoots through its own dome)', () => {
     deployed();
     world.player.hp = world.player.maxHp;
-    run(6);
+    world.player.invuln = 0;   // デプロイ中に当たっていると、この世界では invuln が減らず以降の被弾が無視される
+    run(12);
     expect(world.player.hp).toBeLessThan(world.player.maxHp);
   });
 

@@ -120,6 +120,15 @@ describe('floor2 runtime', () => {
     return { w, input, press, f: getFloor2(w)! };
   }
 
+  it('energy refills quickly even from zero (this floor is for trying flight)', () => {
+    const { w } = mk();
+    w.player.energy = 0;
+    run(w, 1);
+    expect(w.player.energy).toBeGreaterThan(30);
+    run(w, 3);
+    expect(w.player.energy).toBe(w.player.maxEnergy);
+  });
+
   it('starts in the elevator car; interact only works near the bed', () => {
     const { w, press, f } = mk();
     run(w, 0.2);

@@ -15,7 +15,7 @@ page.on('console', (m) => { if (m.type() === 'error' && !m.text().includes('ERR_
 page.on('pageerror', (e) => errors.push(String(e)));
 const shot = async (n) => { await page.waitForTimeout(900); await page.evaluate(() => window.__game.render()); await page.screenshot({ path: `${outDir}/${n}.png`, timeout: 120000 }); };
 try {
-  await page.goto(`http://localhost:${port}/?manual`);
+  await page.goto(`http://localhost:${port}/?level=dungeon&manual`);
   await page.waitForFunction(() => !!window.__game);
   await page.evaluate(() => { const g = window.__game; g.start(); g.input.simulateKey('KeyH', true); g.step(1/30, 1); g.input.simulateKey('KeyH', false); g.step(1/30, 40); });
   // 第1区画へ移動して敵を出す

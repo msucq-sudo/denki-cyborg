@@ -16,19 +16,19 @@ import type { KindModule } from './kind';
 export const DOMER = {
   /** ドームの半径（m）と耐久（プレイヤーの弾のダメージ合計） */
   radius: 4.6,
-  domeHp: 70,
+  domeHp: 160,
   /** 展開の予備動作（柱が光る・床に輪が出る）→ ドームが広がる時間（秒） */
   windup: 0.8,
   grow: 0.5,
   /** ドームが割れてから張り直し始めるまで（秒） */
-  redeployCd: 9,
+  redeployCd: 6,
   /** ドームが無いとき保つ距離（m） */
   keepMin: 9,
   keepMax: 15,
   /** 1回の射撃の弾数・弾の間隔（秒）・狙ってから撃つまで（秒） */
-  burst: 3,
-  burstGap: 0.2,
-  aimTime: 0.45,
+  burst: 4,
+  burstGap: 0.15,
+  aimTime: 0.35,
   /** プレイヤーがドームの中に入ってきたときの間隔の倍率（焦って撃つ） */
   insideIntervalMul: 0.7,
   /** 砲口（体の中心から） */

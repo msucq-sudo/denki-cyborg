@@ -21,7 +21,7 @@ const results = [];
 const check = (name, ok, info) => { results.push(ok); console.log(ok ? 'PASS' : 'FAIL', name, JSON.stringify(info), `[${((Date.now() - T0) / 1000).toFixed(0)}s]`); };
 
 try {
-  await page.goto(`http://localhost:${port}/?manual`, { waitUntil: 'load' });
+  await page.goto(`http://localhost:${port}/?level=dungeon&manual`, { waitUntil: 'load' });
   await page.waitForFunction(() => !!window.__game, null, { timeout: 60000 });
   // 遠く(x=+400)に闘技場を作る
   await page.evaluate(async () => {

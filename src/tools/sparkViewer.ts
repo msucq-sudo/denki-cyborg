@@ -34,6 +34,9 @@ floor.rotation.x = -Math.PI / 2; floor.position.y = -0.002; scene.add(floor);
 
 const spark = createSpark({ glasses: !q.has('noglasses') });
 scene.add(spark.root);
+if (q.has('notablet')) spark.setTablet(false);
+// 歩き・走りの確認用（?gait=0.5）
+spark.setGait(Number(q.get('gait') ?? 0));
 
 // 身長1.8m（主人公）の基準カプセル
 const refCap = new THREE.Mesh(new THREE.CapsuleGeometry(0.25, 1.3, 6, 16), new THREE.MeshBasicMaterial({ color: 0x4de8ff, transparent: true, opacity: 0.18, depthWrite: false }));

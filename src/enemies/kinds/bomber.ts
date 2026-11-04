@@ -16,12 +16,12 @@ export const BOMBER = {
   /** これより近いとは投げない（自爆になるので） */
   minThrowDist: 3.5,
   /** 投げる前の振りかぶり（秒）と、腕を振り抜く時間 */
-  windup: 0.7,
-  swing: 0.14,
+  windup: 0.45,
+  swing: 0.09,
   /** 連投のときの短い振りかぶり・連投する確率・連投の間隔（秒） */
-  quickWindup: 0.4,
-  volleyChance: 0.4,
-  volleyGap: 0.3,
+  quickWindup: 0.25,
+  volleyChance: 0.5,
+  volleyGap: 0.18,
   /** 山なりの軌道：球の重力と、最低でもかける飛行時間（秒）。水平の速さは ENEMIES.bomber.projectileSpeed */
   gravity: 16,
   minFlight: 1.1,
@@ -30,7 +30,7 @@ export const BOMBER = {
   /** 着弾点のばらつき（m）。遠いほど大きい */
   spread: 1.6,
   /** 爆発の半径（m）と、範囲の端でのダメージ倍率（中心は 1、範囲の外は 0） */
-  blastRadius: 3.5,
+  blastRadius: 4.2,
   minMul: 0.25,
   blastColor: 0x7fe0ff,
   /** 球の大きさ（m）・撃ち落とすのに必要な威力・着弾予測より余分に持つ信管（秒） */

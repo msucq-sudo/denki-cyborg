@@ -6,18 +6,21 @@ import { createWorld } from '../core/world';
 import { moveCharacter } from '../core/collision';
 import { getSockets } from '../core/sockets';
 import { PLAYER } from '../config/balance';
-import { buildSurge, getSurge, isWalkingOut, SHUTTER_TIME, updateSurge } from './surge';
+import { buildSurge, getSurge, isWalkingOut, surgeFootState, SHUTTER_TIME, updateSurge } from './surge';
+import { startSpecial, updateSpecial } from '../special/special';
+import { onRoad } from './surge/walkZone';
 import { dentWall } from './surge/compound';
-import { COMPOUND, ENTRANCE, GARAGE, ROAD, STAIRS } from './surge/layout';
+import { COMPOUND, DRAIN_DOOR, ENTRANCE, GARAGE, RAMP, ROAD, STAIRS } from './surge/layout';
 
 const DT = 1 / 30;
 
-function mk(startAt?: string) {
+function mk(startAt?: string, route?: 'drain') {
   const keys = new Set<string>();
   const input = { locked: false, pressed: (k: string) => keys.has(k), isDown: () => false, rawPressed: (k: string) => keys.has(k), rawDown: (k: string) => keys.has(k), lastDevice: 'kbm' };
   const w = createWorld(input as never, new EventBus(), 1);
   w.state = 'playing';
   if (startAt) w.level.data.startAt = startAt;
+  if (route === 'drain') w.level.data.camp2Cleared = true;
   buildSurge(w);
   const run = (sec: number) => { for (let i = 0; i < Math.round(sec / DT); i++) { w.time += DT; updateSurge(w, DT); } };
   const press = (k: string) => { keys.add(k); w.time += DT; updateSurge(w, DT); keys.delete(k); };
@@ -142,16 +145,14 @@ describe('surge level', () => {
     expect(getSockets(w)[0].enabled).toBe(false);
   });
 
-  it('the road is walled in; the east branch ends at the barricade and the fence blocks the road', () => {
+  it('the road edges are open (no invisible walls); the east branch ends at the barricade and the fence blocks the road', () => {
     const { w } = mk('drive');
     // 東へ：柵（通行止め）で止まる
     const east = walk(w, [0, 0, ROAD.junctionZ], [60, ROAD.junctionZ], 10);
     expect(east.x).toBeLessThan(ROAD.eastFenceX);
-    // 道の横へ：見えない壁で出られない
+    // 道の横へ：見えない壁は無く、歩道の外へ出られる（出ると蛇に潰される。下のテスト）
     const side = walk(w, [-100, 0, ROAD.junctionZ], [-100, ROAD.junctionZ - 60], 10);
-    expect(side.z).toBeGreaterThan(ROAD.junctionZ - 20);
-    const side2 = walk(w, [-100, 0, ROAD.junctionZ], [-100, ROAD.junctionZ + 60], 10);
-    expect(side2.z).toBeLessThan(ROAD.junctionZ + 20);
+    expect(side.z).toBeLessThan(ROAD.junctionZ - 20);
     // 西へ：柵で止まる
     const west = walk(w, [COMPOUND.fenceX + 30, 0, ROAD.junctionZ], [COMPOUND.fenceX - 40, ROAD.junctionZ], 10);
     expect(west.x).toBeGreaterThan(COMPOUND.fenceX);
@@ -164,6 +165,81 @@ describe('surge level', () => {
     const lid = new THREE.Vector3(-100, 0, ROAD.junctionZ), v = new THREE.Vector3(0, 40, 0);
     for (let i = 0; i < 240; i++) { v.y = 40; moveCharacter(w.colliders, lid, v, 1 / 60, PLAYER.radius, PLAYER.height); }
     expect(lid.y).toBeLessThan(50);
+  });
+
+  it('walking off the road for 1 second drops a giant snake that crushes the player; staying on the road is safe', () => {
+    const { w, run } = mk();
+    run(0.1);
+    w.state = 'playing';
+    // 道の上：安全
+    w.player.pos.set(-200, 0.3, ROAD.junctionZ);
+    run(3);
+    expect(w.player.hp).toBeGreaterThan(0);
+    expect(surgeFootState(w)!.crushing).toBe(false);
+    // 道の外（歩道の外）：1秒たつと蛇が降ってきて、落ちたら死亡
+    w.player.pos.set(-200, 0.3, ROAD.junctionZ - 30);
+    run(0.6);
+    expect(surgeFootState(w)!.crushing).toBe(false);
+    run(0.7);
+    expect(surgeFootState(w)!.crushing).toBe(true);
+    expect(w.scene.getObjectByName('crushSnake')).toBeTruthy();
+    expect(w.player.hp).toBeGreaterThan(0);
+    run(1.5);
+    expect(w.player.hp).toBe(0);
+  });
+
+  it('onRoad: garage, the road with sidewalks, and the drain ramp are road; the city around is not', () => {
+    const jz = ROAD.junctionZ;
+    expect(onRoad(0, 0, 'camp')).toBe(true);                // ガレージ
+    expect(onRoad(0, -50, 'camp')).toBe(true);              // 一本道
+    expect(onRoad(-300, jz + 12, 'camp')).toBe(true);       // 歩道
+    expect(onRoad(-300, jz + 20, 'camp')).toBe(false);      // 街
+    expect(onRoad(40, jz, 'camp')).toBe(false);             // 東は柵の向こう
+    expect(onRoad(40, jz, 'drain')).toBe(true);             // ルート2は東へ続く
+    expect(onRoad(RAMP.landingEndX - 2, jz, 'drain')).toBe(true);
+    expect(onRoad(RAMP.topX, jz + 20, 'drain')).toBe(false);
+    expect(onRoad(COMPOUND.fenceX - 20, ENTRANCE.z, 'camp')).toBe(false);
+    expect(onRoad(COMPOUND.fenceX - 20, ENTRANCE.z, 'camp', true)).toBe(true);   // 柵を壊したあとの庭
+  });
+
+  it('walking up to the fence and using the special move breaks it, then the entrance leads to camp1', () => {
+    const { w, run } = mk();
+    run(0.1);
+    w.player.pos.set(COMPOUND.fenceX + 20, 0.3, ROAD.junctionZ);
+    w.special.gauge = 0;
+    run(0.2);
+    expect(w.special.gauge).toBeGreaterThan(0);              // 壁の前でゲージが満タンになる
+    expect(w.level.data.specialWall).toBeTruthy();
+    // 敵がいなくても、壁の前なら必殺技を撃てる
+    updateSpecial(w, DT);                                    // 前のテストの World の必殺技が残っていれば片付ける
+    expect(startSpecial(w)).toBe(true);
+    expect(w.special.phase).toBe('pose');
+    w.level.data.specialWall.onEnd();                       // 撃ち終わり
+    expect(surgeFootState(w)!.wallBroken).toBe(true);
+    expect(w.level.data.surge.fenceCollider.active).toBe(false);
+    expect(isWalkingOut(w)).toBe(true);
+    // 庭は道路扱い：蛇は出ない
+    w.player.pos.set(COMPOUND.wallX + 8, 0.3, ENTRANCE.z - 3);
+    run(2);
+    expect(surgeFootState(w)!.crushing).toBe(false);
+  });
+
+  it('drain route: the ramp is walkable on foot; the special move blows the door open and leads to the drain level', () => {
+    const { w, run } = mk(undefined, 'drain');
+    run(0.1);
+    const top = walk(w, [RAMP.footX - 4, 0.3, ROAD.junctionZ], [RAMP.landingEndX - 3, ROAD.junctionZ], 80);
+    expect(top.y).toBeGreaterThan(RAMP.topY - 1);
+    expect(top.x).toBeGreaterThan(RAMP.landingEndX - 5);
+    w.player.pos.copy(top);
+    run(0.2);
+    expect(w.level.data.specialWall).toBeTruthy();
+    updateSpecial(w, DT);                                    // 前のテストの World の必殺技が残っていれば片付ける
+    expect(startSpecial(w)).toBe(true);
+    w.level.data.specialWall.onEnd();
+    expect(surgeFootState(w)!.wallBroken).toBe(true);
+    run(2.5);
+    expect(w.level.data.nextLevel).toEqual({ level: 'drain' });
+    void DRAIN_DOOR;
   });
 
   it('after the crash cutscene the player gets out next to the car and walks to the left entrance, which leads to camp1', () => {

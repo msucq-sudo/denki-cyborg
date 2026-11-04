@@ -12,19 +12,19 @@ import type { KindModule } from './kind';
 /** ジャンパーの調整値。移動速度・攻撃間隔・ダメージは ENEMIES.jumper（speed=1回の跳躍の水平速度の上限、attackInterval=着地から次の跳躍までの周期） */
 export const JUMPER = {
   /** しゃがみ（予告）の長さ（s）。この間は赤く光る */
-  crouchTime: 0.75,
+  crouchTime: 0.45,
   /** 跳び上がりの初速（m/s）。ゆっくり浮くよう重力も弱める */
   jumpSpeed: 8.5,
-  /** 空中の重力（m/s²）。滞空 = 2*jumpSpeed/gravity ≒ 1.3 秒 */
-  gravity: 13,
+  /** 空中の重力（m/s²）。滞空 = 2*jumpSpeed/gravity ≒ 0.8 秒 */
+  gravity: 21,
   /** 着地点とプレイヤーの距離のねらい（m）。突きの届く少し手前に降りる（真上には降りない） */
   landGap: 2.3,
   /** 着地から突きが出るまで（s）。この間に槍を引いて構える */
-  thrustAt: 0.24,
+  thrustAt: 0.16,
   /** 槍の先端が体の中心から届く距離（m） */
-  thrustReach: 1.8,
+  thrustReach: 2.8,
   /** 突きの範囲（正面からの角度の cos。0.64 ≒ 50°） */
-  thrustCos: 0.64,
+  thrustCos: 0.2,
   /** 頭の開閉の速さ（1/s）。1 が全開 */
   openRate: 6,
   /** 開いた判定の下限（openAmt がこれ以上で撃てる・吸える） */
@@ -33,6 +33,10 @@ export const JUMPER = {
   minOpen: 1.2,
   /** 気絶中の最短の開放（s） */
   stunOpen: 0.6,
+  /** 3連続ジャンプ攻撃：しゃがみ始め（通常の跳躍の前）にこの確率で3連続になる。2回目以降のしゃがみ（s）と、途中の着地で止まる時間（s） */
+  tripleChance: 0.4,
+  chainCrouch: 0.12,
+  chainOpen: 0.3,
 } as const;
 
 // ---- 寸法（体の中心 = 原点、床は -0.95）
@@ -226,6 +230,14 @@ type JState = 'idle' | 'crouch' | 'air' | 'open';
 
 function airTime(): number { return (2 * JUMPER.jumpSpeed) / JUMPER.gravity; }
 
+/** 跳躍の始まり：通常は一定の確率で3連続（残り2回）にする。連続の途中は短いしゃがみで次へ */
+function beginCrouch(ai: Enemy['ai'], chained: boolean): void {
+  if (!chained) ai.chain = Math.random() < JUMPER.tripleChance ? 2 : 0;
+  ai.state = 'crouch';
+  ai.crouchLen = chained ? JUMPER.chainCrouch : JUMPER.crouchTime;
+  ai.stateT = ai.crouchLen;
+}
+
 function takeoff(e: Enemy, dirX: number, dirZ: number, dist2d: number, speed: number): void {
   const ai = e.ai;
   const want = THREE.MathUtils.clamp(dist2d - JUMPER.landGap, 0, speed * airTime());
@@ -277,28 +289,28 @@ export const jumper: KindModule = {
     const st: JState = ai.state ?? 'idle';
     if (ai.state === undefined) { ai.state = 'idle'; ai.openAmt = 0; ai.stateT = 0; }
     const stunned = e.status === 'stunned';
-    const openTime = Math.max(JUMPER.minOpen, spec.attackInterval - JUMPER.crouchTime);
+    const openTime = (ai.chain ?? 0) > 0 ? JUMPER.chainOpen : Math.max(JUMPER.minOpen, spec.attackInterval - JUMPER.crouchTime);
 
     if (stunned) {
       // 気絶：しゃがむ・待つ途中なら頭を開いて固まる（地上のとき）
       ai.stunT = (ai.stunT ?? 0) - dt;
       if (ai.stunT <= 0) e.status = 'active';
       if (st === 'idle' || st === 'crouch') {
-        ai.state = 'open'; ai.openT = 0; ai.thrustT = 99; ai.thrustDone = true; ai.warn = 0;
+        ai.state = 'open'; ai.openT = 0; ai.thrustT = 99; ai.thrustDone = true; ai.warn = 0; ai.chain = 0;
       }
     }
 
     switch (ai.state as JState) {
       case 'idle': {
         moveGround(world, e, dt, 0, 0, 12);
-        if (ai.alert > 0) { ai.state = 'crouch'; ai.stateT = JUMPER.crouchTime; }
+        if (ai.alert > 0) beginCrouch(ai, false);
         break;
       }
       case 'crouch': {
         moveGround(world, e, dt, 0, 0, 12);
         faceToward(e, dirXZ.x, dirXZ.z, dt, 6);
         ai.stateT -= dt;
-        ai.warn = 1 - Math.max(0, ai.stateT) / JUMPER.crouchTime;
+        ai.warn = 1 - Math.max(0, ai.stateT) / (ai.crouchLen ?? JUMPER.crouchTime);
         if (ai.stateT <= 0) takeoff(e, dirXZ.x, dirXZ.z, dist2d, spec.speed);
         break;
       }
@@ -321,7 +333,9 @@ export const jumper: KindModule = {
         }
         if (ai.openT >= openTime && e.status !== 'stunned') {
           // 閉じて次の跳躍へ
-          if (ai.alert > 0) { ai.state = 'crouch'; ai.stateT = JUMPER.crouchTime; } else ai.state = 'idle';
+          if (ai.alert > 0) {
+            if ((ai.chain ?? 0) > 0) { ai.chain--; beginCrouch(ai, true); } else beginCrouch(ai, false);
+          } else { ai.state = 'idle'; ai.chain = 0; }
         }
         break;
       }

@@ -13,6 +13,7 @@ import { chargeDamage } from '../player/logic';
 import { gunChargeMaxDamage } from '../progression/effects';
 import { toast } from '../core/combat';
 import { markCamp2Cleared } from '../core/progress';
+import { grantCamp2Rewards } from '../progression/upgrades';
 import { spawnBurst, spawnShockwave } from '../core/effects';
 import { shutdownEnemy, spawnEnemy } from '../enemies/api';
 import { setPlayerFacing } from '../player/player';
@@ -129,22 +130,13 @@ export function buildCamp2(world: World): void {
     // ムービー単体モード：扉を調べるムービーだけ
     rt.movieOnly = true;
     rt.pendingIntro = true;
-  } else if (at === 'ending' || at === 'movie') {
-    // エンディングから：戦闘なし。最初のフレームでムービーが始まる
+  } else if (at === 'ending' || at === 'movie' || at === 'freed') {
+    // エンディングから（「住民解放後」もここ）：戦闘なし。最初のフレームでムービーが始まる
     rt.movieOnly = at === 'movie' || urlMovie;
     rt.pendingEnding = true;
     p.pos.set(FIGHT_START.x, 0, FIGHT_START.z);
     p.yaw = FIGHT_START.yaw;
     p.pitch = FIGHT_START.pitch;
-  } else if (at === 'freed') {
-    p.pos.set(FIGHT_START.x, 0, FIGHT_START.z);
-    p.yaw = FIGHT_START.yaw;
-    p.pitch = FIGHT_START.pitch;
-    freeResidents(world, rt);
-    state.doorOpen = 1;
-    vis.door.position.x = (DOOR.x0 + DOOR.x1) / 2 + DOOR.slide;
-    vis.cageLight.intensity = 48;
-    vis.doorCollider.active = false;
   } else if (fromBoss) {
     // リトライ：ムービーは飛ばして、戦闘開始の状態から
     p.pos.set(FIGHT_START.x, 0, FIGHT_START.z);
@@ -272,7 +264,7 @@ function beginEnding(world: World, rt: Runtime): void {
   world.level.rooms[1].cleared = true;
   world.level.data.objective = '';
   world.level.data.camp2Freed = true;
-  if (!rt.movieOnly) world.level.data.retryAt = 'ending';
+  if (!rt.movieOnly) { world.level.data.retryAt = 'ending'; grantCamp2Rewards(world); }
   rt.endingProbe = newEndingProbe();
     rt.cut = new Cutscene(world, (crt) => endingScript(crt, {
     vis: rt.vis, residents: rt.residents, setDoor: (k) => applyDoor(world, rt, k),

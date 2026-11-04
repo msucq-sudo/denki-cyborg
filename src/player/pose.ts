@@ -21,6 +21,8 @@ export interface AnimState {
   recoilT: number; prevShots: number; shotHold: number;
   ripple: number; rippleT: number; prevAbsPhase: string;
   scK: number; stretch: number;
+  /** スーパーヒーロー飛行の姿勢（体を横にして腕を前へ）0..1 */
+  heroK: number;
   /** 必殺技の姿勢をどれだけ重ねるか 0..1 と、直前の必殺技の姿勢（戻るときのブレンド用） */
   spK: number; spLast: SpecialPose | null;
 }
@@ -29,7 +31,7 @@ export function createAnimState(world: World): AnimState {
   return {
     phase: 0, moveK: 0, runK: 0, fwdF: 1, sideF: 0, airK: 0, flyK: 0, aimK: 0, supportK: 0, absK: 0, chargeK: 0,
     landT: 0, minVy: 0, prevGround: true, flinchT: 0, prevHp: world.player.hp,
-    recoilT: 0, prevShots: world.stats.shots, shotHold: 0, ripple: 0, rippleT: 0, prevAbsPhase: 'idle', scK: 0, stretch: 1, spK: 0, spLast: null,
+    recoilT: 0, prevShots: world.stats.shots, shotHold: 0, ripple: 0, rippleT: 0, prevAbsPhase: 'idle', scK: 0, stretch: 1, heroK: 0, spK: 0, spLast: null,
   };
 }
 
@@ -102,6 +104,7 @@ export function poseCharacter(world: World, v: PlayerVisual, a: AnimState, dt: n
   if (grounded && hs > 0.3) a.phase += (hs / mix(A.strideWalk, A.strideRun, a.runK)) * Math.PI * 2 * dt;
   a.airK = smooth(a.airK, !grounded && !flying && !dodging ? 1 : 0, A.airRate, dt);
   a.flyK = smooth(a.flyK, flying ? 1 : 0, A.flyRate, dt);
+  a.heroK = smooth(a.heroK, flying && p.superFlying ? 1 : 0, 7, dt);
 
   if (!grounded) a.minVy = Math.min(a.minVy, p.vel.y);
   if (grounded && !a.prevGround) { if (a.minVy < -4) a.landT = A.landTime * clamp(-a.minVy / 12, 0.4, 1); a.minVy = 0; }
@@ -188,6 +191,8 @@ export function poseCharacter(world: World, v: PlayerVisual, a: AnimState, dt: n
     // 飛行（脚を後ろへ流す）
     th = mix(th, -0.22 + 0.03 * Math.sin(t * 5 + i), a.flyK); flex = mix(flex, 0.3, a.flyK);
     z = mix(z, s * 0.05, a.flyK); ank = mix(ank, -0.55, a.flyK);
+    // スーパーヒーロー飛行：脚はまっすぐ後ろへそろえて伸ばす（膝を曲げて足が上がらないように）
+    th = mix(th, 0, a.heroK); flex = mix(flex, 0, a.heroK); z = mix(z, s * 0.03, a.heroK); ank = mix(ank, 0.25, a.heroK);
     // ロール（体を丸める）
     th = mix(th, 1.25, tuck); flex = mix(flex, A.rollTuck + 0.2, tuck); z = mix(z, s * 0.1, tuck); ank = mix(ank, 0.2, tuck);
     // 着地の沈み込み
@@ -225,10 +230,10 @@ export function poseCharacter(world: World, v: PlayerVisual, a: AnimState, dt: n
   v.chest.rotation.set(
     0.014 * breath + p.pitch * 0.3 * aimK + flinch * 0.5 - cK * 0.08,
     0, flinch * 0.25 * Math.sin(t * 40));
-  v.head.rotation.set(clamp(p.pitch, -0.8, 0.8) * 0.45 - lean * 0.6 - flinch * 0.6, 0.03 * Math.sin(t * 0.7), 0);
+  v.head.rotation.set(clamp(p.pitch, -0.8, 0.8) * 0.45 - lean * 0.6 - flinch * 0.6 + HERO_PITCH * 0.85 * a.heroK, 0.03 * Math.sin(t * 0.7), 0);   // ヒーロー飛行は顔を前へ起こす
 
   // 全身の傾き（飛行・ロール）は重心 pivot で
-  _qLean.setFromAxisAngle(AX, -A.flyLean * a.flyK);
+  _qLean.setFromAxisAngle(AX, -A.flyLean * a.flyK * (1 - a.heroK) - HERO_PITCH * a.heroK);   // スーパーヒーロー飛行：体を横に倒す
   v.pivot.position.y = 0.9;
   if (dodging) {
     const d = p.dodgeDir;
@@ -343,6 +348,16 @@ export function poseCharacter(world: World, v: PlayerVisual, a: AnimState, dt: n
   v.springMat.emissiveIntensity = glow;
   v.springMat.emissive.setHex(p.overloading ? 0xff8a3c : CHARACTER.colors.cyan);
 
+  // ---------- スーパーヒーロー飛行：両腕をまっすぐ前（体の軸に沿って頭の上）へ伸ばし、拳を握る ----------
+  if (a.heroK > 0.001) {
+    for (const [arm, side] of [[armR, -1], [armL, 1]] as const) {
+      _qs.setFromEuler(_eu.set(Math.PI, 0, side * 0.1));
+      arm.shoulder.quaternion.slerp(_qs, a.heroK);
+      arm.elbow.quaternion.slerp(IDENT, a.heroK);
+    }
+    armL.elbow.position.y = -armL.upper * mix(a.stretch, 1, a.heroK);
+  }
+
   // ---------- 必殺技：両手を目標へ（IK）、指を開く ----------
   if (sp && spK > 0.001) {
     solveArm(armR.shoulder.position, sp.tR, armR.upper, armR.fore, POLE_R, _qs, _qe);
@@ -357,7 +372,7 @@ export function poseCharacter(world: World, v: PlayerVisual, a: AnimState, dt: n
     v.springStretch.value = a.stretch;
     armL.elbow.position.y = -armL.upper * a.stretch;
   }
-  v.gunFrame.visible = spK < 0.5;
+  v.gunFrame.visible = spK < 0.5 && a.heroK < 0.5;
   // 指：通常は握ったまま。必殺技中は開く／爪のように曲げる。手の向きは胸から見た目標の向きに合わせる
   const curl = mix(1, sp ? sp.curl : 1, spK) + (sp ? Math.sin(t * 47) * 0.03 * spK : 0);
   const spread = mix(0, sp ? sp.spread : 0, spK);
@@ -398,5 +413,7 @@ export function poseCharacter(world: World, v: PlayerVisual, a: AnimState, dt: n
 }
 
 const _c = new THREE.Color();
+/** スーパーヒーロー飛行で体を前へ倒す角度（rad）。ほぼ水平 */
+const HERO_PITCH = Math.PI / 2;
 
 export type { ArmRig };

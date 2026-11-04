@@ -32,6 +32,8 @@ import { setDrainBossArrival } from './drainBoss';
 import { generateDrain, B_Y, PLATFORM_THICK, type Plan, type SpawnDef, type ZoneDef } from './drain/plan';
 import { buildDrainVisuals, type DeviceVis, type DrainVisuals, type GateVis } from './drain/visuals';
 
+/** 天井灯の実ライト（プレイヤーの近くに割り当てる）の数。実ライトは強さ0でも全ピクセルで計算されるので、多いほど重い（camp1 は CAMP1.lampSlots） */
+const DRAIN_LAMP_SLOTS = 5;
 export const DRAIN_EXPOSURE = 1.15;
 
 export type DrainStart = 'entrance' | 'bTop' | 'rope' | 'dFront' | 'eWest' | 'goal';
@@ -174,7 +176,7 @@ export function buildDrain(world: World): void {
   const hemi = new THREE.HemisphereLight(0x3a4660, 0x12151b, 0.9);
   scene.add(hemi);
   const slots: Slot[] = [];
-  for (let i = 0; i < 8; i++) {
+  for (let i = 0; i < DRAIN_LAMP_SLOTS; i++) {
     const l = new THREE.PointLight(0xffffff, 0, 24, 2);
     scene.add(l);
     slots.push({ light: l, lamp: -1, cur: 0 });
@@ -412,6 +414,7 @@ function spawnOne(world: World, rt: Runtime, z: ZoneDef, s: SpawnDef, trap: bool
       const e = spawnEnemy(world, s.kind, new THREE.Vector3(s.x, y, s.z));
       e.ai.yaw = yaw;
       if (s.neutral) e.ai.neutral = true;   // 襲ってこない赤メディック：戦闘の数に入れない
+      if (z.holdUntil) e.ai.passive = true;  // 区画に入るまで気づかない・攻撃しない（updateZones が解く）
       return e;
     }
     return spawnEnemy(world, s.kind, new THREE.Vector3(s.x, y, s.z), { dormant: mode, yaw, ...(trap ? { wakeRadius: 0 } : {}) });
@@ -457,6 +460,13 @@ function updateZones(world: World, rt: Runtime): void {
         changed = true;
       }
       continue;
+    }
+    // 通常の区画：holdUntil の範囲に入ったら、待たせていた敵を解く
+    if (z.def.holdUntil && z.enemies.some((e) => e.ai.passive)) {
+      const H = z.def.holdUntil;
+      if (p.x > H.x0 && p.x < H.x1 && p.z > H.z0 && p.z < H.z1 && p.y > H.y0 && p.y < H.y1 && world.player.hp > 0) {
+        for (const e of z.enemies) e.ai.passive = false;
+      }
     }
     // 通常の区画：誰かが目覚めたら activeとみなし、全滅したら done
     if (z.state === 'idle' && z.enemies.some((e) => !e.ai.dormant && e.status !== 'dead' && !e.ai.neutral && (e.ai.alert ?? 0) > 0)) { z.state = 'active'; st.fights[z.def.id] = 'active'; changed = true; }
@@ -674,6 +684,7 @@ export function updateDrain(world: World, dt: number): void {
         hitBreakable(world, bv.def.id, !!q.charged, charge);
         if (state.broken.includes(bv.def.id)) break;
       }
+      if (state.broken.includes(bv.def.id)) continue; // 今のフレームで壊れた分は、ひびを再表示しない
       const stage = state.crack[bv.def.id] ?? 0;
       bv.cracks.forEach((c, i) => { c.visible = stage > i; });
       bv.glow.opacity = stage >= CAMP1.crackStages ? 0.5 + 0.4 * Math.sin(t * 6) : 0;

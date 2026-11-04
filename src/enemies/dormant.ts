@@ -5,7 +5,7 @@ import * as THREE from 'three';
 import { ENEMY_NOTICE } from '../config/balance';
 import type { AABB, Enemy, World } from '../core/types';
 import { makeAABB, raycastLevel } from '../core/collision';
-import { spawnBurst, spawnFlash, spawnShockwave } from '../core/effects';
+import { addEffect, spawnBurst, spawnFlash, spawnShockwave } from '../core/effects';
 import { moveGround } from './common';
 import { podSize } from './podSize';
 
@@ -20,11 +20,14 @@ export interface DormantOpts {
 
 type Phase = 'sleep' | 'delay' | 'warn' | 'open' | 'plunge' | 'land';
 
-const WARN_POD = 0.4;
+/** ポッドが床からせり上がる（予兆）の秒数。それまでは何もない床 */
+const WARN_POD = 0.8;
 const OPEN_POD = 0.55;
 const WARN_DROP = 0.5;
 const LAND_TIME = 0.3;
 const PLUNGE_MAX = 3;
+/** 出てきたあとのポッド：扉を閉じて待つ秒数 / 折りたたんで沈む秒数 */
+const FOLD_WAIT = 0.9, FOLD_TIME = 0.8;
 const STAGGER_MIN = 0.15, STAGGER_MAX = 0.4;
 const WAKE_DY = 14;
 
@@ -198,6 +201,9 @@ function buildPod(world: World, e: Enemy, st: DormantState, rawYaw: number): Pod
   const collider = makeAABB(
     new THREE.Vector3(st.home.x - ax / 2, st.floorY, st.home.z - az / 2),
     new THREE.Vector3(st.home.x + ax / 2, st.floorY + H, st.home.z + az / 2), 'pod');
+  // 目覚めるまでは何もない床：見えず、当たらない。予兆（startWarn）で床からせり上がる
+  group.visible = false;
+  collider.active = false;
   world.colliders.push(collider);
   return { group, leafL, leafR, lamp, eyes, collider, shell: null, fx, fz, size, baseX: st.home.x, baseZ: st.home.z };
 }
@@ -246,6 +252,7 @@ export function wakeDormant(world: World, e: Enemy, delay = 0): void {
 function startWarn(world: World, e: Enemy, d: DormantState): void {
   d.phase = 'warn';
   d.t = 0;
+  if (d.pod) { d.pod.group.visible = true; d.pod.group.scale.set(1, 0.02, 1); d.pod.collider.active = true; }
   world.events.emit('enemyWakeWarn', { pos: d.home.clone(), mode: d.mode });
   if (d.mode === 'drop' && d.hatch) {
     const h = d.hatch;
@@ -308,7 +315,9 @@ export function updateDormant(world: World, e: Enemy, dt: number): void {
       if (pod) {
         pod.lamp.color.setRGB(1 * blink, 0.1 * blink, 0.05 * blink);
         pod.eyes.color.setRGB(1, 0.1 + 0.2 * blink, 0.05);
-        pod.group.position.set(pod.baseX + (Math.random() - 0.5) * 0.03, d.floorY, pod.baseZ + (Math.random() - 0.5) * 0.03);
+        const rise = ease(d.t / dur);
+        pod.group.scale.set(1, Math.max(0.02, rise), 1);
+        pod.group.position.set(pod.baseX + (Math.random() - 0.5) * 0.03 * rise, d.floorY, pod.baseZ + (Math.random() - 0.5) * 0.03 * rise);
       }
       if (hatch) {
         hatch.lamp.color.setRGB(1 * blink, 0.1 * blink, 0.05 * blink);
@@ -369,6 +378,7 @@ function startEmerge(world: World, e: Enemy, d: DormantState): void {
     d.phase = 'open';
     pod.collider.active = false;
     pod.group.position.set(pod.baseX, d.floorY, pod.baseZ);
+    pod.group.scale.set(1, 1, 1);
     pod.eyes.color.setHex(0xff3020);
     pod.lamp.color.setHex(0xff2010);
     const front = new THREE.Vector3(d.home.x + pod.fx * pod.size.d / 2, d.floorY + pod.size.h * 0.4, d.home.z + pod.fz * pod.size.d / 2);
@@ -413,12 +423,17 @@ function finish(world: World, e: Enemy, d: DormantState): void {
     pod.group.position.set(pod.baseX, d.floorY, pod.baseZ);
     pod.lamp.color.setHex(0x6a7480);
     pod.eyes.color.setHex(0x222a38);
-    // 空のポッドは奥半分だけ遮蔽物（カバー）として残す
-    const { w: W, d: D, h: H } = pod.size;
-    const ax = Math.abs(pod.fx) > 0 ? D / 2 : W, az = Math.abs(pod.fz) > 0 ? D / 2 : W;
-    const cx = d.home.x - pod.fx * D / 4, cz = d.home.z - pod.fz * D / 4;
-    pod.shell = makeAABB(new THREE.Vector3(cx - ax / 2, d.floorY, cz - az / 2), new THREE.Vector3(cx + ax / 2, d.floorY + H, cz + az / 2), 'pod');
-    world.colliders.push(pod.shell);
+    // 空のポッドは、扉を閉じてから折りたたまれて床に沈み、消える（遮蔽物としては残さない）
+    const LIFE = FOLD_WAIT + FOLD_TIME;
+    addEffect(world, pod.group, LIFE, (fx) => {
+      const t = (1 - fx.life / fx.maxLife) * LIFE;
+      const close = ease(t / 0.4);
+      pod.leafL.rotation.y = -1.9 * (1 - close);
+      pod.leafR.rotation.y = 1.9 * (1 - close);
+      const k = ease((t - FOLD_WAIT) / FOLD_TIME);
+      pod.group.scale.set(1 + 0.15 * Math.sin(k * Math.PI), Math.max(0.02, 1 - k), 1 + 0.15 * Math.sin(k * Math.PI));
+      pod.group.position.y = d.floorY - 0.1 * k;
+    });
   }
   e.vel.set(0, 0, 0);
   e.ai.dormant = undefined;

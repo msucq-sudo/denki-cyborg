@@ -1,5 +1,5 @@
 import * as THREE from 'three';
-import { CAMERA, DASH, DODGE, FUNCTIONS, GUN, PLAYER } from '../config/balance';
+import { CAMERA, DASH, DODGE, FUNCTIONS, GUN, PLAYER, RIFLE } from '../config/balance';
 import type { World } from '../core/types';
 import { moveCharacter, raycastLevel } from '../core/collision';
 import { raycastEnemies } from '../core/enemyUtil';
@@ -10,7 +10,7 @@ import { isGrappling, stepGrapple } from '../core/grapple';
 import { buildPlayerVisual, CYAN, type PlayerVisual } from './visual';
 import { WEAPONS } from './weapons';
 import {
-  dodgeCost, dodgeInvuln, flightDrainPerSec, freeFlightEnabled, gunChargeMaxDamage, gunDamage, gunTapCost, moveSpeed, syncPlayerStats,
+  dodgeCost, dodgeInvuln, flightDrainPerSec, freeFlightEnabled, gunChargeMaxDamage, gunDamage, gunTapCost, moveSpeed, rifleCost, rifleDamage, rifleInterval, syncPlayerStats,
 } from '../progression/effects';
 import { createAnimState, poseCharacter, type AnimState } from './pose';
 import {
@@ -23,6 +23,12 @@ const TAP_BUFFER = 0.25;
 const TERMINAL_VEL = -45;
 
 interface PState {
+  /** ジェットブースト中か（向きを進行方向に合わせる） */
+  boosting?: boolean;
+  /** 体の発光がONか */
+  bodyLightOn?: boolean;
+  /** 自由飛行中の頭の傾き（-1=下〜1=上。Lスティックの前後） */
+  flyTilt?: number;
   vis: PlayerVisual;
   anim: AnimState;
   facing: number;
@@ -37,6 +43,8 @@ interface PState {
   afterT: number;
   spaceHold: number;
   groundJumped: boolean;
+  /** この滞空中にジャンプを押した回数（地上ジャンプ込み。2回でスーパーヒーロー飛行） */
+  jumpTaps: number;
   holding: boolean;
   /** 押した直後の先行入力（秒）。クールダウン明けに単発を撃つ */
   tapQueue: number;
@@ -56,7 +64,7 @@ function st(world: World): PState {
     s = {
       vis: buildPlayerVisual(world.player.root), anim: createAnimState(world), facing: world.player.yaw, walkPhase: 0,
       prevOnGround: false, prevHp: world.player.hp, flash: 0, fallSpeed: 0, camS: 1, aimK: 0, afterT: 0,
-      spaceHold: 0, groundJumped: false, holding: false, tapQueue: 0, suppressFire: false, fullEmitted: false, sparkT: 0, hitCeilingPrev: false, muzzleFlash: 0,
+      spaceHold: 0, groundJumped: false, jumpTaps: 0, holding: false, tapQueue: 0, suppressFire: false, fullEmitted: false, sparkT: 0, hitCeilingPrev: false, muzzleFlash: 0,
     };
     states.set(world, s);
   }
@@ -130,6 +138,9 @@ export function updatePlayer(world: World, dt: number): void {
   const mv = moveVector(p.yaw, fIn, rIn);
   const hasInput = mv.x !== 0 || mv.z !== 0;
 
+  // 体の発光のON/OFF（十字キー上 / L）
+  if (input.pressed('BodyLight') || input.pressed('KeyL')) s.bodyLightOn = !s.bodyLightOn;
+
   // 回避
   // 吸収中は回避・ダッシュ・ジャンプ・ジェットパック不可（吸収のリスク）
   const dodgePressed = input.pressed('KeyC') && !p.absorbing;
@@ -161,26 +172,55 @@ export function updatePlayer(world: World, dt: number): void {
     speed *= DASH.speedMul;
   }
   // 自由飛行中は水平も速い（直前フレームの飛行状態で判定）
-  const freeFly = p.flying && freeFlightEnabled(world);
+  const freeFly = p.flying && p.superFlying === true;
   if (freeFly) speed *= FUNCTIONS.freeFlight.speedMul;
+  // ジェットブースト（強化）：飛行中にダッシュ（Shift / Lスティック押込）を押している間、何も入力しなくても前へ進み続ける。
+  // Lスティック（WASD）を倒すと、その向き（カメラ基準）へ進む向きが変わる
+  const boosting = !!world.unlocks.jetBoost && p.flying && !dodging && !p.absorbing && !p.charging && p.energy > 0
+    && (input.isDown('ShiftLeft') || input.isDown('ShiftRight'));
+  let dirX = mv.x, dirZ = mv.z;
+  if (boosting) {
+    if (!hasInput) { const f = cameraForward(p.yaw, 0); dirX = f.x; dirZ = f.z; }
+    speed = moveSpeed(world) * FUNCTIONS.jetBoost.speedMul;
+    drainEnergy(world, FUNCTIONS.jetBoost.drainPerSec * dt);
+  }
+  // 自由飛行：飛んでいる間は常に前（向いている方）へ進み続ける。Lスティックの左右で向きを変える（上下は下の昇降）
+  if (freeFly && !dodging) {
+    p.yaw -= rIn * FUNCTIONS.freeFlight.turnRate * dt;
+    const f = cameraForward(p.yaw, 0);
+    dirX = f.x; dirZ = f.z;
+  }
+  s.boosting = boosting;
   if (dodging) {
     p.vel.x = p.dodgeDir.x * DODGE.speed;
     p.vel.z = p.dodgeDir.z * DODGE.speed;
   } else {
     let k: number;
     if (p.onGround) k = 1 - Math.exp(-18 * dt);
+    else if (boosting) k = 1 - Math.exp(-FUNCTIONS.jetBoost.airAccel * dt);
     else if (p.flying) k = 1 - Math.exp(-(freeFly ? FUNCTIONS.freeFlight.airAccel : 4) * dt);
     else k = hasInput ? 1 - Math.exp(-5 * dt) : 1 - Math.exp(-0.8 * dt);
-    p.vel.x += (mv.x * speed - p.vel.x) * k;
-    p.vel.z += (mv.z * speed - p.vel.z) * k;
+    p.vel.x += (dirX * speed - p.vel.x) * k;
+    p.vel.z += (dirZ * speed - p.vel.z) * k;
   }
 
   // ジャンプ / 飛行
   const spaceDown = input.isDown('Space');
   if (!spaceDown) { s.spaceHold = 0; s.groundJumped = false; } else s.spaceHold += dt;
+  // ジャンプを2回押す（地上ジャンプ＋空中でもう1回）と、スーパーヒーロー飛行（自由飛行）に切り替わる。着地・電力切れで解除
+  const canHero = world.functions.flight && freeFlightEnabled(world) && p.energy > 0 && !p.absorbing && !dodging;
+  if (p.onGround && !input.pressed('Space')) { s.jumpTaps = 0; p.superFlying = false; }
+  // Aボタン（PadA）か B キーでスーパーヒーロー飛行を終える（空中に残り、ジャンプをもう1回押せばまた入れる）
+  if (p.superFlying && (input.pressed('PadA') || input.pressed('KeyB'))) { p.superFlying = false; s.jumpTaps = 1; }
+  else if (input.pressed('Space') && !p.onGround && !dodging) {
+    s.jumpTaps++;
+    if (s.jumpTaps >= 2 && canHero && !p.superFlying) { p.superFlying = true; }
+  }
+  if (p.superFlying && !canHero) p.superFlying = false;
   if (input.pressed('Space') && p.onGround && !dodging && !p.absorbing) {
     p.vel.y = PLAYER.jumpSpeed;
     p.onGround = false;
+    s.jumpTaps = 1;
     s.groundJumped = true;
     world.events.emit('jump', {});
   }
@@ -188,7 +228,7 @@ export function updatePlayer(world: World, dt: number): void {
   const wasFlying = p.flying;
   // ジェットパック：空中で長押し → 落下し始めたらその高さで滞空（上昇はしない）
   // 自由飛行（強化）：落下を待たずに上昇でき、飛び始めたらジャンプを離しても電力が続く限り飛び続ける
-  const free = world.functions.flight && freeFlightEnabled(world);
+  const free = p.superFlying === true;
   const FF = FUNCTIONS.freeFlight;
   const engage = free || wasFlying || p.vel.y <= F.engageVy;
   let wantFly = world.functions.flight && spaceDown && !p.onGround && p.energy > 0 && !p.absorbing && engage;
@@ -209,7 +249,9 @@ export function updatePlayer(world: World, dt: number): void {
   } else if (p.flying && free) {
     // 自由飛行：長押しで上昇 / 離すとゆっくり下降 / 左Ctrlで速く下降（高度の上限は天井などの衝突だけ）
     const down = input.isDown('ControlLeft') || input.isDown('ControlRight');
-    const target = down ? -FF.diveSpeed : spaceDown ? FF.riseSpeed : -FF.sinkSpeed;
+    // Lスティック（W/S）：前に倒すと頭が上を向いて上昇、後ろに倒すと下を向いて下降。倒していなければ通常どおり（離すとゆっくり下降）
+    const target = down ? -FF.diveSpeed : spaceDown ? FF.riseSpeed : fIn !== 0 ? fIn * FF.pitchSpeed : -FF.sinkSpeed;
+    s.flyTilt = (s.flyTilt ?? 0) + ((fIn !== 0 && !down && !spaceDown ? fIn : 0) - (s.flyTilt ?? 0)) * Math.min(1, dt * 8);
     p.vel.y += (target - p.vel.y) * (1 - Math.exp(-FF.vyAccel * dt));
   } else if (p.flying) {
     // 縦速度を0へ寄せて高度を維持（上昇させない）
@@ -234,7 +276,8 @@ export function updatePlayer(world: World, dt: number): void {
   // 向き：移動中/射撃中/吸収中はカメラ yaw に合わせる
   const firing = input.mouse(0) || p.charging || p.absorbing || input.mouse(2) || input.isDown('KeyE');
   if (firing) s.facing = p.yaw;
-  else if (hasInput || dodging) s.facing = smoothAngle(s.facing, p.yaw, 16, dt);
+  else if (s.boosting) s.facing = smoothAngle(s.facing, Math.atan2(-p.vel.x, -p.vel.z), 10, dt); // ブースト中は進む向きを向く
+  else if (hasInput || dodging || freeFly) s.facing = smoothAngle(s.facing, p.yaw, 16, dt);
   p.root.rotation.y = s.facing;
   p.root.position.copy(p.pos);
 
@@ -252,8 +295,17 @@ export function updatePlayer(world: World, dt: number): void {
 
 // ---------------------------------------------------------------- 見た目アニメ
 
+/** 体の発光（Lキー）の強さ。周りを広く照らす */
+const BODY_LIGHT_INTENSITY = 34;
+
 function animate(world: World, s: PState, dt: number): void {
   poseCharacter(world, s.vis, s.anim, dt);
+  // 自由飛行中は、Lスティックで指示した昇降の向きに頭が傾く（上昇＝上を向く、下降＝下を向く）
+  if (world.player.flying && freeFlightEnabled(world)) s.vis.head.rotation.x += (s.flyTilt ?? 0) * FUNCTIONS.freeFlight.tiltMax;
+  else s.flyTilt = 0;
+  const bl = s.vis.bodyLight;
+  bl.intensity += ((s.bodyLightOn ? BODY_LIGHT_INTENSITY : 0) - bl.intensity) * Math.min(1, dt * 10);
+  bl.visible = s.bodyLightOn === true || bl.intensity > 0.05; // 消えている間はライトの数に数えない（シェーダーが重くならない）
 }
 
 function spawnGhost(world: World, s: PState): void {
@@ -382,6 +434,16 @@ export function updateGun(world: World, dt: number): void {
     return;
   }
 
+  // アサルト：長押しで連射（溜め撃ちなし）
+  if (world.loadout.current === 'assault') {
+    if (input.mouse(0) && p.fireCooldown <= 0 && spendEnergy(world, rifleCost(world))) {
+      fireRifle(world);
+      p.fireCooldown = rifleInterval(world);
+    } else if (input.mousePressed(0) && p.energy <= 0) world.events.emit('noEnergy', {});
+    updateMuzzle(world, s, dt);
+    return;
+  }
+
   const pressed = input.mousePressed(0);
   const released = input.mouseReleased(0);
   const down = input.mouse(0);
@@ -455,6 +517,24 @@ function fire(world: World, charged: boolean, charge: number): void {
   if (world.functions.autoAim && world.aimTarget) drainEnergy(world, FUNCTIONS.autoAim.costPerShot);
   world.stats.shots++;
   world.events.emit('shot', { charged, power: charge });
+}
+
+/** アサルトの1発（少しばらつく。ピストルより軽い） */
+function fireRifle(world: World): void {
+  const origin = world.aimOrigin.clone();
+  const dir = world.aimDir.clone();
+  dir.x += (Math.random() - 0.5) * RIFLE.spread * 2;
+  dir.y += (Math.random() - 0.5) * RIFLE.spread * 2;
+  dir.z += (Math.random() - 0.5) * RIFLE.spread * 2;
+  dir.normalize();
+  spawnProjectile(world, {
+    pos: origin, vel: dir.multiplyScalar(GUN.bulletSpeed), damage: rifleDamage(world),
+    owner: 'player', radius: 0.1, life: GUN.bulletLife, charged: false,
+  });
+  st(world).muzzleFlash = 0.07;
+  if (world.functions.autoAim && world.aimTarget) drainEnergy(world, FUNCTIONS.autoAim.costPerShot);
+  world.stats.shots++;
+  world.events.emit('shot', { charged: false, power: 0 });
 }
 
 /** 銃口の電気球（溜め量に応じて成長、パチパチ） */

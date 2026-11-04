@@ -46,7 +46,7 @@ const tap = async (code) => {
 };
 
 try {
-  await page.goto(`http://localhost:${port}/?manual`, { waitUntil: 'load' });
+  await page.goto(`http://localhost:${port}/?level=dungeon&manual`, { waitUntil: 'load' });
   await page.waitForFunction(() => !!window.__game, null, { timeout: 120000 });
   // ソフトウェア描画では backdrop-filter（ぼかし）が非常に遅いので、撮影中だけ切る（見た目はほぼ同じ）
   await page.addStyleTag({ content: '*, *::before, *::after { -webkit-backdrop-filter: none !important; backdrop-filter: none !important; }' });

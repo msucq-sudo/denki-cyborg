@@ -362,11 +362,24 @@ function updateOne(world: World, e: Enemy, dt: number): void {
     return;
   }
 
+  // 必殺技のビームを浴びている間：AI は止まり、体は感電してのけぞる（ダメージは special.ts がビームの後に与える）
+  if ((ai.shocked ?? 0) > 0) {
+    ai.shocked -= dt;
+    e.vel.set(0, 0, 0);
+    animate(world, e, dt);
+    return;
+  }
+
   if (world.state === 'playing') {
     const c = makeCtx(world, e, dt);
     if (e.allied) {
       // ハッキングで味方になった敵
       KIND_MODULES[e.kind]?.updateAlly?.(c);
+      animate(world, e, dt);
+      return;
+    }
+    // ai.passive：動かない・撃たない的（導入チュートリアルの練習用。撃つ・吸収する・送電はできる）
+    if (ai.passive) {
       animate(world, e, dt);
       return;
     }
@@ -529,6 +542,28 @@ function animate(world: World, e: Enemy, dt: number): void {
       break;
     }
     default: KIND_MODULES[e.kind]?.animate(world, e, dt, down); break;
+  }
+  if ((ai.shocked ?? 0) > 0) applyShockPose(world, e, dt);
+}
+
+/**
+ * 必殺技のビームを浴びている間の見た目（ai.shocked > 0 のあいだ animate が呼ぶ。時間が止まっている間は special.ts が直接呼ぶ）。
+ * 全身が細かく激しく震え、のけぞり、白く点滅して、火花が散る
+ */
+export function applyShockPose(world: World, e: Enemy, dt: number): void {
+  const vis: THREE.Object3D | undefined = e.ai.model?.vis;
+  if (!vis) return;
+  const a = 0.07 + 0.05 * Math.min(2, e.radius);
+  vis.position.set((Math.random() - 0.5) * a * 2, (Math.random() - 0.5) * a, (Math.random() - 0.5) * a * 2);
+  vis.rotation.order = 'YXZ';
+  vis.rotation.x = -0.18 + Math.sin(world.time * 55) * 0.1;
+  vis.rotation.z = Math.sin(world.time * 70) * 0.14;
+  e.ai.flash = Math.max(e.ai.flash ?? 0, 0.08);
+  e.ai.shockSpark = (e.ai.shockSpark ?? 0) - dt;
+  if (e.ai.shockSpark <= 0) {
+    e.ai.shockSpark = 0.05;
+    const p = e.pos.clone().add(new THREE.Vector3((Math.random() - 0.5), Math.random() - 0.2, (Math.random() - 0.5)).multiplyScalar(e.radius * 1.6));
+    spawnBurst(world, p, Math.random() < 0.5 ? 0x9ff4ff : 0xffffff, 3, 3, 0.25);
   }
 }
 

@@ -101,7 +101,7 @@ describe('drain (ドレイン装置へ向かうダンジョン)', () => {
   it('route 1: A -> C -> D (fight closes the doors) -> corridor -> E west (before the laser)', () => {
     const { w, run } = mk();
     run(0.5);
-    const p0 = route(w, [[17, 86], [30, 79], [55, 79], [66, 79], [74, 79]]);
+    const p0 = route(w, [[17, 108], [17, 94], [17, 86], [30, 79], [55, 79], [66, 79], [74, 79]]);
     expect(near(p0, 74, 79, 1.5)).toBe(true);
     // D に入ると扉が閉まる
     w.player.pos.copy(route(w, [[74, 79], [88, 79]]));
